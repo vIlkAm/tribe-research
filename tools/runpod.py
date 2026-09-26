@@ -715,6 +715,18 @@ POD_VOLUME_WARNING = ("WARNING: this pod has no network volume. Terminating DELE
                       "pod volume: outputs, logs, venv and weights. Pull first: tools/pod.sh pull <run>.")
 
 
+def record_resume(rec: dict, now: float) -> None:
+    """A restarted pod: the watchdog times this run from `resumed_at` (not creation) and adds what the
+    earlier runs cost (`spent_before_usd`, from the recorded start/stop times)."""
+    run_start = parse_time(rec.get("resumed_at")) or parse_time(rec.get("created_at"))
+    stopped = parse_time(rec.get("stopped_at"))
+    if run_start is not None and stopped is not None and stopped > run_start:
+        prior = to_float(rec.get("spent_before_usd")) + to_float(rec.get("cost_per_hr")) * (stopped - run_start) / 3600
+        rec["spent_before_usd"] = round(prior, 4)
+    rec["resumed_at"] = iso(now)
+    rec.pop("stopped_at", None)
+
+
 def cmd_pod_stop(args) -> int:
     stop_pod(args.pod_id, now_ts())
     out(f"stopped {args.pod_id}. GPU billing stops; /workspace (pod or network volume) is kept, and a "
@@ -723,11 +735,13 @@ def cmd_pod_stop(args) -> int:
 
 
 def cmd_pod_start(args) -> int:
+    state = load_state()
+    rec = state["pods"].setdefault(args.pod_id, {})
+    now = now_ts()
+    record_resume(rec, now)
     if args.grace_min > 0:
-        state = load_state()
-        rec = state["pods"].setdefault(args.pod_id, {})
-        rec["grace_until"] = iso(now_ts() + args.grace_min * 60)
-        write_json_atomic(STATE_FILE, state)
+        rec["grace_until"] = iso(now + args.grace_min * 60)
+    write_json_atomic(STATE_FILE, state)
     rest("POST", f"/pods/{args.pod_id}/start")
     out(f"started {args.pod_id}; the watchdog leaves it alone for {args.grace_min:g} min "
         f"(still counted in spend). Then: eval \"$(tools/runpod.py pod-wait {args.pod_id})\"")
@@ -818,15 +832,17 @@ class Watchdog:
             running.append(p)
             self.first_seen.setdefault(pid, now)
             runtime = (telemetry or {}).get(pid) if telemetry is not None else None
-            start = earliest(rec.get("created_at"), p.get("createdAt"))
+            # a restarted pod (tools/runpod.py pod-start) is timed from its resume; earlier runs add a fixed cost
+            start = parse_time(rec.get("resumed_at")) or earliest(rec.get("created_at"), p.get("createdAt"))
+            prior_usd = to_float(rec.get("spent_before_usd")) if rec.get("resumed_at") else 0.0
             if start is None and runtime and runtime.get("uptimeInSeconds") is not None:
                 start = now - to_float(runtime.get("uptimeInSeconds"))
             if start is None:
                 start = self.first_seen[pid]
             hours = max(0.0, (now - start) / 3600)
             rate = to_float(p.get("costPerHr")) or to_float(rec.get("cost_per_hr"))
-            # Errs high: a pod stopped and restarted is billed as if it ran throughout.
-            usd = max(rate * hours, self.seen.get(pid, 0.0))
+            # Errs high for a pod restarted outside pod-start (no resumed_at): billed as if it ran throughout.
+            usd = max(prior_usd + rate * hours, self.seen.get(pid, 0.0))
             self.seen[pid] = usd
             running_usd += usd
             rate_total += rate

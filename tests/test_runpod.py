@@ -593,3 +593,15 @@ def test_real_transport_sends_key_only_in_header(monkeypatch):
         REAL_HTTP("GET", runpod.REST_URL + "/pods?x=1")
     assert "/pods" in str(ei.value) and "x=1" not in str(ei.value)
     assert_no_secrets(str(ei.value))
+
+
+def test_restarted_pod_is_timed_from_resume_and_keeps_prior_spend():
+    rec = {"created_at": runpod.iso(T0 - 5 * 3600), "stopped_at": runpod.iso(T0 - 4 * 3600),
+           "cost_per_hr": 2.0, "max_hours": 2}
+    runpod.record_resume(rec, T0 - 1800)
+    assert rec["spent_before_usd"] == 2.0 and "stopped_at" not in rec
+    wd = runpod.Watchdog(max_usd=4, max_hours=8)
+    line, kills = wd.tick([pod("a", "tribe-a", 2.0, created=T0 - 5 * 3600)], None, {"pods": {"a": rec}}, T0)
+    assert kills == [] and "est=$3.00" in line  # $2 before + 0.5 h x $2, not 5 h x $2
+    _, kills = wd.tick([pod("a", "tribe-a", 2.0, created=T0 - 5 * 3600)], None, {"pods": {"a": rec}}, T0 + 1800)
+    assert [k for k, _, _ in kills] == ["a"]  # $2 + 1 h x $2 reaches the $4 cap
