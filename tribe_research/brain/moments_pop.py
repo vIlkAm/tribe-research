@@ -16,8 +16,9 @@ Everything below is fitted on train contents only and never reads an outcome:
   threshold lasting at least ``MIN_EVENT_S`` (one hemodynamic response). The
   threshold is the smallest one at which phase-randomised surrogates of the train
   clips (same amplitude spectrum and mean, per contiguous run, so gaps are never
-  bridged) produce at most ``FALSE_EVENTS_PER_CLIP`` events per clip summed over
-  channels. Zero events is a valid result.
+  bridged) produce at most ``FALSE_EVENTS_PER_CLIP`` events per clip per channel
+  (primary; summed over channels is the sensitivity run). Zero events is a valid
+  result, and M2 is only read next to its planted-drop power (``m2_power``).
 - **M3 event-locked residuals**: a population FIR kernel per channel for shot
   cuts and speech onsets (lags ``FIR_LAGS``), fitted on the train clips' ``u``;
   M2 then runs on ``u - kernel * events`` with its own surrogate threshold. The
@@ -52,7 +53,8 @@ MAX_SEC_BIN = 60                             # seconds since onset 0..59 each ge
 MIN_NORM_N = 20                              # fewer train rows in a (len, sec) cell -> pool over length bins
 HOOK_S = 4.0
 MIN_EVENT_S = 5.0
-FALSE_EVENTS_PER_CLIP = 0.5                  # summed over channels, surrogate data
+FALSE_EVENTS_PER_CLIP = 0.5                  # surrogate events per clip, per channel (primary) ...
+BUDGETS = ("per_channel", "summed")          # ... or summed over the channels (sensitivity run)
 N_SURROGATES = 20
 THR_GRID = np.round(np.arange(0.5, 6.01, 0.05), 2)
 FIR_LAGS = tuple(range(-2, 9))               # seconds after the event
@@ -208,17 +210,19 @@ def surrogate_counts(clips_u: list[tuple[np.ndarray, np.ndarray, np.ndarray]], n
     return tot / (len(clips_u) * n_surr)
 
 
-def calibrate(clips_u, n_surr: int = N_SURROGATES, seed: int = SEED) -> dict:
-    """Smallest threshold per channel whose surrogate rate is <= FALSE_EVENTS_PER_CLIP / C."""
+def calibrate(clips_u, n_surr: int = N_SURROGATES, seed: int = SEED, budget_mode: str = "per_channel") -> dict:
+    """Smallest threshold per channel whose surrogate rate is within the budget (per channel, or summed / C)."""
+    if budget_mode not in BUDGETS:
+        raise ValueError(f"budget_mode {budget_mode!r} not in {BUDGETS}")
     rates = surrogate_counts(clips_u, n_surr, seed)
     C = rates.shape[0]
-    budget = FALSE_EVENTS_PER_CLIP / C
+    budget = FALSE_EVENTS_PER_CLIP / (C if budget_mode == "summed" else 1)
     thr = []
     for k in range(C):
         ok = np.nonzero(rates[k] <= budget)[0]
         thr.append(float(THR_GRID[ok[0]]) if len(ok) else float("inf"))
     at = [float(rates[k][np.searchsorted(THR_GRID, x)]) if np.isfinite(x) else 0.0 for k, x in enumerate(thr)]
-    return {"thr": thr, "surrogate_rate_at_thr": at, "budget_per_channel": budget,
+    return {"thr": thr, "surrogate_rate_at_thr": at, "budget_mode": budget_mode, "budget_per_channel": budget,
             "n_surrogates": n_surr, "seed": seed}
 
 
@@ -338,17 +342,17 @@ def train_ids_hash(ids) -> str:
 
 
 def fit(clips: list[Clip], keys: list[str], n_surr: int = N_SURROGATES, seed: int = SEED,
-        n_boot: int = CONTROL_BOOT) -> dict:
+        n_boot: int = CONTROL_BOOT, budget_mode: str = "per_channel") -> dict:
     """Norms, M2 thresholds, M3 kernels + thresholds + positive control, from train clips only."""
     norms = fit_norms(clips)
     us = [normed(c, norms) for c in clips]
-    m2 = calibrate([(c.t, c.dur, u) for c, u in zip(clips, us)], n_surr, seed)
+    m2 = calibrate([(c.t, c.dur, u) for c, u in zip(clips, us)], n_surr, seed, budget_mode)
     m2["power"] = m2_power(clips, norms, m2["thr"], keys, seed)
     kernels = fit_kernels(clips, us)
     control = positive_control(clips, us, keys, seed, n_boot)
     rs = [residual(c, u, kernels) for c, u in zip(clips, us)]
-    m3 = calibrate([(c.t, c.dur, r) for c, r in zip(clips, rs)], n_surr, seed + 1)
-    return {"version": VERSION, "channels": keys, "n_train_clips": len(clips),
+    m3 = calibrate([(c.t, c.dur, r) for c, r in zip(clips, rs)], n_surr, seed + 1, budget_mode)
+    return {"version": VERSION, "channels": keys, "budget_mode": budget_mode, "n_train_clips": len(clips),
             "train_ids_sha256": train_ids_hash(c.video_id for c in clips),
             "norms": norms, "m2": m2, "m3": {**m3, "kernels": kernels, "control": control},
             "params": params()}
@@ -526,3 +530,44 @@ def contrast(X: np.ndarray, y: np.ndarray, strata: np.ndarray, w: np.ndarray | N
            "direction": "top_higher" if m > 0 else "top_lower"} for a, b, m in _clusters(z)]
     return {"diff": obs, "z": z, "clusters": cl, "n_top": int((lab == 1).sum()), "n_bottom": int((lab == -1).sum()),
             "n_perm": n_perm}
+
+
+def bh(p: list[float]) -> list[float]:
+    """Benjamini-Hochberg adjusted p (q-values)."""
+    p = np.asarray(p, float)
+    n = len(p)
+    if not n:
+        return []
+    o = np.argsort(p)
+    q = p[o] * n / np.arange(1, n + 1)
+    q = np.minimum.accumulate(q[::-1])[::-1]
+    out = np.empty(n)
+    out[o] = np.minimum(q, 1.0)
+    return out.tolist()
+
+
+def split_half_deals(strata: np.ndarray, seed: int = SEED) -> np.ndarray:
+    """0/1 half per row: deals shuffled with the seed, then alternated (so both halves get large and small deals)."""
+    deals = sorted(np.unique(strata), key=lambda d: (-(strata == d).sum(), d))
+    rng = np.random.default_rng(seed + 3)
+    half = {}
+    for i in range(0, len(deals), 2):
+        pair = deals[i:i + 2]
+        flip = int(rng.integers(2))
+        for j, d in enumerate(pair):
+            half[d] = (j + flip) % 2
+    return np.array([half[d] for d in strata])
+
+
+def replicates(X: np.ndarray, y: np.ndarray, strata: np.ndarray, w: np.ndarray | None, a: int, b: int) -> dict:
+    """Mean top-minus-bottom difference over bins [a, b) in each deal half; same sign in both = replicated."""
+    w = np.ones(len(y)) if w is None else np.asarray(w, float)
+    lab = tertile_labels(np.asarray(y, float), np.asarray(strata))
+    h = split_half_deals(strata)
+    means = []
+    for k in (0, 1):
+        m = h == k
+        d = _diff(X[m][:, a:b], lab[m], w[m], strata[m])
+        means.append(float(np.nanmean(d)) if np.isfinite(d).any() else float("nan"))
+    ok = all(np.isfinite(means)) and np.sign(means[0]) == np.sign(means[1]) != 0
+    return {"half_means": means, "replicated": bool(ok)}

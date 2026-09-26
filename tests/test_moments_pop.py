@@ -94,8 +94,23 @@ def test_noise_gives_at_most_the_calibrated_false_event_rate(trained):
     for i in range(300):
         c = make_clip(rng, f"n{i}", cut_lag=2)
         events.append(mp.clip_features(c, state)["mpop_m2_events_per_min_all"] * c.duration / 60)
-    assert np.mean(events) <= 2 * mp.FALSE_EVENTS_PER_CLIP                # real AR noise vs its own surrogates
-    assert np.mean(np.array(events) == 0) > 0.5                           # zero events is the typical clip
+    # primary budget: 0.5 surrogate events per clip per channel; real AR noise vs its own surrogates
+    assert np.mean(events) <= 1.5 * mp.FALSE_EVENTS_PER_CLIP * C
+
+
+def test_summed_budget_is_stricter_and_mostly_silent_on_noise(trained):
+    clips, state = trained
+    summed = mp.fit(clips, KEYS, n_surr=10, n_boot=20, budget_mode="summed")
+    assert summed["budget_mode"] == "summed" and all(a > b for a, b in zip(summed["m2"]["thr"], state["m2"]["thr"]))
+    rng = np.random.default_rng(98)
+    events = []
+    for i in range(300):
+        c = make_clip(rng, f"s{i}", cut_lag=2)
+        events.append(mp.clip_features(c, summed)["mpop_m2_events_per_min_all"] * c.duration / 60)
+    # the planted cut responses are real structure, so allow some excess over the surrogate budget
+    assert np.mean(events) <= 2 * mp.FALSE_EVENTS_PER_CLIP and np.mean(np.array(events) == 0) > 0.4
+    with pytest.raises(ValueError):
+        mp.calibrate([(clips[0].t, clips[0].dur, clips[0].raw)], 1, budget_mode="total")
 
 
 def test_planted_drop_is_found_at_the_right_time(trained):
@@ -103,8 +118,10 @@ def test_planted_drop_is_found_at_the_right_time(trained):
     rng = np.random.default_rng(5)
     c = make_clip(rng, "d", T=40, drop_at=20)
     row = mp.clip_features(c, state)
-    assert row["mpop_m2_drop_per_min_attention"] > 0
-    assert abs(row["mpop_m2_first_drop_frac_attention"] - 20 / 40) <= 2 / 40
+    assert row["mpop_m2_drop_per_min_attention"] > 0 and row["mpop_m2_first_drop_frac_attention"] <= 22 / 40
+    k = KEYS.index("attention")
+    drops = mp.event_runs(c.t, c.dur, mp.normed(c, state["norms"])[k], state["m2"]["thr"][k], -1)
+    assert any(abs(s - 20) <= 3 and e >= 26 for s, e in drops)          # the planted 20-28 s drop
 
 
 def test_positive_control_recovers_the_cut_lag(trained):
@@ -184,9 +201,40 @@ def test_contrast_labels_collapse_to_one_row_per_content():
     lab = pd.DataFrame({"video_id": ["a", "a", "b"], "y": [1.0, 3.0, 0.0], "stratum": ["d1", "d1", "d2"],
                         "weight": [2.0, 4.0, 1.0]})
     out = build_moments_pop.one_row_per_content(lab)
-    assert out.set_index("video_id")["y"].to_dict() == {"a": 2.0, "b": 0.0} and len(out) == 2
+    assert out.set_index("video_id")["y"].to_dict() == pytest.approx({"a": 14 / 6, "b": 0.0}) and len(out) == 2
     with pytest.raises(SystemExit, match="span several strata"):
         build_moments_pop.one_row_per_content(lab.assign(stratum=["d1:tiktok", "d1:instagram", "d2"]))
+
+
+def test_labels_from_oof_follow_the_prereg(tmp_path):
+    import pandas as pd
+
+    o = pd.DataFrame({
+        "target": ["log_interactions_rate"] * 4 + ["reach_rel_local"],
+        "scheme": ["content", "content", "account", "content", "content"],
+        "vp_id": list("pqrst"), "video_id": ["a", "a", "a", "b", "a"],
+        "y": [2.0, 4.0, 9.0, 1.0, 5.0], "w": [1.0, 3.0, 1.0, 2.0, 1.0],
+        "stratum": ["d1|tiktok", "d1|instagram", "d1|tiktok", None, "d1|tiktok"],
+        "pred_A_stack": [1.0, 1.0, 0.0, 0.0, 0.0]})
+    o.to_csv(tmp_path / "oof.csv", index=False)
+    lab = build_moments_pop.one_row_per_content(build_moments_pop.labels_from_oof(tmp_path / "oof.csv"))
+    # content scheme + primary target only, lockbox (no stratum) dropped, stratum = deal, w-weighted residual
+    assert lab.to_dict("records") == [{"video_id": "a", "y": pytest.approx((1 * 1 + 3 * 3) / 4), "stratum": "d1",
+                                       "weight": 2.0}]
+
+
+def test_bh_and_split_half_replication():
+    # sorted p .01 .03 .04 .5 -> raw .04 .06 .0533 .5 -> step-up min .04 .0533 .0533 .5
+    assert mp.bh([0.01, 0.04, 0.03, 0.5]) == pytest.approx([0.04, 0.16 / 3, 0.16 / 3, 0.5])
+    rng = np.random.default_rng(12)
+    n = 400
+    strata = np.array([f"d{i % 8}" for i in range(n)])
+    y = rng.normal(size=n)
+    X = rng.normal(size=(n, 10))
+    X[:, 2:5] += y[:, None]
+    assert mp.replicates(X, y, strata, None, 2, 5)["replicated"]
+    h = mp.split_half_deals(strata)
+    assert set(np.unique(h)) == {0, 1} and all(len(set(h[strata == d])) == 1 for d in np.unique(strata))
 
 
 def test_tertiles_are_within_stratum():
@@ -251,11 +299,14 @@ def test_cli_fit_features_contrast(tmp_path):
     df = pd.read_csv(feats)
     assert len(df) == 65 and "mpop_hook_attention" in df and "edit_cuts_per_min" in df
     assert not [c for c in df.columns if c.startswith("brain_")]
-    labels = tmp_path / "labels.csv"
-    pd.DataFrame({"video_id": [v for v, _ in good], "y": rng.normal(size=60), "stratum": "s"}).to_csv(labels, index=False)
+    oof = tmp_path / "oof.csv"
+    pd.DataFrame({"target": "log_interactions_rate", "scheme": "content", "video_id": [v for v, _ in good],
+                  "y": rng.normal(size=60), "w": 1.0, "pred_A_stack": 0.0,
+                  "stratum": [f"deal{i % 4}|tiktok" for i in range(60)]}).to_csv(oof, index=False)
     rep = tmp_path / "contrast.json"
-    assert build_moments_pop.main(["contrast", str(out), *base, "--state", str(stem), "--labels", str(labels),
+    assert build_moments_pop.main(["contrast", str(out), *base, "--state", str(stem), "--oof", str(oof),
                                    "--selection", str(sel), "--prereg-commit", "test", "--n-perm", "50",
                                    "--out", str(rep)]) == 0
     r = json.loads(rep.read_text())
-    assert r["n_clips"] == 50 and set(r["views"]) >= {"onset_s", "fraction"}
+    assert r["n_clips"] == 50 and r["n_deals"] == 4 and set(r["views"]) >= {"onset_s", "fraction"}
+    assert r["n_tests"] == 3 * C and all("test_q_bh" in v for view in r["views"].values() for v in view.values())

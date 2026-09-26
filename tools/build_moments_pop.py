@@ -9,9 +9,10 @@
     # 3. one mpop_/edit_ row per clip (lockbox rows too: no label is read)
     tools/build_moments_pop.py features OUT_ROOT [...] --state results/moments_pop/state_v1 \
         --shots results/moments_pop/shots --out results/moments_pop/mpop_v1.csv
-    # 4. good vs bad: needs its pre-registration row first; labels are residualised elsewhere
-    tools/build_moments_pop.py contrast OUT_ROOT [...] --state ... --labels LABELS.csv \
-        --prereg-commit HASH --out results/moments_pop/contrast_v1.json
+    # 4. M4 good vs bad (prereg 900001b): arm-A out-of-fold residuals from fit_models
+    tools/build_moments_pop.py contrast OUT_ROOT [...] --state ... --shots ... \
+        --oof results/models/stage1/oof_predictions.csv --selection results/study/selection.csv \
+        --prereg-commit 900001b --out results/moments_pop/contrast_v1.json
 
 ``fit`` never reads an outcome and refuses lockbox clips and non-bf16 outputs. Commit the state
 before anyone joins its features to outcomes (prereg family 6).
@@ -39,6 +40,8 @@ from tribe_research.brain.proxies import ProxySpec, channel_masks  # noqa: E402
 
 DEFAULT_ROI_MAP = ROOT / "tribe_research/assets/roi_map_roi_groups_v0.npz"
 PRECISION = "bf16"
+PRIMARY_TARGET = "log_interactions_rate"
+BH_Q = 0.10
 
 
 def masks_and_keys(roi_map: Path) -> tuple[np.ndarray, list[str]]:
@@ -152,7 +155,7 @@ def cmd_fit(a) -> int:
     if len(clips) < a.min_clips:
         print(f"fit: only {len(clips)} usable train clips (< --min-clips {a.min_clips})", file=sys.stderr)
         return 1
-    state = mp.fit(clips, keys, n_surr=a.n_surrogates, n_boot=a.n_boot)
+    state = mp.fit(clips, keys, n_surr=a.n_surrogates, n_boot=a.n_boot, budget_mode=a.budget)
     state["inputs"] = {"out_roots": [str(p) for p in a.out_roots], "selection": str(a.selection),
                        "n_skipped": len(skipped), "skipped_reasons": _count(skipped.values()),
                        "n_with_shots": sum(c.shots_s is not None for c in clips), "development_only": a.dev}
@@ -202,20 +205,33 @@ def cmd_features(a) -> int:
 # ── contrast ─────────────────────────────────────────────────────────────
 
 
+def labels_from_oof(path: Path, target: str = PRIMARY_TARGET):
+    """M4 labels (prereg): content-scheme train rows, y - pred_A_stack, weight w, stratum = the deal."""
+    import pandas as pd
+
+    o = pd.read_csv(path, dtype={"video_id": str, "vp_id": str, "stratum": str})
+    o = o[(o["scheme"] == "content") & (o["target"] == target) & o["stratum"].notna()]
+    if o.empty or "pred_A_stack" not in o:
+        raise SystemExit(f"{path}: no content-scheme {target} rows with pred_A_stack")
+    return pd.DataFrame({"video_id": o["video_id"], "y": o["y"] - o["pred_A_stack"],
+                         "stratum": o["stratum"].str.split("|").str[0], "weight": o["w"]})
+
+
 def one_row_per_content(lab):
-    """Post-level labels -> one row per content: mean y and weight; the stratum must be shared.
+    """Post-level labels -> one row per content: w-weighted mean y, mean weight; the stratum (deal) must be shared.
 
     A content cross-posted to several platforms has one curve; keeping one row per post would put that
-    curve into several strata and narrow the permutation null. Use stratum = deal for post-level input."""
-    g = lab.groupby("video_id", sort=True)
-    mixed = g["stratum"].nunique()
+    curve into several strata and narrow the permutation null."""
+    import pandas as pd
+
+    lab = lab.assign(weight=lab["weight"] if "weight" in lab else 1.0)
+    mixed = lab.groupby("video_id")["stratum"].nunique()
     if (mixed > 1).any():
         raise SystemExit(f"{int((mixed > 1).sum())} contents span several strata; use stratum = deal "
                          "(platform-free) for the contrast, or pass one row per content")
-    agg = {"y": "mean", "stratum": "first"}
-    if "weight" in lab:
-        agg["weight"] = "mean"
-    return g.agg(agg).reset_index()
+    rows = [{"video_id": v, "y": float(np.average(g["y"], weights=g["weight"])), "stratum": g["stratum"].iloc[0],
+             "weight": float(g["weight"].mean())} for v, g in lab.groupby("video_id", sort=True)]
+    return pd.DataFrame(rows)
 
 
 def cmd_contrast(a) -> int:
@@ -223,10 +239,15 @@ def cmd_contrast(a) -> int:
 
     state = mp.load(a.state)
     masks, keys = masks_and_keys(a.roi_map)
-    lab = pd.read_csv(a.labels)
-    need = {"video_id", "y", "stratum"}
-    if not need <= set(lab.columns):
-        raise SystemExit(f"{a.labels}: needs columns {sorted(need)} (+ optional weight)")
+    if (a.labels is None) == (a.oof is None):
+        raise SystemExit("pass exactly one of --oof (fit_models oof_predictions.csv) or --labels")
+    if a.oof is not None:
+        lab = labels_from_oof(a.oof, a.target)
+    else:
+        lab = pd.read_csv(a.labels, dtype={"video_id": str})
+        need = {"video_id", "y", "stratum"}
+        if not need <= set(lab.columns):
+            raise SystemExit(f"{a.labels}: needs columns {sorted(need)} (+ optional weight)")
     lab = one_row_per_content(lab)
     split = read_split(a.selection)
     n0 = len(lab)
@@ -244,7 +265,8 @@ def cmd_contrast(a) -> int:
     lab = lab[lab["video_id"].isin(curves)].reset_index(drop=True)
     y, strata = lab["y"].to_numpy(float), lab["stratum"].astype(str).to_numpy()
     w = lab["weight"].to_numpy(float) if "weight" in lab else None
-    report = {"version": mp.VERSION, "prereg_commit": a.prereg_commit, "unit": "content", "n_rows": len(lab),
+    report = {"version": mp.VERSION, "prereg_commit": a.prereg_commit, "unit": "content", "stratum": "deal",
+              "budget_mode": state.get("budget_mode"), "n_deals": int(lab["stratum"].nunique()), "n_rows": len(lab),
               "n_clips": int(lab["video_id"].nunique()), "state_train_ids_sha256": state["train_ids_sha256"],
               "views": {}}
     views = {"onset_s": 0, "fraction": 1, "onset_s_residual": 2}
@@ -254,16 +276,29 @@ def cmd_contrast(a) -> int:
                 continue
             X = np.stack([curves[v][i][k] for v in lab["video_id"]])
             res = mp.contrast(X, y, strata, w, n_perm=a.n_perm)
+            for c in res["clusters"]:
+                c.update(mp.replicates(X, y, strata, w, c["start_bin"], c["end_bin"]))
             report["views"].setdefault(name, {})[key] = {
                 "diff": [None if not np.isfinite(x) else round(float(x), 4) for x in res["diff"]],
                 "z": [None if not np.isfinite(x) else round(float(x), 3) for x in res["z"]],
                 "clusters": res["clusters"], "n_top": res["n_top"], "n_bottom": res["n_bottom"]}
+    # BH q = 0.10 across the channel x view tests; a test's p is its best cluster's FWE p (1 if none)
+    tests = [(n, k) for n, v in report["views"].items() for k in v]
+    ps = [min((c["p_fwe"] for c in report["views"][n][k]["clusters"]), default=1.0) for n, k in tests]
+    for (n, k), p_, q in zip(tests, ps, mp.bh(ps)):
+        r = report["views"][n][k]
+        r["test_p"], r["test_q_bh"] = p_, q
+        for c in r["clusters"]:
+            c["counts"] = bool(q <= BH_Q and c["p_fwe"] <= p_ + 1e-12 and c["replicated"])
+    report["n_tests"], report["bh_q"] = len(tests), BH_Q
     a.out.parent.mkdir(parents=True, exist_ok=True)
     a.out.write_text(json.dumps(report, indent=1, default=mp._jsonable) + "\n")
     for name, v in report["views"].items():
         for key, r in v.items():
             for c in r["clusters"]:
-                print(f"{name:18s} {key:10s} bins {c['start_bin']}-{c['end_bin']} {c['direction']} p_fwe={c['p_fwe']:.3f}")
+                print(f"{name:18s} {key:10s} bins {c['start_bin']}-{c['end_bin']} {c['direction']} "
+                      f"p_fwe={c['p_fwe']:.3f} q={r['test_q_bh']:.3f} replicated={c['replicated']} "
+                      f"counts={c['counts']}")
     return 0
 
 
@@ -287,10 +322,14 @@ def main(argv=None) -> int:
             p.add_argument("--n-boot", type=int, default=mp.CONTROL_BOOT)
             p.add_argument("--min-clips", type=int, default=200)
             p.add_argument("--dev", action="store_true", help="mark the state as a development fit (not the frozen one)")
+            p.add_argument("--budget", choices=mp.BUDGETS, default="per_channel",
+                           help="surrogate false-event budget: per channel (primary) or summed (sensitivity)")
         else:
             p.add_argument("--state", type=Path, required=True, help="stem written by fit")
         if name == "contrast":
-            p.add_argument("--labels", type=Path, required=True, help="video_id, y (residualised), stratum[, weight]")
+            p.add_argument("--oof", type=Path, default=None, help="fit_models oof_predictions.csv (the prereg M4 labels)")
+            p.add_argument("--target", default=PRIMARY_TARGET)
+            p.add_argument("--labels", type=Path, default=None, help="alternative: video_id, y (residualised), stratum[, weight]")
             p.add_argument("--selection", type=Path, required=True, help="drops non-train rows (lockbox stays sealed)")
             p.add_argument("--prereg-commit", required=True, help="commit that pre-registered this contrast")
             p.add_argument("--n-perm", type=int, default=mp.N_PERM)
