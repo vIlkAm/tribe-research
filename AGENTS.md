@@ -1,0 +1,47 @@
+# AGENTS.md — tribe-research
+
+Standalone research project: run Meta's TRIBE v2 over short-form videos to get
+predicted cortical time series, then study them against performance metrics.
+
+## Isolation contract (read first)
+
+This project is deliberately **separate from Clipping Cartel production**. Until
+the owner explicitly decides to connect it:
+
+- No reads/writes to the self-host Supabase/Postgres, read mirror, Qdrant, or any
+  `services/clipping-cartel` container, network, volume, or compose project.
+- No Cartel credentials in `.env`; this project has its own RunPod/HF tokens.
+- Nothing here binds a port on this host. Videos move to pods by rsync/`runpodctl`
+  **from** this server, never by exposing an HTTP listener (the March prototype
+  served videos unauthenticated on the public IP — don't repeat that).
+- Performance metrics are imported as an exported file (CSV/JSONL) into
+  `results/`, not queried live.
+- RunPod pods are billed. Don't launch, resume, or submit to one without the
+  owner's go-ahead for that run.
+- TRIBE v2 is **CC-BY-NC-4.0**. Research use only; wiring it into a paid product
+  or client deliverable needs a licence decision first.
+
+## Layout
+
+| Path | Purpose |
+|---|---|
+| `pod/setup.sh` | Idempotent env setup on the first pod (venv, pinned TRIBE, weights → network volume) |
+| `pod/env.sh` | Cache/env vars; source on every pod shell |
+| `pod/worker.py` | Load model once, process this worker's shard, resumable, atomic outputs |
+| `pod/run_worker.sh` | Worker + `nvidia-smi` sampler, logs to `$JOB/logs/` |
+| `tools/make_manifest.py` | Content-hash IDs, durations, duration-balanced worker assignment |
+| `tools/merge.py` | `index.jsonl` + `benchmark.json`, reports missing/failed |
+| `tests/` | Offline tests (no GPU): sharding, manifest, dry-run + resume + merge |
+
+## Validate
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
+.venv/bin/python -m pytest -q
+```
+
+## Prior art
+
+`/home/tyler/projects/video_brain_analysis` (March 2026) was a FastAPI + React +
+single-H200 prototype that stored region summaries only. Treat it as read-only
+reference; its lessons are folded into `README.md`.

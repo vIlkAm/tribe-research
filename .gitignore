@@ -1,0 +1,12 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+# data never goes in git: clips, TRIBE outputs, caches, pulled results
+videos/
+outputs/
+results/
+*.npz
+*.npy
+manifest.jsonl
