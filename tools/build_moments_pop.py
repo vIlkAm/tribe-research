@@ -160,7 +160,7 @@ def cmd_fit(a) -> int:
     ids = a.out.with_suffix(".train_ids.txt")
     ids.write_text("\n".join(sorted(c.video_id for c in clips)) + "\n")
     print(json.dumps({"n_train_clips": len(clips), "train_ids_sha256": state["train_ids_sha256"],
-                      "m2_thr": state["m2"]["thr"], "m3_thr": state["m3"]["thr"],
+                      "m2_thr": state["m2"]["thr"], "m2_power": state["m2"]["power"], "m3_thr": state["m3"]["thr"],
                       "control": {k: v for k, v in state["m3"]["control"].items() if k != "kernel"},
                       "files": [str(npz), str(js), str(ids)]}, indent=1, default=mp._jsonable))
     return 0
@@ -202,6 +202,22 @@ def cmd_features(a) -> int:
 # ── contrast ─────────────────────────────────────────────────────────────
 
 
+def one_row_per_content(lab):
+    """Post-level labels -> one row per content: mean y and weight; the stratum must be shared.
+
+    A content cross-posted to several platforms has one curve; keeping one row per post would put that
+    curve into several strata and narrow the permutation null. Use stratum = deal for post-level input."""
+    g = lab.groupby("video_id", sort=True)
+    mixed = g["stratum"].nunique()
+    if (mixed > 1).any():
+        raise SystemExit(f"{int((mixed > 1).sum())} contents span several strata; use stratum = deal "
+                         "(platform-free) for the contrast, or pass one row per content")
+    agg = {"y": "mean", "stratum": "first"}
+    if "weight" in lab:
+        agg["weight"] = "mean"
+    return g.agg(agg).reset_index()
+
+
 def cmd_contrast(a) -> int:
     import pandas as pd
 
@@ -211,6 +227,7 @@ def cmd_contrast(a) -> int:
     need = {"video_id", "y", "stratum"}
     if not need <= set(lab.columns):
         raise SystemExit(f"{a.labels}: needs columns {sorted(need)} (+ optional weight)")
+    lab = one_row_per_content(lab)
     split = read_split(a.selection)
     n0 = len(lab)
     lab = lab[lab["video_id"].map(split).eq("train")]
@@ -227,7 +244,7 @@ def cmd_contrast(a) -> int:
     lab = lab[lab["video_id"].isin(curves)].reset_index(drop=True)
     y, strata = lab["y"].to_numpy(float), lab["stratum"].astype(str).to_numpy()
     w = lab["weight"].to_numpy(float) if "weight" in lab else None
-    report = {"version": mp.VERSION, "prereg_commit": a.prereg_commit, "n_rows": len(lab),
+    report = {"version": mp.VERSION, "prereg_commit": a.prereg_commit, "unit": "content", "n_rows": len(lab),
               "n_clips": int(lab["video_id"].nunique()), "state_train_ids_sha256": state["train_ids_sha256"],
               "views": {}}
     views = {"onset_s": 0, "fraction": 1, "onset_s_residual": 2}

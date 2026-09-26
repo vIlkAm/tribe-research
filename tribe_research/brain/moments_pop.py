@@ -60,6 +60,8 @@ CONTROL_CHANNEL = "sensory"
 CONTROL_LAG_S = (0.0, 3.0)
 CONTROL_BOOT = 500
 FIR_RIDGE = 1.0
+POWER_AMPS_SD = (1.0, 1.5, 2.0)             # M2 power check: planted sustained drop, in norm sd
+POWER_LEN_S = 7                              # ... lasting this long (> MIN_EVENT_S, one HRF plus a bit)
 CONTRAST_HORIZON_S = 30                      # seconds-since-onset view
 CONTRAST_FRAC_BINS = 20                      # fraction-of-clip view
 CONTRAST_Z = 2.0                             # cluster-forming threshold (per-bin |z| from the permutation sd)
@@ -301,6 +303,33 @@ def positive_control(clips: list[Clip], us: list[np.ndarray], keys: list[str], s
             "expected_lag_s": list(CONTROL_LAG_S), "n_clips_with_cuts": n_cut, "n_boot": n_boot}
 
 
+def m2_power(clips: list[Clip], norms: dict, thr: list[float], keys: list[str], seed: int = SEED) -> dict:
+    """Detection rate of a planted sustained drop (POWER_AMPS_SD x norm sd, POWER_LEN_S s) in real clips.
+
+    The surrogate null keeps each clip's own spectrum, so it is conservative on short series; a null M2 only
+    means "no moments" where this rate is high. Reported per amplitude, averaged over channels."""
+    rng = np.random.default_rng(seed + 2)
+    out = {}
+    for amp in POWER_AMPS_SD:
+        hits, n = 0, 0
+        for c in clips:
+            runs = [(a, b) for a, b in runs_of_contiguous(c.t, c.dur) if b - a >= POWER_LEN_S + 2]
+            if not runs:
+                continue
+            a, b = runs[int(rng.integers(len(runs)))]
+            i0 = int(rng.integers(a + 1, b - POWER_LEN_S))
+            u = normed(c, norms)
+            for k in range(len(keys)):
+                v = u[k].copy()
+                v[i0:i0 + POWER_LEN_S] -= amp
+                ev = event_runs(c.t, c.dur, v, thr[k], -1)
+                s0, s1 = c.t[i0], c.t[i0 + POWER_LEN_S - 1] + c.dur[i0 + POWER_LEN_S - 1]
+                hits += any(e > s0 and s < s1 for s, e in ev)
+                n += 1
+        out[str(amp)] = round(hits / n, 3) if n else None
+    return {"detect_rate_by_amp_sd": out, "len_s": POWER_LEN_S}
+
+
 # ── the frozen artifact ──────────────────────────────────────────────────
 
 
@@ -314,6 +343,7 @@ def fit(clips: list[Clip], keys: list[str], n_surr: int = N_SURROGATES, seed: in
     norms = fit_norms(clips)
     us = [normed(c, norms) for c in clips]
     m2 = calibrate([(c.t, c.dur, u) for c, u in zip(clips, us)], n_surr, seed)
+    m2["power"] = m2_power(clips, norms, m2["thr"], keys, seed)
     kernels = fit_kernels(clips, us)
     control = positive_control(clips, us, keys, seed, n_boot)
     rs = [residual(c, u, kernels) for c, u in zip(clips, us)]
@@ -331,7 +361,8 @@ def params() -> dict:
             "n_surrogates": N_SURROGATES, "seed": SEED,
             "thr_grid": [float(THR_GRID[0]), float(THR_GRID[-1]), 0.05],
             "fir_lags_s": list(FIR_LAGS), "fir_ridge": FIR_RIDGE, "control_channel": CONTROL_CHANNEL,
-            "control_lag_s": list(CONTROL_LAG_S), "control_boot": CONTROL_BOOT}
+            "control_lag_s": list(CONTROL_LAG_S), "control_boot": CONTROL_BOOT,
+            "power_amps_sd": list(POWER_AMPS_SD), "power_len_s": POWER_LEN_S}
 
 
 def save(state: dict, stem: str | Path) -> tuple[Path, Path]:
@@ -466,7 +497,10 @@ def _clusters(z: np.ndarray) -> list[tuple[int, int, float]]:
 
 def contrast(X: np.ndarray, y: np.ndarray, strata: np.ndarray, w: np.ndarray | None = None,
              n_perm: int = N_PERM, seed: int = SEED) -> dict:
-    """Where do top-third clips differ from bottom-third clips? X [N, B] one curve per clip (NaN = uncovered).
+    """Where do top-third clips differ from bottom-third clips? X [N, B] one curve per CONTENT (NaN = uncovered).
+
+    Rows must be independent units: a content posted on two platforms is one row (its labels averaged
+    first), otherwise identical curves in two strata make the within-stratum permutation null too narrow.
 
     Labels shuffle within stratum (so deal x platform level never enters); per-bin z uses the permutation
     sd; cluster mass is compared with the permutation max-mass distribution (Maris & Oostenveld 2007),

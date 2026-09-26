@@ -171,6 +171,24 @@ def test_contrast_finds_a_planted_window_and_stays_quiet_on_null():
     assert not [c for c in null["clusters"] if c["p_fwe"] < 0.05]
 
 
+def test_m2_power_is_measured_and_grows_with_amplitude(trained):
+    _, state = trained
+    r = state["m2"]["power"]["detect_rate_by_amp_sd"]
+    rates = [r[str(a)] for a in mp.POWER_AMPS_SD]
+    assert all(0 <= x <= 1 for x in rates) and rates == sorted(rates) and rates[-1] > rates[0]
+
+
+def test_contrast_labels_collapse_to_one_row_per_content():
+    import pandas as pd
+
+    lab = pd.DataFrame({"video_id": ["a", "a", "b"], "y": [1.0, 3.0, 0.0], "stratum": ["d1", "d1", "d2"],
+                        "weight": [2.0, 4.0, 1.0]})
+    out = build_moments_pop.one_row_per_content(lab)
+    assert out.set_index("video_id")["y"].to_dict() == {"a": 2.0, "b": 0.0} and len(out) == 2
+    with pytest.raises(SystemExit, match="span several strata"):
+        build_moments_pop.one_row_per_content(lab.assign(stratum=["d1:tiktok", "d1:instagram", "d2"]))
+
+
 def test_tertiles_are_within_stratum():
     y = np.array([1, 2, 3, 100, 200, 300], float)
     lab = mp.tertile_labels(y, np.array(list("aaabbb")))
