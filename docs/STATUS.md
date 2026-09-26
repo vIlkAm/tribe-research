@@ -5,7 +5,7 @@ from a person or an agent. The newest update is at the top. Details live in the
 linked docs; this page only says where things stand. Agents on either side: when
 you change the state of something below, update this file in the same commit.
 
-_Last updated: 2026-09-26 21:50 UTC (research/backend side). All times UTC._
+_Last updated: 2026-09-26 22:25 UTC (research/backend side). All times UTC._
 
 ## One-paragraph summary
 
