@@ -100,6 +100,8 @@ End product, gaps to a business and the demo plan: [`VISION_AND_DEMO.md`](VISION
 
 ## Log
 
+- **2026-09-26 22:25 UTC:** b02 (200) and b09 (50) pulled, all clean. The A100 runs b08 at ~170 clips/h on 3 workers; b03, b05 and b06 are on the other pods, and b04/b07 are unclaimed. Pre-scaling of the remaining ~6,000 clips (r00–r15) is done. 4 clips are excluded by TRIBE's own transcript-alignment check (too little speech; 3 are adam-yu), which is 0.7 % and under the 2 % flag.
+
 - **2026-09-26 21:50 UTC:** Preliminary performance model fit on the 100 real bf16 clips of the complete batches (frontend40, b00_pilot, b09; 71 training contents, lockbox unscored, not validated, not stage 1). Private releases [`model-prelim-v0`](https://github.com/vIlkAm/tribe-research/releases/tag/model-prelim-v0) (weights, sha256 manifest) and [`data-frontend40-v2`](https://github.com/vIlkAm/tribe-research/releases/tag/data-frontend40-v2) (the 40 bundles + `performance.json`, `platform`/`video_link`/`is_lockbox` in `index.json`). No percentile yet: fewer than 30 reference clips per deal × platform. Frontend guide: [`MODEL.md`](MODEL.md).
 - **2026-09-26 21:30 UTC:** Four pods on the study set (about 470 clips/h combined). Prereg adds exploratory "good vs bad clip" contrast (M4) and an editing-covariates arm (X); moment detection parameters frozen before any outcome is read (900001b, 7aa63ee, d164f3c). The `preliminary` model status is in `predict.py` (6f02b13).
 
