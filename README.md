@@ -34,6 +34,8 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 - **Real clips and TRIBE outputs are never committed.** Clips live only on the
   owner's server; RunPod runs are launched by the owner. Share results as
   pulled `analysis.json` bundles, not raw videos.
+- **Working together:** [`docs/TEAM.md`](docs/TEAM.md) covers who owns what, how the
+  contract changes, and shared rules. Frontend: copy `docs/analysis.types.ts`.
 - Agents: read [`AGENTS.md`](AGENTS.md) first (`CLAUDE.md` points there).
 
 ## Upstream facts (verified against tribev2 @ `af58661`, 2026-06-23)

@@ -3,6 +3,9 @@
 Standalone research project: run Meta's TRIBE v2 over short-form videos to get
 predicted cortical time series, then study them against performance metrics.
 
+Collaborating (frontend teammate or their agent)? Read [`docs/TEAM.md`](docs/TEAM.md)
+first: ownership, the analysis contract, and how it may change.
+
 ## Isolation contract (read first)
 
 This project is deliberately **separate from Clipping Cartel production**. Until
