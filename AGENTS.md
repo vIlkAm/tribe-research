@@ -75,6 +75,7 @@ the owner explicitly decides to connect it:
 | `tools/select_rest.py` | Stage 2: pinned lockbox extension + the remaining eligible contents as batches `rNN` |
 | `tools/prep_cpu.py` | Pre-scale batch clips on this server (niced, load-gated, pinned ffmpeg) before `push-batch` |
 | `tools/build_features.py` | Per-clip brain, extractor-embedding (control) and baseline feature table from pulled outputs |
+| `tools/build_moments_pop.py` | Prereg family 6 (M1–M3): shot cuts (`shots`), frozen train-only norms + surrogate thresholds + FIR kernels with the cut-lag positive control (`fit`), `mpop_`/`edit_` clip table (`features`), good-vs-bad cluster-permutation contrast (`contrast`, needs its prereg row) |
 | `tools/fit_models.py` | Baseline vs brain vs extractor-embedding control (A/B/E/BE; block-stacked ridge primary): grouped CV, leave-one-deal-out, niche tuning, sealed lockbox |
 | `tools/predict.py` | One clip's worker output + deal/platform context → the `performance` block (featurizer state + `fit_models.py --save-model` dir; status gates, out-of-scope, lockbox-free references) |
 | `tools/make_performance_samples.py` | Frontend fixtures for the proposed `performance` block: runs `predict.py` on `tests/test_predict.py`'s synthetic study → `docs/sample_analysis/performance/` (draft schema `docs/performance.schema.draft.json`) |
