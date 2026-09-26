@@ -76,8 +76,9 @@ What you will actually see in v2:
   never a placeholder number. This fills in as more batches are trained; the
   synthetic fixtures in [`sample_analysis/performance/`](sample_analysis/performance/)
   show the populated card.
-- **Training clips** (`clip_in_training: "train_oof"`, 33 scored): ranked from
-  their out-of-fold prediction, `retrospective: true`, `drivers: []`. Hide the
+- **Training clips** (`clip_in_training: "train_oof"`, 33 scored): scored from
+  their out-of-fold prediction, with no rank shown until the reference threshold
+  is met; `retrospective: true`, `drivers: []`. Hide the
   driver bars and show the "drivers omitted" warning.
 - **Lockbox clips** (`clip_in_training: "lockbox"`, `is_lockbox: true`): 2 scored
   with drivers, 1 out of scope. Show the prediction; there is no observed outcome to show.
@@ -127,7 +128,9 @@ Build all three badges now; the fixtures cover each state.
   `results/runs/study-bf16/outputs-b00_pilot` (10) and `outputs-b09` (50). Only
   complete batches (`done-<b>` marker). No stock fp32 outputs are mixed in.
 - 13 of the 100 are lockbox clips: projected but not fit by PCA, not trained on,
-  not in any reference table, not scored. `--score-lockbox` was not used.
+  not in any reference table, not scored. `--score-lockbox` was not used. One
+  train clip (b09) was dropped by the default non-English rule, leaving 86 training
+  contents; 71 of them have the primary label.
 - Pre-registered defaults, nothing tuned: primary target `log_interactions_rate`
   (71 contents, 156 posts, 12 deals, 32 deal × platform strata), secondary
   `reach_rel_local` (86 contents).
