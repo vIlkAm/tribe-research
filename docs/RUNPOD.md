@@ -355,3 +355,16 @@ It reads only the backfill's `*.results.jsonl` logs and only files under
 skipped, and identical content is sent once. `videos/_sample.jsonl` records
 vp_id, deal_id, platform, duration and sha256 for each clip. A 60-clip draw
 (seed 0) is about 28 min of source across 14 deals.
+
+## Pilot findings (L40S, 2026-09-26)
+
+- TRIBE's V-JEPA2 extractor dominates: ~92 % of clip time. On stock 1080p clips
+  it ran at 0.06-0.14x realtime with the GPU ~30 % busy, because each 0.5 s
+  step decodes and resizes 64 full-size frames on one CPU thread.
+- Pre-scaling to a 384 px short side (`tools/prep_cpu.py`) gave 0.18-0.20x
+  realtime (~5 GPU-s per video-s) with predictions r >= 0.998 vs stock. At that
+  rate the 13.6 h set is ~68 GPU-h (~$74 on an L40S): too slow to scale.
+- GPU floor (`pod/bench_vjepa.py`): 0.256 s per 64-frame forward, 0.51 GPU-s
+  per video-s; batching does not help. A frame-loop patch is the lever.
+- Peak VRAM per worker including the whisper server: 18.2 GB (fits 24 GB).
+- Pilot artifacts (outputs, logs, pip freeze, configs): `results/logs/pilot-l40s/`.

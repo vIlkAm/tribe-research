@@ -56,6 +56,8 @@ the owner explicitly decides to connect it:
 | `pod/worker.py` | Load model once, process this worker's shard, resumable, atomic outputs |
 | `pod/run_worker.sh` | Worker + `nvidia-smi` sampler, logs to `$JOB/logs/` |
 | `pod/launch_all.sh` | Phase 2: one worker per GPU on a single N-GPU pod, under `nohup` |
+| `pod/downscale.sh` | Pod-side pre-scale to a 384 px short side (prefer `tools/prep_cpu.py` on the server) |
+| `pod/bench_vjepa.py` | V-JEPA2 GPU floor: one timed 64-frame forward |
 | `pod/whisper_server.py` | Persistent whisperx per worker (pinned 3.8.6, stock TRIBE output), stock fallback |
 | `tools/runpod.py` | RunPod API: prices, pod create/wait/stop, cost watchdog (`--max-usd`) |
 | `tools/export_metrics.sh` | Read-only DB export of the approved tables → `results/metrics/` |
@@ -64,6 +66,10 @@ the owner explicitly decides to connect it:
 | `tools/qc_files.py` | Decode/audio/resolution check per planned file |
 | `tools/select_study_set.py` | Curated ~1,500 study set, lockbox, pilot, account deep-dive (`docs/STUDY_SET.md`) |
 | `tools/make_batches.py` | Study set → ordered disjoint pod batches (pilot, frontend wiring set, 200s, deep-dive) |
+| `tools/prep_cpu.py` | Pre-scale batch clips on this server (niced, load-gated, pinned ffmpeg) before `push-batch` |
+| `tools/build_features.py` | Per-clip brain + baseline feature table from pulled outputs |
+| `tools/fit_models.py` | Baseline vs brain models: grouped CV, leave-one-deal-out, niche tuning, sealed lockbox |
+| `tools/profile_account.py` | One deal's or account's brain profile vs the general model |
 | `tools/handoff.py` | Validate bundles against the contract, index, tarball for the frontend (no footage) |
 | `tools/pod.sh` | Full-SSH push/pull/shell between this server and a pod (`push-batch`) |
 | `tools/make_manifest.py` | Content-hash IDs, durations, duration-balanced worker assignment |
