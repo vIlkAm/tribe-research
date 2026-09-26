@@ -138,14 +138,39 @@ q = 0.10 applies within each family.
      - Each channel is z-scored against the study-set distribution at the same
        seconds-since-onset and clip-length bin.
      - An event lasts ≥ 5 s (one hemodynamic response) and beats
-       phase-randomised surrogates at ≤ 0.5 false events per clip. Zero events
-       is a valid result.
+       phase-randomised surrogates at ≤ 0.5 false events per clip **per
+       channel** (primary). The stricter reading, 0.5 summed over the 7
+       channels, is a sensitivity run. Zero events is a valid result.
+     - M2 is reported only next to its measured power (a planted 7 s drop of
+       1.0 / 1.5 / 2.0 sd in real train clips). A null means "can't resolve",
+       not "no moments".
      - Reported: events per minute and the time of the first sustained drop.
    - **M3 event-locked residuals:**
      - Each channel is first regressed on cut, speech-onset, loudness and motion
        regressors, then M2 runs on the residual.
      - Positive control: the cut-locked visual response must peak at the
        expected lag. If it doesn't, M3 is not reported.
+   - **M4 good vs bad clip (between-clip contrast):**
+     - Label: `log_interactions_rate` minus the arm-A `stack` out-of-fold
+       prediction (content scheme, the primary folds), at post level. Taken from
+       `oof_predictions.csv` (`scheme == content`: `y − pred_A_stack`,
+       `stratum`, `w` = 1/incl_prob). Train rows only.
+     - Unit: one row per content. Post residuals are averaged per `video_id`
+       (weighted by `w`), and the stratum is the deal; a content spanning deals
+       is refused. Cross-posted copies would otherwise narrow the permutation
+       null.
+     - Contrast: within deal, top vs bottom tertile of that residual, on three views of each channel's population-normed curve:
+       seconds since onset 0–29, 20 fraction-of-clip bins, and the M3 residual.
+     - Test: cluster permutation (Maris & Oostenveld 2007), labels shuffled
+       within stratum, 2,000 permutations, cluster-forming |z| ≥ 2. That gives
+       FWE per channel × view, then BH q = 0.10 across the 21 channel × view
+       tests.
+     - Replication: split-half by deal inside train. A cluster counts only if it
+       has the same sign in both halves.
+   - **Arm X, editing covariates:** A + `edit_*` (cuts per minute, first cut,
+     speech onset, speech onsets per minute; CPU only), same folds and model as
+     the primary. Reported as X − A, and B − X / E − X, to show whether plain
+     editing structure already carries what the brain or embeddings carry.
 
 ## Frozen pipeline
 
@@ -298,3 +323,4 @@ needs stage 2.
 | 2026-09-26 | Stage-2 extension drawn now (`tools/select_rest.py`: 909 contents, pinned-input hashes verified, `results/study/lockbox_ext.csv`, sha256 `6329f505b6d9893ae4b2ab458674c9259f2abd3e2dbafb670b6452b5c11ba535`); candidates already linked by `content_group` to a study-set content are not drawable (28), and 8 rest-train twins of extension contents are dropped. The owner ordered TRIBE extraction on all ~7.9k eligible contents tonight, before the stage-1 result | the prereg rule is "draw before any stage-2 clip reaches a pod"; extraction reads no label, so it doesn't touch the sealed lockbox. Stage 1 is still fit and reported on the 1,500 first, and the full-set fit only follows it | any real fit |
 | 2026-09-26 | Pod code 7163f18 (fast frame loop) with V-JEPA2 in bf16 adopted for all clips, pilot re-run in bf16 | gate on the L40S (reference: stock-s384 pilot): fp32 r_all ≥ 0.99997, rel_rms ≤ 0.009 (2 clips); bf16 9/9 pass, r_all 0.9998–0.99999, r_vertex_med ≥ 0.9997, rel_rms 0.004–0.020, named clips e87b4ed8 r_space 0.99998 / r_vertex 0.99988 and f1231478 0.9998 / 0.9997; `check_emb` 9/9. ~5× the fp32 throughput, so the full set fits the budget. Second GPU type, A100-SXM4 (sm_80), same gate on the same reference: 9/9 pass, r_all ≥ 0.9997, rel_rms ≤ 0.025 | any real fit and any study-set clip on a pod |
 | 2026-09-26 | `brain_moments_*` columns dropped from the brain block (kept only in a `--with-moment-cols` sensitivity run); added the exploratory time-resolved family M1–M3 (secondary 6); literature limits under Known limits | CPU check on the pilot outputs (tyler-3f): rule-based moments are reproducible (89/90 stock-s384 vs fast-bf16), but every clip ≥ 11 s hits `MAX_MOMENTS` = 12 and the spans cover 89–376 % of the clip. Within-clip z always finds peaks, so the rates track length and the cap, not content | any real fit (no model had been fit on real outputs) |
+| 2026-09-26 | M1–M3 parameters frozen in code (7aa63ee, `tribe_research/brain/moments_pop.py`): clip-length bins, 20 surrogates, seed 20260926, threshold at ≤ 0.5 false events per clip per channel (summed over channels as sensitivity; d164f3c measures power), 5 s minimum, FIR lags −2..8 s, control window 0–3 s in stimulus time. The norm state is fit on bf16 train clips only (`build_moments_pop.py fit` refuses lockbox and non-bf16); its sha256s and train-ID hash are recorded here when it is fit. Added M4 (good vs bad contrast) and arm X (A + `edit_*`) to secondary 6; `oof_predictions.csv` gains a `stratum` column for the M4 labels | owner asked "what makes a good vs bad clip". Label-free development check on 46 local train clips (in-sample norms): the cut-lag positive control passes (peak lag 0, bootstrap lower bound 0.28). Planted-drop power at the summed budget is 10/19/35 % for 1.0/1.5/2.0 sd, and 35/54/71 % per channel, so the per-channel reading is primary (the earlier text was ambiguous). The control peaks at the edge of the frozen 0–3 s window; the window is not widened, so M3 is withheld if the full fit peaks at −1 s. M4 runs one row per content with stratum = deal, so cross-posts don't narrow the null | any real fit and any outcome joined to a time course |

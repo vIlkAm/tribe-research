@@ -1773,7 +1773,8 @@ def _run(features, members, outcomes, targets, out_dir, selection, schemes, mode
                 sres["deal_spread"] = deal_spread(sres["per_deal"], [f"B_{m}-A_{m}" for m in models])
             tr["schemes"][sch] = sres
             f = pd.DataFrame({"target": t, "scheme": sch, "vp_id": df["vp_id"].to_numpy()[T],
-                              "video_id": df["video_id"].to_numpy()[T], "y": y[T], "w": w[T]})
+                              "video_id": df["video_id"].to_numpy()[T], "y": y[T], "w": w[T],
+                              "stratum": strata[T]})
             for k, v in oof.items():
                 f[f"pred_{k}"] = v[T]
             oof_frames.append(f)

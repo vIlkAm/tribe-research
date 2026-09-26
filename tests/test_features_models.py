@@ -315,6 +315,9 @@ def test_planted_signal_b_beats_a(fitted):
     json.loads((out / "metrics.json").read_text())
     oof = pd.read_csv(out / "oof_predictions.csv")
     assert {"content", "account", "lodo", "lockbox"} <= set(oof["scheme"])
+    # train rows carry their deal|platform stratum (OOF residual labels for build_moments_pop contrast)
+    assert oof.loc[oof["scheme"] != "lockbox", "stratum"].str.contains("|", regex=False).all()
+    assert oof.loc[oof["scheme"] == "lockbox", "stratum"].isna().all()
 
 
 def test_niche_tuning_helps_only_the_planted_deal(fitted):
