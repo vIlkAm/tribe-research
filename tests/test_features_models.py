@@ -525,3 +525,36 @@ def test_build_features_pca_exclusion_and_pool_fail_fast(synth, tmp_path):
                         tmp_path / "f.parquet", "--roi-map", bad, "--n-jobs", "2"], capture_output=True, text=True,
                        timeout=60)
     assert r.returncode != 0 and "_init" in r.stderr and "build_features.py" in r.stderr
+
+
+def test_build_features_several_out_roots_equal_one_and_refuse_mixed_precision(synth, tmp_path):
+    """Pulled batches live in separate roots: building over them equals building over one merged root (the
+    first completed copy of a clip wins), and clips from different video runtimes are never mixed."""
+    import shutil
+
+    a, b = tmp_path / "a", tmp_path / "b"
+    for w in range(3):
+        shutil.copytree(synth["out"] / f"worker-{w}", (a if w < 2 else b) / f"worker-{w}")
+    dup = b / "worker-7"
+    dup.mkdir()
+    for f in ("c0000.json", "c0000.npz"):  # the same clip pulled twice: counted once
+        shutil.copy(a / "worker-0" / f, dup / f)
+    one, meta1, _ = build_features.build(synth["out"], synth["roi"], n_jobs=1, n_pca=5, **QUIET)
+    two, meta2, _ = build_features.build([a, b], synth["roi"], n_jobs=1, n_pca=5, **QUIET)
+    cols = [c for c in one.columns if c != "worker_id"]
+    pd.testing.assert_frame_equal(one[cols], two[cols])
+    assert meta2["out_root"] == [str(a), str(b)] and meta1["out_root"] == str(synth["out"])
+    assert meta2["status_counts"] == meta1["status_counts"]
+    _run(ROOT / "tools/build_features.py", "--out-root", a, "--out-root", b, "--out", tmp_path / "f.parquet",
+         "--roi-map", synth["roi"], "--n-jobs", 1, "--n-pca", 5)
+    assert len(pd.read_parquet(tmp_path / "f.parquet")) == len(one)
+    # one clip recorded as the bf16 fast loop among unrecorded (= stock fp32) clips: refused, API and CLI
+    p = b / "worker-2" / "c0002.json"
+    p.write_text(json.dumps({**json.loads(p.read_text()),
+                             "video_config": {"video_precision": "bf16", "fast_video": True}}))
+    with pytest.raises(SystemExit, match="mixed video runtimes"):
+        build_features.build([a, b], synth["roi"], n_jobs=1, n_pca=5, **QUIET)
+    r = subprocess.run([sys.executable, str(ROOT / "tools/build_features.py"), "--out-root", a, "--out-root", b,
+                        "--out", tmp_path / "g.parquet", "--roi-map", synth["roi"], "--n-jobs", "1"],
+                       capture_output=True, text=True, timeout=300)
+    assert r.returncode != 0 and "mixed video runtimes" in r.stderr and not (tmp_path / "g.parquet").exists()

@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Per-clip feature table from TRIBE worker outputs (CPU, parallel over clips).
 
-Scans ``<out-root>/worker-*/<video_id>.json|.npz`` (pod/worker.py format) and
-writes one row per ``video_id``:
+Scans ``<out-root>/worker-*/<video_id>.json|.npz`` (pod/worker.py format; ``--out-root`` may be given more
+than once, e.g. one per pulled batch: the first root holding a completed clip wins) and writes one row per
+``video_id``. Clips whose worker runs differ in video precision or frame loop (fp32 stock vs the bf16 fast
+loop; unrecorded counts as stock fp32) are refused: the pre-registration never mixes them in one table.
 
     <out>                      features (.parquet, or .csv by suffix)
     <out stem>.meta.json       feature list, families, versions, PCA variance, counts
@@ -39,7 +41,8 @@ Brain values are predictions for an average subject. Within-clip z features
 are relative to the clip; ``raw`` and ``pca`` features compare model-space
 levels across clips, which is exactly what the modelling step is testing.
 
-    python tools/build_features.py --out-root outputs --out results/features/features.parquet \
+    python tools/build_features.py --out-root outputs [--out-root more-outputs ...] \
+        --out results/features/features.parquet \
         --roi-map tribe_research/assets/roi_map_roi_groups_v0.npz \
         [--manifest results/run_full/manifest.jsonl] [--analyses-dir report/analyses] [--n-jobs 40] \
         [--exclude-from-pca-fit results/study/selection.csv]
@@ -335,6 +338,37 @@ def featurize(item: tuple[str, str, str], state: dict | None = None, meta: dict 
 # ── discovery ────────────────────────────────────────────────────────────
 
 
+def discover_all(out_roots) -> tuple[list[tuple[str, str, str]], dict[str, dict]]:
+    """``discover`` over several roots in order: the first completed copy of a clip wins, and a failure in one
+    root is dropped when another root completed the clip."""
+    done: dict[str, tuple[str, str, str]] = {}
+    failed: dict[str, dict] = {}
+    for root in out_roots:
+        items, fails = discover(Path(root))
+        for it in items:
+            done.setdefault(it[0], it)
+        for vid, err in fails.items():
+            failed.setdefault(vid, err)
+    for vid in done:
+        failed.pop(vid, None)
+    return sorted(done.values()), failed
+
+
+def check_one_video_runtime(runtimes: dict[str, dict]) -> None:
+    """Refuse a table whose clips ran with different video precision / frame loop (PREREGISTRATION.md, frozen
+    pipeline, precision row). Outputs without ``video_config`` predate the fast loop, which always records it,
+    so they count as the stock fp32 loop."""
+    seen: dict[str, list[str]] = {}
+    for vid, rt in runtimes.items():
+        k = json.dumps({"video_precision": rt.get("video_precision") or "fp32",
+                        "fast_video": bool(rt.get("fast_video"))}, sort_keys=True)
+        seen.setdefault(k, []).append(vid)
+    if len(seen) > 1:
+        detail = "; ".join(f"{k}: {len(v)} clips (e.g. {sorted(v)[0]})" for k, v in sorted(seen.items()))
+        raise SystemExit(f"mixed video runtimes in one feature table ({detail}); fp32/stock and bf16 outputs are "
+                         "never mixed in one fit (PREREGISTRATION.md, precision)")
+
+
 def discover(out_root: Path) -> tuple[list[tuple[str, str, str]], dict[str, dict]]:
     """Completed clips (json + npz) and worker failures; a success anywhere wins over an error."""
     done: dict[str, tuple[str, str, str]] = {}
@@ -408,19 +442,22 @@ def cast_feature_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def build(out_root: Path, roi_map: Path, *, n_jobs: int, manifest: Path | None = None,
+def build(out_root, roi_map: Path, *, n_jobs: int, manifest: Path | None = None,
           analyses_dir: Path | None = None, n_pca: int = N_PCA, limit: int | None = None,
           pca_exclude: set[str] | None = None, log=print,
           state_out: dict | None = None) -> tuple[pd.DataFrame, dict, object]:
     """Feature table, meta and the brain PCA. ``state_out``, when given, receives the featurizer state
-    (``{"arrays": ..., "info": ...}``, see ``write_featurizer``) without changing the table."""
+    (``{"arrays": ..., "info": ...}``, see ``write_featurizer``) without changing the table. ``out_root`` is one
+    path or a list of them (``discover_all``)."""
     t0 = time.perf_counter()
     runtimes: dict[str, dict] = {}
     pcas: dict[str, object] = {}
-    items, failed = discover(out_root)
+    roots = [Path(r) for r in out_root] if isinstance(out_root, (list, tuple)) else [Path(out_root)]
+    items, failed = discover_all(roots)
     if limit is not None:
         items = items[:limit]
-    log(f"{len(items)} completed clips, {len(failed)} failed/incomplete under {out_root}")
+    where = roots[0] if len(roots) == 1 else f"{len(roots)} roots ({', '.join(map(str, roots))})"
+    log(f"{len(items)} completed clips, {len(failed)} failed/incomplete under {where}")
     rows: dict[str, dict] = {}
     vecs: dict[str, np.ndarray] = {}
     embs: dict[str, dict[str, np.ndarray]] = {m + k: {} for m in EMB_MODALITIES for k in EMB_STATS}
@@ -449,6 +486,7 @@ def build(out_root: Path, roi_map: Path, *, n_jobs: int, manifest: Path | None =
             pool.close()
             pool.join()
     t_feat = time.perf_counter() - t0
+    check_one_video_runtime(runtimes)
 
     for vid, err in failed.items():
         rows.setdefault(vid, {"status": "failed", "error": str(err.get("error"))[:500],
@@ -520,7 +558,7 @@ def build(out_root: Path, roi_map: Path, *, n_jobs: int, manifest: Path | None =
         "roi_feature_version": FEATURE_VERSION,
         "proxies_version": ProxySpec.load().version,
         "roi_map": str(roi_map),
-        "out_root": str(out_root),
+        "out_root": str(roots[0]) if len(roots) == 1 else [str(r) for r in roots],
         "status_counts": {str(k): int(v) for k, v in counts.items()},
         "synthetic_rows": int(df.get("synthetic", pd.Series(dtype=bool)).fillna(False).astype(bool).sum()),
         "columns": {
@@ -704,7 +742,8 @@ def featurize_one(worker_output: str | Path, context: dict | None, state: dict) 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--out-root", type=Path, required=True, help="worker outputs root (contains worker-*/)")
+    ap.add_argument("--out-root", type=Path, required=True, action="append",
+                    help="worker outputs root (contains worker-*/); repeat for several (first completed copy wins)")
     ap.add_argument("--out", type=Path, required=True, help="features file (.parquet or .csv)")
     ap.add_argument("--roi-map", type=Path, default=DEFAULT_ROI_MAP)
     ap.add_argument("--manifest", type=Path, default=None, help="optional: add manifest columns, mark missing clips")
@@ -719,7 +758,8 @@ def main() -> int:
 
     excl = lockbox_ids(args.exclude_from_pca_fit) if args.exclude_from_pca_fit else None
     state: dict = {}
-    df, meta, ipca = build(args.out_root, args.roi_map, n_jobs=args.n_jobs, manifest=args.manifest,
+    roots = args.out_root if len(args.out_root) > 1 else args.out_root[0]
+    df, meta, ipca = build(roots, args.roi_map, n_jobs=args.n_jobs, manifest=args.manifest,
                            analyses_dir=args.analyses_dir, n_pca=args.n_pca, limit=args.limit, pca_exclude=excl,
                            state_out=state)
     args.out.parent.mkdir(parents=True, exist_ok=True)
