@@ -127,6 +127,25 @@ q = 0.10 applies within each family.
 5. **Interpretation:** ROI/permutation importance and "moments"
    (`attention_drop` etc.). These are **unvalidated hypotheses**: no retention
    data exists to check them (see Known limits).
+6. **Time-resolved (M), exploratory, clip level only.** The per-second UI
+   moments are not tested against outcomes. All definitions (windows, norms,
+   surrogate count, false-event rate) come from train contents without labels,
+   and are committed before they meet an outcome.
+   - **M1 hook:** proxy means over 0–4 s, normed by seconds-since-onset across
+     the study clips. Within-stratum ρ with `log_interactions_rate`, and the
+     increment over A and over E.
+   - **M2 population-normed events:**
+     - Each channel is z-scored against the study-set distribution at the same
+       seconds-since-onset and clip-length bin.
+     - An event lasts ≥ 5 s (one hemodynamic response) and beats
+       phase-randomised surrogates at ≤ 0.5 false events per clip. Zero events
+       is a valid result.
+     - Reported: events per minute and the time of the first sustained drop.
+   - **M3 event-locked residuals:**
+     - Each channel is first regressed on cut, speech-onset, loudness and motion
+       regressors, then M2 runs on the residual.
+     - Positive control: the cut-locked visual response must peak at the
+       expected lag. If it doesn't, M3 is not reported.
 
 ## Frozen pipeline
 
@@ -134,7 +153,7 @@ q = 0.10 applies within each family.
 |---|---|
 | TRIBE | v2, `configs/tribev2-config.yaml` as used in `results/logs/pilot-l40s` |
 | input scaling | 384 px short side (`tools/prep_cpu.py`). Parity with stock: spatial r ≥ 0.998 per timepoint, median per-vertex temporal r 0.998–0.999, mean relative abs difference ≈ 5 % |
-| brain features | `clip_features_v1`, `n_pca` 20, PCA fit without lockbox clips (projected only) |
+| brain features | `clip_features_v1`, `n_pca` 20, PCA fit without lockbox clips (projected only); the rule-based `brain_moments_*` columns are **not** in the brain block (`--with-moment-cols` is a sensitivity run only) |
 | emb features | `emb_features_v1`, read from the pod's `emb_pool_v1` files (time mean, sd, quarter shape per extractor), `n_pca` 20 per block, same lockbox rule |
 | model | `stack` (primary); `ridge`, `hgb` secondary |
 | pod code | the fast frame loop (`pod/fast_video.py`) and the emb export only count once the patched path reproduces the stock-s384 predictions on e87b4ed8ee19cbde and f1231478a06f2b30 at the parity thresholds above, **and** the first real export shows sensible shapes, `_n` ≈ 2 × duration and all four quarters non-empty on clips ≥ 20 s. Record the pod code commit in the deviations log |
@@ -249,6 +268,19 @@ needs stage 2.
   company-owned accounts. That is a new owner decision under the isolation
   contract (its own credentials, nothing through Cartel/CAAR) and is not part
   of this study.
+- **Per-second claims have a published null against them.** Reported by our
+  literature pass:
+  - TRIBE on 48 YouTube videos against "most replayed" heatmaps (Sahu & Pandey
+    2026, arXiv 2607.01400): position-controlled partial r ≈ 0.06, CI spanning 0.
+  - Real-fMRI forecasting of engagement came only from the first ~4 s (Tong,
+    Knutson et al. 2020, PNAS).
+  - Pooled fMRI studies explain ≈ 0.1–2.4 % of message-level variance (Scholz
+    et al. 2025, PNAS Nexus).
+
+  So expect small effects, and put the clip-level hook (M1) ahead of
+  per-second moments. The release is cortical-only (no NAcc), and prefrontal
+  predictions are mostly text-driven, so the `value` proxy is the least-trusted
+  channel.
 - **Scope:** short clips of 5–90 s, mostly English. Long-form clip picking (choosing
   segments of a long video) is a later, separate study.
 - **Licence:** TRIBE is CC-BY-NC. A positive result is a research finding, not
@@ -265,3 +297,4 @@ needs stage 2.
 | 2026-09-26 | Stage-1 GO gains the guard that the `account`-scheme BE − A point is ≥ 0; recorded that `stack` block models fit y, not A residuals, plus the `--structure account` check (no leak); brain width marked as an estimate | block scores fit y without the account term; checked, and guarded on real data | any real fit (committed text: 1207848) |
 | 2026-09-26 | Stage-2 extension drawn now (`tools/select_rest.py`: 909 contents, pinned-input hashes verified, `results/study/lockbox_ext.csv`, sha256 `6329f505b6d9893ae4b2ab458674c9259f2abd3e2dbafb670b6452b5c11ba535`); candidates already linked by `content_group` to a study-set content are not drawable (28), and 8 rest-train twins of extension contents are dropped. The owner ordered TRIBE extraction on all ~7.9k eligible contents tonight, before the stage-1 result | the prereg rule is "draw before any stage-2 clip reaches a pod"; extraction reads no label, so it doesn't touch the sealed lockbox. Stage 1 is still fit and reported on the 1,500 first, and the full-set fit only follows it | any real fit |
 | 2026-09-26 | Pod code 7163f18 (fast frame loop) with V-JEPA2 in bf16 adopted for all clips, pilot re-run in bf16 | gate on the L40S (reference: stock-s384 pilot): fp32 r_all ≥ 0.99997, rel_rms ≤ 0.009 (2 clips); bf16 9/9 pass, r_all 0.9998–0.99999, r_vertex_med ≥ 0.9997, rel_rms 0.004–0.020, named clips e87b4ed8 r_space 0.99998 / r_vertex 0.99988 and f1231478 0.9998 / 0.9997; `check_emb` 9/9. ~5× the fp32 throughput, so the full set fits the budget | any real fit and any study-set clip on a pod |
+| 2026-09-26 | `brain_moments_*` columns dropped from the brain block (kept only in a `--with-moment-cols` sensitivity run); added the exploratory time-resolved family M1–M3 (secondary 6); literature limits under Known limits | CPU check on the pilot outputs (tyler-3f): rule-based moments are reproducible (89/90 stock-s384 vs fast-bf16), but every clip ≥ 11 s hits `MAX_MOMENTS` = 12 and the spans cover 89–376 % of the clip. Within-clip z always finds peaks, so the rates track length and the cap, not content | any real fit (no model had been fit on real outputs) |

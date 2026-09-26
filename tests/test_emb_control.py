@@ -113,6 +113,14 @@ def test_feature_sets_add_control_arms_only_with_emb():
     assert set(fit_models.feature_sets(_design(with_emb=False))) == {"A", "B"}
 
 
+def test_capped_ui_moment_columns_stay_out_of_the_brain_block_by_default():
+    df = _design()
+    df["brain_moments_total_per_min"] = np.random.default_rng(3).normal(0, 1, len(df))
+    fs = fit_models.feature_sets(df)
+    assert "brain_x" in fs["BE"][1] and "brain_moments_total_per_min" not in fs["BE"][1] + fs["B"][1]
+    assert "brain_moments_total_per_min" in fit_models.feature_sets(df, moment_cols=True)["BE"][1]
+
+
 def test_bootstrap_reports_brain_beyond_inputs_and_report_table():
     rng = np.random.default_rng(1)
     n = 120

@@ -54,7 +54,12 @@ def _z(a):
 
 @pytest.fixture(scope="module")
 def study(tmp_path_factory):
-    tmp = tmp_path_factory.mktemp("serve")
+    return make_study(tmp_path_factory.mktemp("serve"))
+
+
+def make_study(tmp: Path) -> dict:
+    """The synthetic study (worker outputs, features + featurizer, members/outcomes/selection) in ``tmp``.
+    A plain function so tools/make_performance_samples.py can build the same fixture outside pytest."""
     roi = tmp / "roi.npz"
     groups, v = write_roi(roi)
     out = tmp / "outputs"
@@ -121,24 +126,33 @@ def write_clip_in(d: Path, vid: str, groups, v, amp, rng, meta_update: dict | No
     return d / "worker-9" / f"{vid}.npz"
 
 
-def _fit_cli(study, out_dir: Path, *extra):
+def _fit_cli(study, out_dir: Path, *extra, score_lockbox: bool = True):
     p = study["paths"]
     cmd = [sys.executable, ROOT / "tools/fit_models.py", "--features", p["features"], "--members", p["members"],
            "--outcomes", p["outcomes"], "--selection", p["selection"], "--out-dir", out_dir, "--targets", *TARGETS,
            "--schemes", "content", "account", "--models", "stack", "--n-splits", 3, "--n-boot", 30,
-           "--perm-repeats", 0, "--no-niche", "--threads", 1, "--min-account-n", 10, "--score-lockbox", *extra]
+           "--perm-repeats", 0, "--no-niche", "--threads", 1, "--min-account-n", 10,
+           *(["--score-lockbox"] if score_lockbox else []), *extra]
     return subprocess.run(list(map(str, cmd)), check=True, capture_output=True, text=True)
 
 
 @pytest.fixture(scope="module")
 def served(study):
+    model = make_served(study)
+    _fit_cli(study, study["tmp"] / "eval_plain", "--lockbox-ext", study["tmp"] / "absent.csv")
+    return model
+
+
+def make_served(study, name: str = "model", *extra, score_lockbox: bool = True) -> Path:
+    """fit_models.py CLI evaluation (``eval_<name>``, or ``eval_saved`` for the default) + ``--save-model``
+    into ``study["tmp"] / name``; ``extra`` goes to the CLI after the fixture's flags."""
     tmp = study["tmp"]
     ext = tmp / "lockbox_ext.csv"
     pd.DataFrame({"video_id": ["x-not-in-study"], "path": ["x.mp4"], "deal_id": ["deal-a"],
                   "duration_s": [10.0]}).to_csv(ext, index=False)
-    _fit_cli(study, tmp / "eval_saved", "--save-model", tmp / "model", "--lockbox-ext", ext)
-    _fit_cli(study, tmp / "eval_plain", "--lockbox-ext", tmp / "absent.csv")
-    return tmp / "model"
+    eval_dir = tmp / ("eval_saved" if name == "model" else f"eval_{name}")
+    _fit_cli(study, eval_dir, "--save-model", tmp / name, "--lockbox-ext", ext, *extra, score_lockbox=score_lockbox)
+    return tmp / name
 
 
 def _ctx(study, vid=None, **kw):
@@ -255,10 +269,11 @@ def test_build_dataset_identical_to_pre_refactor(study, tmp_path):
     kw = dict(selection=sel, targets=TARGETS, schemes=["content"], models=["ridge"], n_splits=3, n_boot=20,
               perm_repeats=0, niche=False, threads=1, **QUIET)
     ra = ref.run(feats, members, out, out_dir=tmp_path / "a", **kw)
-    rb = fit_models.run(feats, members, out, out_dir=tmp_path / "b", **kw)
+    rb = fit_models.run(feats, members, out, out_dir=tmp_path / "b", moment_cols=True, **kw)  # the pre-refactor brain block kept UI moments
     assert (tmp_path / "a" / "oof_predictions.csv").read_bytes() == (tmp_path / "b" / "oof_predictions.csv").read_bytes()
     for r in (ra, rb):
         r.pop("runtime_s")
+    assert rb["config"].pop("moment_cols") is True  # the only config key added since
     assert json.dumps(ra, sort_keys=True, default=str).replace(str(tmp_path / "a"), "") == \
         json.dumps(rb, sort_keys=True, default=str).replace(str(tmp_path / "b"), "")
 

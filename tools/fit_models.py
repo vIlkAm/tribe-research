@@ -632,7 +632,12 @@ def fit_predict(kind, cols, train: pd.DataFrame, y, w, test: pd.DataFrame, seed=
         return est, est.predict(test[use])
 
 
-def feature_sets(df: pd.DataFrame) -> dict[str, tuple[list[str], list[str]]]:
+# Rule-based UI moments (within-clip z, capped at moments.MAX_MOMENTS) are dominated by clip length and the cap,
+# so they stay out of the brain block (prereg deviations log); --with-moment-cols is the sensitivity run.
+BRAIN_EXCLUDED = ("brain_moments_",)
+
+
+def feature_sets(df: pd.DataFrame, moment_cols: bool = False) -> dict[str, tuple[list[str], list[str]]]:
     def usable(c):
         s = df[c]
         return s.notna().any() and s.nunique(dropna=True) > 1
@@ -641,7 +646,8 @@ def feature_sets(df: pd.DataFrame) -> dict[str, tuple[list[str], list[str]]]:
     base = [c for c in df.columns if c.startswith("base_") and usable(c)]
     if "social_account_id" in df and df["social_account_id"].nunique() > 1:
         base = base + [ACCOUNT_TE]  # computed inside each fit from its training outcomes, never from df
-    brain = [c for c in df.columns if c.startswith("brain_") and usable(c)]
+    brain = [c for c in df.columns if c.startswith("brain_") and usable(c)
+             and (moment_cols or not c.startswith(BRAIN_EXCLUDED))]
     emb = [c for c in df.columns if c.startswith("emb_") and usable(c)]
     sets = {"A": (cat, base), "B": (cat, base + brain)}
     if emb:  # the control arm: the brain mapping's inputs without the mapping
@@ -1681,7 +1687,8 @@ def resolve_niche_base(niche_base: str | None, models: list[str]) -> str:
 def run(features, members, outcomes, *, targets=DEFAULT_TARGETS, out_dir: Path, selection=None,
         schemes=SCHEMES, models=MODELS, n_splits=5, n_boot=1000, seed=0, min_deal_n=30, perm_repeats=3,
         perm_model="hgb", perm_per_feature=True, exclude_cols=None, fit_weighted=False, niche_base=None,
-        niche=True, min_account_n=40, score_lockbox=False, threads=8, exclude_non_english=True, log=print) -> dict:
+        niche=True, min_account_n=40, score_lockbox=False, threads=8, exclude_non_english=True, moment_cols=False,
+        log=print) -> dict:
     from threadpoolctl import threadpool_limits
 
     t0 = time.perf_counter()
@@ -1691,7 +1698,8 @@ def run(features, members, outcomes, *, targets=DEFAULT_TARGETS, out_dir: Path, 
     with threadpool_limits(threads):
         res = _run(features, members, outcomes, targets, out_dir, selection, schemes, models,
                    n_splits, n_boot, seed, min_deal_n, perm_repeats, perm_model, perm_per_feature, exclude_cols,
-                   fit_weighted, niche_base, niche, min_account_n, score_lockbox, exclude_non_english, log)
+                   fit_weighted, niche_base, niche, min_account_n, score_lockbox, exclude_non_english, log,
+                   moment_cols=moment_cols)
     res["runtime_s"] = round(time.perf_counter() - t0, 1)
     (out_dir / "metrics.json").write_text(json.dumps(res, indent=2, default=_json_default) + "\n")
     text = write_report(out_dir / "report.md", res)
@@ -1705,14 +1713,14 @@ def run(features, members, outcomes, *, targets=DEFAULT_TARGETS, out_dir: Path, 
 
 def _run(features, members, outcomes, targets, out_dir, selection, schemes, models, n_splits, n_boot, seed,
          min_deal_n, perm_repeats, perm_model, perm_per_feature, exclude_cols, fit_weighted, niche_base, niche,
-         min_account_n, score_lockbox, exclude_non_english, log):
+         min_account_n, score_lockbox, exclude_non_english, log, moment_cols=False):
     df_all, info, posts = build_dataset(features, members, outcomes, targets, selection, exclude_cols,
                                         exclude_non_english=exclude_non_english)
     res: dict = {"data": info, "models": models, "targets": {}, "features": {}, "profile_columns": {},
                  "config": {"n_splits": n_splits, "n_boot": n_boot, "seed": seed, "min_deal_n": min_deal_n,
                             "schemes": list(schemes), "perm_repeats": perm_repeats, "perm_model": perm_model,
                             "fit_weighted": fit_weighted, "niche_base": niche_base, "min_account_n": min_account_n,
-                            "score_lockbox": score_lockbox},
+                            "score_lockbox": score_lockbox, "moment_cols": moment_cols},
                  "notes": NOTES}
     sub_boot = min(n_boot, max(200, n_boot // 5))
     oof_frames = []
@@ -1722,7 +1730,7 @@ def _run(features, members, outcomes, targets, out_dir, selection, schemes, mode
         df = dfl[dfl["split"] == "train"].reset_index(drop=True)
         lb = dfl[dfl["split"] == "lockbox"].reset_index(drop=True)
         y, w = df[ycol].to_numpy(float), df["_w"].to_numpy(float)
-        fsets = feature_sets(df)
+        fsets = feature_sets(df, moment_cols)
         res["features"][t] = {k: v[0] + v[1] for k, v in fsets.items()}  # usable columns differ by target rows
         res["profile_columns"][t] = profile_columns(fsets["B"][1])
         tr: dict = {"column": info["targets"][t]["column"], "transform": info["targets"][t]["transform"],
@@ -2029,7 +2037,7 @@ def save_model(features, members, outcomes, *, res: dict, eval_dir: Path, model_
         "git": git, "versions": {"sklearn": sklearn.__version__, "numpy": np.__version__, "pandas": pd.__version__,
                                  "joblib": joblib.__version__, "python": sys.version.split()[0]},
         "config": {k: cfg.get(k) for k in ("seed", "n_splits", "fit_weighted", "min_account_n", "schemes",
-                                            "n_boot", "score_lockbox")},
+                                            "n_boot", "score_lockbox", "moment_cols")},
         "exclude_non_english": exclude_non_english, "inputs": {}, "lockbox_ids": "lockbox_ids.json",
         "n_lockbox_ids": len(lock_ids), "targets": {},
         "reference_rules": {"percentile": "weighted (1/incl_prob) mid-rank among the deal×platform reference "
@@ -2048,7 +2056,7 @@ def save_model(features, members, outcomes, *, res: dict, eval_dir: Path, model_
         dfl = df_all[np.isfinite(df_all[ycol].to_numpy(float))]
         df = dfl[dfl["split"] == "train"].reset_index(drop=True)
         y, w = df[ycol].to_numpy(float), df["_w"].to_numpy(float)
-        fsets = feature_sets(df)
+        fsets = feature_sets(df, bool(res["config"].get("moment_cols", False)))
         if feature_set not in fsets:
             raise SystemExit(f"[{t}] feature set {feature_set!r} not available (have {sorted(fsets)}); "
                              "choose one with --save-feature-set")
@@ -2154,6 +2162,8 @@ def main() -> int:
     ap.add_argument("--perm-repeats", type=int, default=3, help="0 disables permutation importance")
     ap.add_argument("--perm-model", default="hgb", choices=MODELS)
     ap.add_argument("--no-perm-per-feature", action="store_true", help="families only (faster)")
+    ap.add_argument("--with-moment-cols", action="store_true",
+                    help="sensitivity run: keep the capped rule-based brain_moments_* columns in the brain block")
     ap.add_argument("--fit-weighted", action="store_true", help="also weight model fitting by 1/incl_prob")
     ap.add_argument("--niche-base", default=None, choices=MODELS,
                     help="general model under the niche adjustment (default: the last of --models; must be one)")
@@ -2189,7 +2199,7 @@ def main() -> int:
         perm_per_feature=not args.no_perm_per_feature, exclude_cols=args.exclude_if_true,
         fit_weighted=args.fit_weighted, niche_base=args.niche_base, niche=not args.no_niche,
         min_account_n=args.min_account_n, score_lockbox=args.score_lockbox, threads=args.threads,
-        exclude_non_english=not args.keep_non_english)
+        exclude_non_english=not args.keep_non_english, moment_cols=args.with_moment_cols)
     if args.save_model:
         from threadpoolctl import threadpool_limits
 
