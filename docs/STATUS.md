@@ -5,7 +5,7 @@ from a person or an agent. The newest update is at the top. Details live in the
 linked docs; this page only says where things stand. Agents on either side: when
 you change the state of something below, update this file in the same commit.
 
-_Last updated: 2026-09-26 ~22:55 UTC (research/backend side)._
+_Last updated: 2026-09-26 ~23:00 UTC (research/backend side)._
 
 ## One-paragraph summary
 
@@ -28,7 +28,7 @@ gone through the GPU.
 | 3. Features per clip (`tools/build_features.py`) | CPU | ✅ Code done and tested |
 | 4. Training + honest evaluation (`tools/fit_models.py`) | CPU, minutes | ✅ Code done, rules pre-registered ([`PREREGISTRATION.md`](PREREGISTRATION.md)). ⏳ Waiting for step 2 output |
 | 5. Save the model, score one new clip (`tools/predict.py`) | CPU, milliseconds | ✅ Code done and tested offline (`fit_models.py --save-model`, featurizer state, `predict.py`). ⏳ Waiting for step 4 |
-| 6. Bundles for the frontend (`tools/handoff.py`) | CPU | ✅ Real pilot bundles exist. ⏳ 40-clip wiring set is being published |
+| 6. Bundles for the frontend (`tools/handoff.py`) | CPU | ✅ 40 real bf16 bundles (the wiring set: shortest and longest clips, a >60 s clip, a near-silent one) in the private release [`data-frontend40`](https://github.com/vIlkAm/tribe-research/releases/tag/data-frontend40), 68 MB, no footage. Pilot bundles too |
 | 7. Frontend | Browser | See "For the frontend" below |
 
 ## Numbers that matter
@@ -90,6 +90,8 @@ gone through the GPU.
 - Licence before anything commercial.
 
 ## Log
+
+- **2026-09-26 23:00:** Real bundles for 40 clips published (`data-frontend40` release). The second pod (A100, `tribe-study2`) runs the back half of the study set (b09→b06); the L40S runs b02→b05. The two share b06–b08 through claim files. `tools/predict.py` and `fit_models --save-model` added (981ebca). `tools/fleet.py` added for the rest batches after a top-up (1bc99e3).
 
 - **2026-09-26 22:55:** Study set queued on the L40S (`pod/run_queue.sh`, d8b921b), about 6.5 h, capped at $8 total. Outputs are pulled per batch to `results/runs/study-bf16/`. b09, and maybe b08, need the top-up.
 - **2026-09-26 22:45:** bf16 fast frame loop passed all gates (pod code
