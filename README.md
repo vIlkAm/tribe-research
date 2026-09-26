@@ -13,6 +13,29 @@ words → Llama-3.2-3B ──┘   (whisperx transcribes the audio first)
 The expensive part is V-JEPA2 feature extraction; the TRIBE fusion model is small.
 Isolation rules and layout: [`AGENTS.md`](AGENTS.md).
 
+## Quickstart for collaborators
+
+```bash
+git clone https://github.com/vIlkAm/tribe-research && cd tribe-research
+python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
+.venv/bin/python -m pytest -q            # all offline, no GPU, no credentials
+```
+
+- **Frontend work:** build against `docs/analysis.schema.json`, use
+  `docs/sample_analysis/` (synthetic) as fixture data, and read the spec in
+  `docs/frontend_spec/`. The HTML there is the source of the PDF.
+- **ROI map:** `tribe_research/assets/roi_map_roi_groups_v0.npz` is gitignored
+  (like all `.npz`). Build it from the HCP-MMP1 annotation mirror:
+  ```bash
+  mkdir -p /tmp/hcpannot && for h in lh rh; do curl -fsSL -o /tmp/hcpannot/$h.HCPMMP1.annot \
+    https://raw.githubusercontent.com/tannerjared/HCP-MMP1/master/$h.HCP-MMP1.annot; done
+  .venv/bin/python tools/build_roi_map.py --annot-dir /tmp/hcpannot
+  ```
+- **Real clips and TRIBE outputs are never committed.** Clips live only on the
+  owner's server; RunPod runs are launched by the owner. Share results as
+  pulled `analysis.json` bundles, not raw videos.
+- Agents: read [`AGENTS.md`](AGENTS.md) first (`CLAUDE.md` points there).
+
 ## Upstream facts (verified against tribev2 @ `af58661`, 2026-06-23)
 
 - Python `>=3.11`, **torch `>=2.5.1,<2.7`**, torchvision `>=0.20,<0.22`. Pick a
