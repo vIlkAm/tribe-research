@@ -2,13 +2,16 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "nvi.analysis.v0.3-draft.performance",
   "title": "DRAFT: the proposed `performance` block (nvi.analysis.v0.3 proposal, docs/PRODUCT_PIPELINE.md §3)",
-  "description": "Draft, not part of the contract: exactly the block tools/predict.py emits today. The v0.3 PR merges it into docs/analysis.schema.json as an optional top-level `performance` key. Every number is a relative ranking within one deal × platform, a model prediction, not a guarantee. not_trained and out_of_scope carry no numbers. Fixtures: docs/sample_analysis/performance/ (tests/test_performance_samples.py).",
+  "description": "Draft, not part of the contract: exactly the block tools/predict.py emits today. The v0.3 PR merges it into docs/analysis.schema.json as an optional top-level `performance` key. Every number is a relative ranking within one deal × platform, a model prediction, not a guarantee. not_trained and out_of_scope carry no numbers. preliminary (opt-in, tools/predict.py --allow-preliminary) carries numbers from a model that did NOT pass the pre-registered stage-1 GO rule: always show its caption and a Preliminary badge. Fixtures: docs/sample_analysis/performance/ (tests/test_performance_samples.py).",
   "type": "object",
-  "required": ["model_status", "reason", "brain_claim", "model_version", "context", "clip_in_training",
-               "retrospective", "engagement", "reach", "drivers", "warnings", "provenance"],
+  "required": ["model_status", "validated", "reason", "brain_claim", "model_version", "n_train", "caption", "context",
+               "clip_in_training", "retrospective", "engagement", "reach", "drivers", "warnings", "provenance"],
   "additionalProperties": false,
   "properties": {
-    "model_status": {"enum": ["not_trained", "research_preview", "validated", "out_of_scope"]},
+    "model_status": {"enum": ["not_trained", "preliminary", "research_preview", "validated", "out_of_scope"]},
+    "validated": {"type": "boolean", "description": "true iff model_status is validated. false on preliminary: say so on screen."},
+    "n_train": {"type": ["integer", "null"], "minimum": 1, "description": "Training contents of the engagement model; set only when the block is scored (preliminary, research_preview, validated)."},
+    "caption": {"type": ["string", "null"], "description": "Mandatory on preliminary (show it verbatim, next to the numbers); null otherwise."},
     "reason": {"type": ["string", "null"], "description": "Why there are no numbers (not_trained / out_of_scope); null when scored. Show it in the card."},
     "brain_claim": {"enum": ["not_tested", "directional", "supported", "not_supported"], "description": "BE − E. Never say 'the brain response predicts' unless supported."},
     "model_version": {"type": ["string", "null"], "description": "e.g. perf-stack-BE_v1+20260926.dfd5eb3; null only when no model is saved."},
@@ -25,11 +28,32 @@
     {
       "if": {"properties": {"model_status": {"enum": ["not_trained", "out_of_scope"]}}},
       "then": {"properties": {"reason": {"type": "string"}, "engagement": {"type": "null"},
-                              "reach": {"type": "null"}, "drivers": {"maxItems": 0}}}
+                              "reach": {"type": "null"}, "drivers": {"maxItems": 0}, "n_train": {"type": "null"}}}
+    },
+    {
+      "if": {"properties": {"model_status": {"not": {"const": "preliminary"}}}},
+      "then": {"properties": {"caption": {"type": "null"}}}
+    },
+    {
+      "if": {"properties": {"model_status": {"not": {"const": "validated"}}}},
+      "then": {"properties": {"validated": {"const": false}}},
+      "else": {"properties": {"validated": {"const": true}}}
+    },
+    {
+      "if": {"properties": {"model_status": {"const": "preliminary"}}},
+      "then": {"properties": {"caption": {"type": "string", "pattern": "^Preliminary model"},
+                              "brain_claim": {"const": "not_tested"},
+                              "engagement": {"properties": {"confidence": {"const": "low"},
+                                                            "validation": {"properties": {"scheme": {"const": "none"},
+                                                                                          "within_stratum_spearman": {"type": "null"}}}}}}}
     },
     {
       "if": {"properties": {"model_status": {"enum": ["research_preview", "validated"]}}},
-      "then": {"properties": {"reason": {"type": "null"}, "model_version": {"type": "string"},
+      "then": {"properties": {"engagement": {"properties": {"validation": {"properties": {"scheme": {"enum": ["content_cv", "lockbox"]}}}}}}}
+    },
+    {
+      "if": {"properties": {"model_status": {"enum": ["preliminary", "research_preview", "validated"]}}},
+      "then": {"properties": {"reason": {"type": "null"}, "model_version": {"type": "string"}, "n_train": {"type": "integer"},
                               "engagement": {"$ref": "#/$defs/target_prediction"},
                               "context": {"properties": {"deal_id": {"type": "string"},
                                                          "platform": {"$ref": "#/$defs/platform"}}}}}
@@ -87,7 +111,7 @@
         "validation": {
           "type": "object", "required": ["scheme", "within_stratum_spearman", "ci95"], "additionalProperties": false,
           "properties": {
-            "scheme": {"enum": ["content_cv", "lockbox"]},
+            "scheme": {"enum": ["content_cv", "lockbox", "none"], "description": "none: preliminary (no validation shipped)."},
             "within_stratum_spearman": {"type": ["number", "null"]},
             "ci95": {"type": "array", "prefixItems": [{"type": ["number", "null"]}, {"type": ["number", "null"]}], "minItems": 2, "maxItems": 2}
           }

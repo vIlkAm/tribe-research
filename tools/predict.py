@@ -13,6 +13,12 @@ directory from ``tools/fit_models.py --save-model``. Output: the block as JSON (
 Rules (the doc's; interpretations are marked in ``model_status_from`` / ``brain_claim_from``):
 
 - ``not_trained`` (no model, or the pre-registered stage-1 GO rule not passed): no numbers at all.
+- ``preliminary`` (opt-in only: ``--allow-preliminary`` / ``allow_preliminary=True``): a saved model that did NOT
+  pass the GO rule is scored anyway so the frontend has real-format numbers to build against. ``validated`` is
+  false, ``n_train`` and the mandatory ``caption`` say how little it saw, ``brain_claim`` is ``not_tested``, the
+  validation numbers and the GO reason (which quotes CV estimates) are left out, confidence is ``low`` and reach
+  is omitted. Without the opt-in the same model is ``not_trained``; a model that passes
+  GO is never ``preliminary``. It never implies the stage-1 GO decision.
 - ``out_of_scope`` (duration outside 5-90 s, unknown deal or deal x platform, no audio, confident non-English,
   a train/serve runtime mismatch, a training clip without an out-of-fold prediction here): no numbers, a reason.
 - ``research_preview`` / ``validated``: the percentile is the weighted (1/incl_prob) mid-rank of the clip's
@@ -50,6 +56,9 @@ GO_POINT, GO_CI_FLOOR = 0.02, -0.03  # docs/PREREGISTRATION.md stage-1 scaling r
 MIN_REFERENCE_N = 30
 NEIGHBOUR_SHARE, MIN_NEIGHBOURS = 0.2, 30  # likely range: the closest max(30, 20 %) reference contents
 LOW_CONFIDENCE_N = 100
+SCORED = ("research_preview", "validated", "preliminary")
+PRELIMINARY_CAPTION = ("Preliminary model — trained on {n} clips, not validated. Illustrative of the format, "
+                       "not a forecast.")
 FAMILY_LABELS = {"content_embedding": "Video, audio and text content", "brain_response": "Predicted brain response",
                  "metadata": "Duration, format, posting time", "account_history": "Deal/account typical level"}
 ACCOUNT_TERMS = ("num__" + fit_models.ACCOUNT_TE, "num__base_follower_bucket")
@@ -189,9 +198,18 @@ def drivers_from(terms: pd.Series, ref: pd.Series, channels: list[str]) -> list[
 
 
 def _block(status, reason, *, brain_claim="not_tested", model_version=None, context=None, clip_in_training="no",
-           retrospective=False, warnings_=None, provenance=None, engagement=None, reach=None, drivers=None) -> dict:
-    numbers = status in ("research_preview", "validated")
-    return {"model_status": status, "reason": reason, "brain_claim": brain_claim, "model_version": model_version,
+           retrospective=False, warnings_=None, provenance=None, engagement=None, reach=None, drivers=None,
+           n_train=None) -> dict:
+    """``validated`` mirrors the status; ``n_train`` (training contents of the engagement model) is set only on a
+    scored block; ``caption`` is set only (and always) on a preliminary one."""
+    numbers = status in SCORED
+    prelim = status == "preliminary"
+    if prelim and not isinstance(n_train, int):
+        raise ValueError("a preliminary block needs n_train")
+    return {"model_status": status, "validated": status == "validated", "reason": reason,
+            "brain_claim": "not_tested" if prelim else brain_claim, "model_version": model_version,
+            "n_train": int(n_train) if numbers and n_train is not None else None,
+            "caption": PRELIMINARY_CAPTION.format(n=int(n_train)) if prelim else None,
             "context": context, "clip_in_training": clip_in_training, "retrospective": bool(retrospective),
             "engagement": engagement if numbers else None, "reach": reach if numbers else None,
             "drivers": (drivers or []) if numbers else [], "warnings": list(warnings_ or []),
@@ -285,8 +303,11 @@ def score_target(md: dict, t: str, X: pd.DataFrame, vid: str, stratum: tuple[str
             n_acct = int(len(ra))
             pct_acct = round(weighted_percentile(p, ra["pred"].to_numpy(float), ra["w"].to_numpy(float)), 4)
     m = tm["metrics"]
-    v = m["served_lockbox"] if status == "validated" else m["served_cv"]
-    v = v or {"point": None, "ci": [None, None]}
+    if status == "preliminary":  # its CV estimate is noise at this n and not a result: never shipped per clip
+        v, scheme = {"point": None, "ci": [None, None]}, "none"
+    else:
+        v = (m["served_lockbox"] if status == "validated" else m["served_cv"]) or {"point": None, "ci": [None, None]}
+        scheme = "lockbox" if status == "validated" else "content_cv"
     return {
         "pred": p, "oof": oof,
         "block": {
@@ -295,7 +316,7 @@ def score_target(md: dict, t: str, X: pd.DataFrame, vid: str, stratum: tuple[str
             "likely_range": rng, "reference_n": n,
             "percentile_account": pct_acct, "account_reference_n": n_acct,
             "confidence": "medium" if status == "validated" and n >= LOW_CONFIDENCE_N else "low",
-            "validation": {"scheme": "lockbox" if status == "validated" else "content_cv",
+            "validation": {"scheme": scheme,
                            "within_stratum_spearman": _num(v.get("point")),
                            "ci95": [_num(x) for x in (v.get("ci") or [None, None])]},
         },
@@ -303,9 +324,10 @@ def score_target(md: dict, t: str, X: pd.DataFrame, vid: str, stratum: tuple[str
 
 
 def predict_performance(worker_output, context: dict, featurizer, model_dir, *, roi_map=None,
-                        analyses_dir=None) -> dict:
+                        analyses_dir=None, allow_preliminary: bool = False) -> dict:
     """The ``performance`` block for one clip. ``featurizer`` is a path or a ``load_featurizer`` result; it is
-    only read when a model passed the GO rule. Configuration errors (hash mismatches, unreadable outputs) raise."""
+    only read when a model passed the GO rule (or ``allow_preliminary`` turns a failed one into ``preliminary``).
+    Configuration errors (hash mismatches, unreadable outputs) raise."""
     ctx = dict(context or {})
     vid, meta_path, _ = build_features.resolve_worker_output(worker_output)
     meta = json.loads(Path(meta_path).read_text())
@@ -341,15 +363,21 @@ def predict_performance(worker_output, context: dict, featurizer, model_dir, *, 
         return _block("not_trained", f"no {PRIMARY} model in {md['dir']}", **common)
     tm = man["targets"][PRIMARY]
     status, reason = model_status_from(tm["metrics"], man["feature_set"], man["model"])
-    common["brain_claim"] = brain_claim_from(tm["metrics"])
-    b = tm["metrics"].get("brain") or {}
-    if common["brain_claim"] == "supported" and ((b.get("content") or {}).get("point") or 0) <= 0:
-        warn.append("Brain claim: the lockbox and the content CV disagree in sign (prereg: report both).")
-    if b.get("lockbox") and not confirmatory_lockbox(tm["metrics"]):
-        warn.append("Brain claim from content CV only: the scored lockbox lacks the stage-2 extension, so it is "
-                    "not the confirmatory set.")
-    if status == "not_trained":
+    if status == "not_trained" and not allow_preliminary:
+        common["brain_claim"] = brain_claim_from(tm["metrics"])
         return _block(status, reason, **common)
+    if status == "not_trained":  # explicit opt-in: the GO rule failed, show the format, claim nothing
+        status, reason = "preliminary", None
+        common["n_train"] = int(tm["n_train_contents"])
+    else:
+        common["n_train"] = int(tm["n_train_contents"])
+        common["brain_claim"] = brain_claim_from(tm["metrics"])
+        b = tm["metrics"].get("brain") or {}
+        if common["brain_claim"] == "supported" and ((b.get("content") or {}).get("point") or 0) <= 0:
+            warn.append("Brain claim: the lockbox and the content CV disagree in sign (prereg: report both).")
+        if b.get("lockbox") and not confirmatory_lockbox(tm["metrics"]):
+            warn.append("Brain claim from content CV only: the scored lockbox lacks the stage-2 extension, so it "
+                        "is not the confirmatory set.")
 
     def oos(why):
         return _block("out_of_scope", why, **common)
@@ -413,8 +441,11 @@ def predict_performance(worker_output, context: dict, featurizer, model_dir, *, 
         return oos(eng["error"])
     if eng["block"]["reference_n"] < LOW_CONFIDENCE_N:
         warn.append("Low confidence: this deal has few reference clips on this platform.")
+    if eng["block"]["percentile_deal_platform"] is None:
+        warn.append(f"Fewer than {MIN_REFERENCE_N} reference clips for this deal on this platform: no percentile "
+                    "or range.")
     reach = None
-    if REACH in man["targets"]:
+    if REACH in man["targets"] and status != "preliminary":  # preliminary: engagement only
         r_status, _ = model_status_from(man["targets"][REACH]["metrics"], man["feature_set"], man["model"])
         if r_status != "not_trained":
             r = score_target(md, REACH, X, vid, (deal, platform), account, r_status)
@@ -461,6 +492,9 @@ def main(argv=None) -> int:
     ap.add_argument("--prescale", help="e.g. s384 (provenance)")
     ap.add_argument("--roi-map", type=Path, default=None, help="override the featurizer's ROI map path (hash-checked)")
     ap.add_argument("--analyses-dir", type=Path, default=None, help="brain_report analyses/ dir for shots_ms")
+    ap.add_argument("--allow-preliminary", action="store_true",
+                    help="score a saved model that did NOT pass the stage-1 GO rule as model_status "
+                         "'preliminary' (validated false, caption, n_train) instead of not_trained")
     ap.add_argument("--out", type=Path, default=None)
     args = ap.parse_args(argv)
     ctx = json.loads(args.context.read_text()) if args.context else {}
@@ -470,7 +504,8 @@ def main(argv=None) -> int:
             ctx[k] = getattr(args, k)
     try:
         block = predict_performance(args.worker_output, ctx, args.featurizer, args.model_dir,
-                                    roi_map=args.roi_map, analyses_dir=args.analyses_dir)
+                                    roi_map=args.roi_map, analyses_dir=args.analyses_dir,
+                                    allow_preliminary=args.allow_preliminary)
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

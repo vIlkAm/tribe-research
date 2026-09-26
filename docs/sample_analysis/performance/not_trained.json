@@ -3,9 +3,12 @@
   "_scenario": "No saved performance model (tonight's state). New clip, deal-a on TikTok.",
   "performance": {
     "model_status": "not_trained",
+    "validated": false,
     "reason": "no saved performance model",
     "brain_claim": "not_tested",
     "model_version": null,
+    "n_train": null,
+    "caption": null,
     "context": {
       "deal_id": "deal-a",
       "deal_label": "Deal A (synthetic)",

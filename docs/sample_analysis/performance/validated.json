@@ -3,9 +3,12 @@
   "_scenario": "Synthetic model whose own lockbox within-stratum rho has a CI lower bound > 0 (fit with --score-lockbox). New clip, deal-a on TikTok, known account.",
   "performance": {
     "model_status": "validated",
+    "validated": true,
     "reason": null,
     "brain_claim": "directional",
-    "model_version": "perf-stack-BE_v1+20260926.47541b1",
+    "model_version": "perf-stack-BE_v1+20260926.df366b0",
+    "n_train": 171,
+    "caption": null,
     "context": {
       "deal_id": "deal-a",
       "deal_label": "Deal A (synthetic)",
@@ -128,9 +131,9 @@
       "features_version": "clip_features_v1",
       "emb_version": "emb_features_v1",
       "video_id": "n000",
-      "model_version": "perf-stack-BE_v1+20260926.47541b1",
+      "model_version": "perf-stack-BE_v1+20260926.df366b0",
       "model_git": {
-        "commit": "47541b168a2b1d5d2edd2e8de16e633bd114621d",
+        "commit": "df366b04d401f6bb201804dae520875a5feca7c5",
         "dirty": true
       },
       "training_features_sha256": "1f8d13b2229674e9cc1bd8a3bb58693e1e8eaa63adf607084c7750ae11264c4c",

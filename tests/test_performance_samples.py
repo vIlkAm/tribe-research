@@ -47,8 +47,8 @@ def test_the_state_coverage_is_there():
     files = _samples()
     assert files, f"no samples in {SAMPLES}; run tools/make_performance_samples.py"
     blocks = {p.name: _load(p)["performance"] for p in files}
-    assert {b["model_status"] for b in blocks.values()} == {"not_trained", "research_preview", "validated",
-                                                           "out_of_scope"}
+    assert {b["model_status"] for b in blocks.values()} == {"not_trained", "preliminary", "research_preview",
+                                                           "validated", "out_of_scope"}
     assert {b["clip_in_training"] for b in blocks.values()} == {"no", "train_oof", "lockbox"}
     assert any(b["retrospective"] and b["clip_in_training"] == "no" and b["drivers"] for b in blocks.values())
     assert (SAMPLES / "README.md").exists()
@@ -80,6 +80,13 @@ def test_sample_is_marked_synthetic_and_validates(path):
         e = blk["engagement"]
         assert e["percentile_deal_platform"] is not None and e["likely_range"] is not None
         assert blk["context"]["account_level"] is (e["percentile_account"] is not None)
+        assert isinstance(blk["n_train"], int)
+    assert blk["validated"] is (blk["model_status"] == "validated")
+    if blk["model_status"] == "preliminary":
+        assert blk["caption"].startswith("Preliminary model") and "not validated" in blk["caption"]
+        assert blk["brain_claim"] == "not_tested" and blk["engagement"]["validation"]["scheme"] == "none"
+    else:
+        assert blk["caption"] is None
 
 
 def test_the_schema_rejects_numbers_in_a_no_number_state():
@@ -95,6 +102,27 @@ def test_the_schema_rejects_numbers_in_a_no_number_state():
             jsonschema.validate({**bad, "engagement": None, "reach": None}, schema)  # drivers still there
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate({**scored, "engagement": None}, schema)
+
+
+def test_the_schema_pins_the_preliminary_labels():
+    """A preliminary block must carry its caption, validated false, no brain claim and no validation numbers;
+    no other state may carry a caption or pretend to be validated."""
+    jsonschema = pytest.importorskip("jsonschema")
+    schema = _load(SCHEMA)
+    blocks = [_load(p)["performance"] for p in _samples()]
+    pre = next(b for b in blocks if b["model_status"] == "preliminary")
+    rp = next(b for b in blocks if b["model_status"] == "research_preview")
+    jsonschema.validate(pre, schema)
+    e = pre["engagement"]
+    for bad in ({**pre, "caption": None}, {**pre, "caption": "Research preview"}, {**pre, "validated": True},
+                {**pre, "brain_claim": "directional"}, {**pre, "n_train": None},
+                {**pre, "engagement": {**e, "validation": {"scheme": "content_cv", "within_stratum_spearman": 0.1,
+                                                           "ci95": [0.0, 0.2]}}},
+                {**pre, "engagement": {**e, "confidence": "medium"}},
+                {**rp, "caption": pre["caption"]}, {**rp, "validated": True},
+                {**rp, "engagement": {**rp["engagement"], "validation": e["validation"]}}):
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(bad, schema)
 
 
 def test_the_schema_matches_predict_constants():

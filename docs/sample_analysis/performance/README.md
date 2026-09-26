@@ -40,6 +40,7 @@ change between runs:
 |---|---|---|---|
 | `not_trained.json` | `not_trained` | **Build this first.** Brain analysis only, plus a card "Performance model not trained yet". No numbers and no skeleton digits | No model is saved: tonight's honest state. `model_version` is null |
 | `not_trained_go_failed.json` | `not_trained` | Same card as above | A model was fit but failed the pre-registered stage-1 GO rule. To reach this state, the fixture model's manifest GO metrics were **edited** to a failing value, as in `test_not_trained_has_no_numbers`; `predict.py` is unchanged. `reason` is technical: put it behind "See evidence" and keep the card text plain |
+| `preliminary.json` | `preliminary` | Percentile, range, context, drivers, a grey **"Preliminary"** badge and the `caption` shown verbatim next to the numbers: "Preliminary model — trained on N clips, not validated. Illustrative of the format, not a forecast." | The GO-failed model above, scored because the caller passed `predict.py --allow-preliminary`. `validated: false`, `n_train` set, `brain_claim: "not_tested"`, `validation.scheme: "none"` with null ρ/CI, `confidence: "low"`, `reach: null`. The real bundles in the `data-frontend40-v2` release use this state ([`../../MODEL.md`](../../MODEL.md)) |
 | `research_preview.json` | `research_preview` | Percentile, range, context, drivers, and an orange **"Research preview"** badge. Also the account line (`percentile_account`, `account_level: true`) | Stage-1 model; the lockbox is not scored. The account percentile appears only because the fixture fits with `--min-account-n 10`; production uses 40, so expect it rarely |
 | `research_preview_no_account.json` | `research_preview` | Same, deal × platform only (`account_level: false`) | No account given |
 | `validated.json` | `validated` | Same as above with a blue **"Validated"** badge; `validation.scheme: "lockbox"` | The fixture's lockbox-scored model really clears the rule (the served model's lockbox ρ CI lower bound > 0). Still relative, still a card, still with its range |
@@ -61,11 +62,17 @@ at most say "content features and predicted brain response contributed".
 
 ## Labels the UI must show (PRODUCT_PIPELINE.md §4, STATUS.md)
 
+- **`preliminary`:** the `caption` is mandatory and sits next to the numbers, with a "Preliminary" badge
+  (never "Research preview" or "Validated"). Don't show a validation ρ (there is none) or a brain claim.
+  Never use the words "forecast" or "prediction of success" for it, and never state or imply that the
+  model passed the pre-registered test. When `percentile_deal_platform` is null (fewer than 30 reference
+  clips in that deal × platform, most real bundles today), show "Not enough reference clips yet" instead
+  of a number.
 - Every performance number carries three things together:
   - the context: deal label × platform and `reference_n`, e.g. "Predicted engagement: ranks around
     P{round(100 × percentile_deal_platform)} among {deal_label}'s TikTok clips ({reference_n} clips)";
   - the range, from `likely_range`: "Similar clips landed between P{lo} and P{hi}";
-  - the status badge: "Research preview" or "Validated".
+  - the status badge: "Preliminary", "Research preview" or "Validated".
 - "Research preview · correlational · not a guarantee". Never "virality score", "% chance to go viral",
   "will perform", "guaranteed" or "optimised".
 - Until the status is `validated`, the percentile stays inside a card. Never make it a hero number.

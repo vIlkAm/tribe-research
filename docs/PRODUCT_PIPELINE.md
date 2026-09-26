@@ -185,10 +185,17 @@ it `prediction` next to `predictions` would invite bugs.
   | `model_status` | Meaning | Numbers? |
   |---|---|---|
   | `not_trained` | no model exists, or none passed the stage-1 GO rule | **none**: `engagement`/`reach` null, `drivers` empty (schema `if/then`, like `predictions`) |
+  | `preliminary` | **opt-in only** (`predict.py --allow-preliminary`): a saved model that did *not* pass the GO rule, scored so the frontend has real-format numbers now. Says nothing about stage 1 | yes, with `validated: false`, `n_train`, a mandatory `caption`, a grey "Preliminary" badge; `brain_claim` is `not_tested`, `validation.scheme` is `none` (no ρ), `confidence` `low`, `reach` null |
   | `research_preview` | stage-1 CV passed the pre-registered BE − A GO rule (content features beat metadata) | yes, with a visible "Research preview" badge |
   | `validated` | the served model's own within-stratum ρ on the sealed lockbox has a CI lower bound > 0 (independent of `brain_claim`) | yes; still relative, still not a guarantee |
   | `out_of_scope` | model exists, clip/context outside it (no audio, unknown deal, >90 s) | none; show `reason` |
 
+- `validated` (boolean) mirrors the status; `n_train` is the engagement model's
+  training contents on scored blocks (null otherwise); `caption` is set only on
+  `preliminary` and must be shown verbatim next to its numbers. Without the
+  opt-in, the same model yields `not_trained`; a model that passes GO is never
+  `preliminary`. See [`MODEL.md`](MODEL.md) for how the shipped weights and
+  bundles relate.
 - `brain_claim` is separate. The model can be useful while the brain mapping
   adds nothing beyond its own inputs (BE − E). Never say "the brain response
   predicts" unless it is `supported`.
@@ -222,8 +229,8 @@ it `prediction` next to `predictions` would invite bugs.
 
 ```json
 "performance": {
-  "model_status": "research_preview", "reason": null, "brain_claim": "directional",
-  "model_version": "perf-stack-BE_v1+20260930.ab12cd3",
+  "model_status": "research_preview", "validated": false, "reason": null, "brain_claim": "directional",
+  "model_version": "perf-stack-BE_v1+20260930.ab12cd3", "n_train": 1275, "caption": null,
   "context": { "deal_id": "d_123", "deal_label": "Deal A", "platform": "tiktok",
                "account_id": null, "account_level": false },
   "clip_in_training": "no", "retrospective": false,
@@ -255,7 +262,7 @@ it `prediction` next to `predictions` would invite bugs.
 ### TypeScript (proposal, to be merged into `analysis.types.ts` by the v0.3 PR)
 
 ```ts
-export type ModelStatus = "not_trained" | "research_preview" | "validated" | "out_of_scope";
+export type ModelStatus = "not_trained" | "preliminary" | "research_preview" | "validated" | "out_of_scope";
 export type BrainClaim = "not_tested" | "directional" | "supported" | "not_supported";
 export type DriverFamily = "metadata" | "account_history" | "content_embedding" | "brain_response";
 
@@ -281,8 +288,9 @@ export interface TargetPrediction {
   percentile_account: number | null; account_reference_n: number | null;
   /** "medium" only when validated with reference_n >= 100. Not the analysis Confidence enum. */
   confidence: "low" | "medium";
-  /** scheme is "lockbox" for engagement when validated, else "content_cv". Null when not estimated. */
-  validation: { scheme: "content_cv" | "lockbox"; within_stratum_spearman: number | null;
+  /** scheme is "lockbox" for engagement when validated, "none" (null ρ and CI) when preliminary, else
+   *  "content_cv". Null when not estimated. */
+  validation: { scheme: "content_cv" | "lockbox" | "none"; within_stratum_spearman: number | null;
                 ci95: [number | null, number | null] };
 }
 
@@ -313,11 +321,16 @@ interface PerformanceBase {
 }
 
 export type Performance =
-  | (PerformanceBase & { model_status: "not_trained"; reason: string; model_version: string | null;
+  | (PerformanceBase & { model_status: "not_trained"; validated: false; reason: string;
+      model_version: string | null; n_train: null; caption: null;
       engagement: null; reach: null; drivers: [] })
-  | (PerformanceBase & { model_status: "out_of_scope"; reason: string; model_version: string;
-      engagement: null; reach: null; drivers: [] })
-  | (PerformanceBase & { model_status: "research_preview" | "validated"; reason: null; model_version: string;
+  | (PerformanceBase & { model_status: "out_of_scope"; validated: false; reason: string; model_version: string;
+      n_train: null; caption: null; engagement: null; reach: null; drivers: [] })
+  /** Opt-in, GO not passed: show `caption` verbatim + a "Preliminary" badge; brain_claim is "not_tested". */
+  | (PerformanceBase & { model_status: "preliminary"; validated: false; reason: null; model_version: string;
+      n_train: number; caption: string; engagement: TargetPrediction; reach: null; drivers: Driver[] })
+  | (PerformanceBase & { model_status: "research_preview" | "validated"; validated: boolean; reason: null;
+      model_version: string; n_train: number; caption: null;
       engagement: TargetPrediction; reach: TargetPrediction | null; drivers: Driver[] });
 
 // Analysis (v0.3): schema_version "nvi.analysis.v0.3"; performance?: Performance;
@@ -332,6 +345,7 @@ export type Performance =
 | "Predicted engagement: ranks around P72 among Deal A's TikTok clips (164 clips)" | "Virality score 72", "72 % chance to go viral" |
 | "Similar clips landed between P31 and P93" | a single number without its range |
 | "Research preview · correlational · not a guarantee" | "will perform", "guaranteed", "optimised" |
+| `preliminary`: the `caption` verbatim ("Preliminary model — trained on N clips, not validated. Illustrative of the format, not a forecast.") + "Preliminary" badge | "forecast", "prediction of success", "Research preview", any hint that the model passed the pre-registered test |
 | "Model prediction for an average viewer" (brain) | "your audience's brain", "brain firing" |
 | "Content features and predicted brain response contributed" | "the brain response caused this" |
 | "Untested edit hypothesis" (moments) | "fix this drop-off" (no retention data exists) |
@@ -349,6 +363,7 @@ export type Performance =
 |---|---|
 | absent / `not_trained` | Brain analysis only. Card: "Performance model not trained yet". No numbers, no skeleton digits |
 | `out_of_scope` | Card with `reason` (e.g. "No audio track: outside the model's training scope") |
+| `preliminary` | Percentile + range + context + drivers in a muted card, a grey **"Preliminary"** badge and the `caption` next to the numbers, always. No validation ρ, no brain claim. Null percentile (under 30 reference clips) → "Not enough reference clips yet" |
 | `research_preview` / `validated` | Percentile + range + context + drivers; orange "Research preview" / blue "Validated" badge. Always relative, always with a range |
 | `confidence: low` or `warnings` | Muted card with warning icon (spec §09 low-confidence/OOD state) |
 | `clip_in_training: lockbox` | No observed outcome shown, ever |

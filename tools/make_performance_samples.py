@@ -86,6 +86,12 @@ def build(out_dir: Path, work: Path, log=print) -> dict[str, str]:
         "edited to a failing value to produce this state; predict.py itself is unchanged.",
         run_predict(new, failed, fz, ctx_new, work))
 
+    # preliminary: the same GO-failed model, scored only because the caller opted in (--allow-preliminary)
+    add("preliminary.json",
+        "The GO-failed model above, scored with --allow-preliminary: numbers in the real format, validated false, "
+        "the mandatory caption, no brain claim and no validation numbers. New clip, deal-a on TikTok, known account.",
+        run_predict(new, failed, fz, [*ctx_new, "--account-id", "acc-deal-a-tiktok-0", "--allow-preliminary"], work))
+
     # research_preview: stage-1 GO passed, lockbox not scored
     st = status_of(preview)
     if st != "research_preview":

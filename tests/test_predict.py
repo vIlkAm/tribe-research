@@ -497,6 +497,81 @@ def test_not_trained_has_no_numbers(served, study, tmp_path):
     assert blk["model_version"] == man["model_version"]
 
 
+def _with_metrics(served, dst: Path, go=None, lockbox=None) -> Path:
+    """A copy of the served model with its primary target's GO (and optionally lockbox) metrics replaced."""
+    shutil.copytree(served, dst)
+    man = json.loads((dst / "manifest.json").read_text())
+    m = man["targets"][predict.PRIMARY]["metrics"]
+    if go is not None:
+        m["go"]["content"] = {"point": go[0], "ci": [go[1], go[2]]}
+        m["go"]["account"] = {"point": 0.01, "ci": [None, None]}
+    if lockbox is not None:
+        m["served_lockbox"] = None if lockbox == "none" else {"point": lockbox[0], "ci": [lockbox[1], lockbox[2]]}
+    (dst / "manifest.json").write_text(json.dumps(man))
+    return dst
+
+
+@pytest.mark.parametrize("go,lockbox,want", [
+    ((0.01, -0.01, 0.03), "none", "not_trained"),  # GO fails -> preliminary only with the opt-in
+    ((0.05, -0.01, 0.09), "none", "research_preview"),
+    ((0.05, -0.01, 0.09), (0.2, 0.05, 0.3), "validated"),
+])
+@pytest.mark.parametrize("allow", [False, True])
+def test_preliminary_only_with_the_opt_in_and_never_after_go(served, study, tmp_path, go, lockbox, want, allow):
+    model = _with_metrics(served, tmp_path / "m", go=go, lockbox=lockbox)
+    npz = study["new"] / "worker-9" / "n000.npz"
+    ctx = _ctx(study, deal_id="deal-a", has_audio=True)
+    blk = predict.predict_performance(npz, ctx, study["featurizer"], model, allow_preliminary=allow)
+    man = json.loads((model / "manifest.json").read_text())
+    n = man["targets"][predict.PRIMARY]["n_train_contents"]
+    if want == "not_trained" and allow:
+        assert blk["model_status"] == "preliminary" and blk["validated"] is False and blk["reason"] is None
+        assert blk["n_train"] == n and blk["caption"] == predict.PRELIMINARY_CAPTION.format(n=n)
+        assert f"trained on {n} clips, not validated" in blk["caption"] and "not a forecast" in blk["caption"]
+        assert blk["brain_claim"] == "not_tested"  # the fixture's CV rule says directional; not for preliminary
+        e = blk["engagement"]
+        assert 0 <= e["percentile_deal_platform"] <= 1 and e["likely_range"] is not None and blk["drivers"]
+        assert e["confidence"] == "low"
+        assert e["validation"] == {"scheme": "none", "within_stratum_spearman": None, "ci95": [None, None]}
+        assert blk["reach"] is None  # engagement only, whatever reach's own metrics say
+        text = json.dumps(blk)
+        assert "GO rule" not in text and "0.010" not in text  # no CV estimate travels with the clip
+    else:
+        assert blk["model_status"] == want and blk["model_status"] != "preliminary"
+        assert blk["caption"] is None and blk["validated"] is (want == "validated")
+        if want == "not_trained":
+            assert blk["engagement"] is None and blk["n_train"] is None and "GO rule" in blk["reason"]
+        else:
+            assert blk["n_train"] == n and blk["engagement"]["validation"]["scheme"] != "none"
+
+
+def test_preliminary_keeps_scope_checks_and_cli_flag(served, study, tmp_path):
+    model = _with_metrics(served, tmp_path / "m", go=(0.0, -0.05, 0.05))
+    npz = study["new"] / "worker-9" / "n000.npz"
+    blk = predict.predict_performance(npz, _ctx(study, deal_id="deal-zzz", has_audio=True), study["featurizer"],
+                                      model, allow_preliminary=True)
+    assert blk["model_status"] == "out_of_scope" and "Unknown deal" in blk["reason"]
+    assert blk["engagement"] is None and blk["n_train"] is None and blk["caption"] is None
+    lvid = sorted(study["lock"])[0]
+    blk = predict.predict_performance(_clip(study, lvid), _ctx(study, lvid, has_audio=True), study["featurizer"],
+                                      model, allow_preliminary=True)
+    assert blk["model_status"] == "preliminary" and blk["clip_in_training"] == "lockbox" and blk["retrospective"]
+    out = tmp_path / "perf.json"
+    args = [sys.executable, str(ROOT / "tools/predict.py"), str(npz), "--featurizer", str(study["featurizer"]),
+            "--model-dir", str(model), "--deal-id", "deal-a", "--platform", "tiktok", "--width", "1080",
+            "--height", "1920", "--audio-mean-db", "-20", "--out", str(out)]
+    subprocess.run(args, check=True, capture_output=True, text=True)
+    assert json.loads(out.read_text())["model_status"] == "not_trained"  # the default is unchanged
+    subprocess.run([*args, "--allow-preliminary"], check=True, capture_output=True, text=True)
+    assert json.loads(out.read_text())["model_status"] == "preliminary"
+
+
+def test_a_preliminary_block_needs_n_train():
+    with pytest.raises(ValueError, match="n_train"):
+        predict._block("preliminary", None)
+    assert predict._block("not_trained", "x", n_train=5)["n_train"] is None  # never a number without numbers
+
+
 # ── rules on hand-built metrics ───────────────────────────────────────────
 
 
