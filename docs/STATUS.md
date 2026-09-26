@@ -27,7 +27,7 @@ gone through the GPU.
 | 2. TRIBE + extractors → brain response + embeddings per clip | GPU (RunPod) | ✅ Fast bf16 path passed every accuracy gate. ⏳ One L40S (2 workers) runs study batches b02→b09 in order tonight; the budget reaches about b07/b08 |
 | 3. Features per clip (`tools/build_features.py`) | CPU | ✅ Code done and tested |
 | 4. Training + honest evaluation (`tools/fit_models.py`) | CPU, minutes | ✅ Code done, rules pre-registered ([`PREREGISTRATION.md`](PREREGISTRATION.md)). ⏳ Waiting for step 2 output |
-| 5. Save the model, score one new clip (`tools/predict.py`) | CPU, milliseconds | 🔨 Being built tonight |
+| 5. Save the model, score one new clip (`tools/predict.py`) | CPU, milliseconds | ✅ Code done and tested offline (`fit_models.py --save-model`, featurizer state, `predict.py`). ⏳ Waiting for step 4 |
 | 6. Bundles for the frontend (`tools/handoff.py`) | CPU | ✅ Real pilot bundles exist. ⏳ 40-clip wiring set is being published |
 | 7. Frontend | Browser | See "For the frontend" below |
 

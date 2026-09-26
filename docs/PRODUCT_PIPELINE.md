@@ -59,6 +59,21 @@ milliseconds per clip. The GPU cost is entirely in the fixed extractors and TRIB
    `features_version`, `proxies_version`, ROI
    map and emb export version. All of them go into the block's provenance.
 
+**Implemented (offline, synthetic-tested; not yet run on real outputs):**
+items 1 and 2, and the parity checks the worker output records.
+`build_features.py` now writes `<stem>.featurizer.npz/.json` (every PCA,
+column order, versions, sha256s of the table, ROI map and proxies, and the
+training runtime mix) and exposes `featurize_one`. Imputation medians and
+encoders live in the fitted pipeline, so they are saved with the model.
+`fit_models.py --save-model DIR`, run after the evaluation, refits the served
+model (BE `stack` by default) on all non-lockbox train rows. It writes the
+joblib file, the manifest (metrics, hashes, git) and the lockbox-free
+reference tables. `tools/predict.py` returns the `performance` block. Pre-scale
+and pod code aren't in the worker json yet, so they are provenance from the
+request context only and are not checked. Build the features with
+`--exclude-from-pca-fit`; otherwise the PCAs saw the lockbox and predict
+warns.
+
 ### Inference needs context
 
 The metadata block (set A) includes deal, platform, log duration, aspect, audio

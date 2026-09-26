@@ -7,6 +7,13 @@ writes one row per ``video_id``:
     <out>                      features (.parquet, or .csv by suffix)
     <out stem>.meta.json       feature list, families, versions, PCA variance, counts
     <out stem>.pca.npz         PCA of the per-clip time-mean cortex map (mean, components)
+    <out stem>.featurizer.npz  featurizer state: brain and every extractor-embedding PCA (mean, components)
+    <out stem>.featurizer.json its sidecar: versions, column order, PCA fit counts, training runtime mix, sha256s
+                               of the npz, the table, the ROI map and the proxies file (``load_featurizer``)
+
+One new clip is featurised exactly like a training row with ``featurize_one`` (tools/predict.py): the same
+per-clip code, then a projection on the saved PCAs. Nothing is imputed here; missing values stay NaN and the
+model pipeline imputes them as it did in training.
 
 Column prefixes decide how tools/fit_models.py uses a column:
 
@@ -83,6 +90,7 @@ MOMENT_KINDS = ("attention_drop", "broad_response", "proxy_rise", "proxy_fall")
 EARLY_S = 2.0  # "first 2 s vs rest" trajectory window (= proxies.ONSET_S)
 EMB_MODALITIES = ("video", "audio", "text")
 EMB_VERSION = "emb_features_v1"  # how the features are derived; the pod file format is pod/emb_export.py VERSION
+FEATURIZER_VERSION = "featurizer_v1"  # layout of <stem>.featurizer.npz/.json
 EMB_STATS = ("", "_sd", "_bins")  # block key suffix per modality: time mean, sd over time, quarter shape
 NON_ENGLISH_MIN_PROB = 0.5  # whisperx language probability above which a non-"en" detection is trusted
 
@@ -93,6 +101,15 @@ _STATE: dict = {}
 # ── per-clip computation ─────────────────────────────────────────────────
 
 
+def clip_state(roi_map_path: str, analyses_dir: str | None) -> dict:
+    """What ``featurize`` needs per clip: proxy spec, normalised channel masks, vertex count, analyses dir."""
+    spec = ProxySpec.load()
+    roi = RoiMap.load(roi_map_path)
+    masks = channel_masks(spec, roi).astype(np.float32)
+    return dict(spec=spec, masks=masks / masks.sum(axis=1, keepdims=True), n_vertices=masks.shape[1],
+                analyses_dir=Path(analyses_dir) if analyses_dir else None)
+
+
 def _init(roi_map_path: str, analyses_dir: str | None) -> None:
     try:
         from threadpoolctl import threadpool_limits
@@ -100,11 +117,7 @@ def _init(roi_map_path: str, analyses_dir: str | None) -> None:
         threadpool_limits(1)
     except Exception:  # noqa: BLE001  (optional; env vars below also help)
         pass
-    spec = ProxySpec.load()
-    roi = RoiMap.load(roi_map_path)
-    masks = channel_masks(spec, roi).astype(np.float32)
-    _STATE.update(spec=spec, masks=masks / masks.sum(axis=1, keepdims=True), n_vertices=masks.shape[1],
-                  analyses_dir=Path(analyses_dir) if analyses_dir else None)
+    _STATE.update(clip_state(roi_map_path, analyses_dir))
 
 
 def _wmean(t: np.ndarray, y: np.ndarray, lo: float, hi: float) -> float:
@@ -122,10 +135,10 @@ def _count_attention_drops(t, dur, z_att) -> int:
     return n
 
 
-def _shots_for(meta: dict) -> list[int] | None:
+def _shots_for(meta: dict, state: dict | None = None) -> list[int] | None:
     if isinstance(meta.get("shots_ms"), list):
         return [int(s) for s in meta["shots_ms"]]
-    d = _STATE.get("analyses_dir")
+    d = (_STATE if state is None else state).get("analyses_dir")
     if d is not None:
         p = d / meta["video_id"] / "analysis.json"
         if p.exists():
@@ -264,27 +277,40 @@ def language_qc(meta: dict) -> dict:
             "qc_non_english": float(non_en)}
 
 
-def featurize(item: tuple[str, str, str]) -> tuple[str, dict, np.ndarray | None, dict]:
-    """(video_id, meta.json path, npz path) -> (video_id, row, time-mean vertex map or None, emb vectors)."""
+def runtime_key(meta: dict) -> dict:
+    """The worker settings train/serve parity depends on (docs/PRODUCT_PIPELINE.md), None when not recorded."""
+    vc = meta.get("video_config") or {}
+    return {"tribe_commit": meta.get("tribe_commit"), "video_precision": vc.get("video_precision"),
+            "fast_video": vc.get("fast_video"), "emb_export": (meta.get("emb") or {}).get("version")}
+
+
+def featurize(item: tuple[str, str, str], state: dict | None = None, meta: dict | None = None
+              ) -> tuple[str, dict, np.ndarray | None, dict, dict]:
+    """(video_id, meta.json path, npz path) -> (video_id, row, time-mean vertex map or None, emb vectors,
+    ``runtime_key``). The runtime settings stay out of the table; they go to the featurizer sidecar.
+
+    ``state`` defaults to this process's pool state (``_init``); ``featurize_one`` passes a loaded featurizer
+    and, to add request context such as ``shots_ms``, the already-read ``meta``."""
+    st = _STATE if state is None else state
     vid, meta_path, npz_path = item
     try:
-        meta = json.loads(Path(meta_path).read_text())
+        meta = json.loads(Path(meta_path).read_text()) if meta is None else meta
         with np.load(npz_path) as zf:
             preds = zf["preds"]
             t = zf["seg_start"].astype(np.float64)
             dur = zf["seg_duration"].astype(np.float64)
         if preds.ndim != 2 or preds.shape[0] != len(t) or len(t) == 0:
             raise ValueError(f"bad preds shape {preds.shape} for {len(t)} segments")
-        if preds.shape[1] != _STATE["n_vertices"]:
-            raise ValueError(f"preds has {preds.shape[1]} vertices, ROI map {_STATE['n_vertices']}")
+        if preds.shape[1] != st["n_vertices"]:
+            raise ValueError(f"preds has {preds.shape[1]} vertices, ROI map {st['n_vertices']}")
         order = np.argsort(t, kind="stable")
         t, dur, preds = t[order], dur[order], preds[order]
         p32 = preds.astype(np.float32)
         if not np.isfinite(p32).all():
             raise ValueError("non-finite predictions")
         duration = float(meta.get("duration_s") or (t[-1] + dur[-1]))
-        raw = _STATE["masks"] @ p32.T  # [C, T] vertex-weighted channel means
-        shots = _shots_for(meta)
+        raw = st["masks"] @ p32.T  # [C, T] vertex-weighted channel means
+        shots = _shots_for(meta, st)
         words = words_lane(meta.get("words") or [])
         row = {
             "status": "ok", "error": None,
@@ -297,13 +323,13 @@ def featurize(item: tuple[str, str, str]) -> tuple[str, dict, np.ndarray | None,
                                          / max(duration, 1e-6))),
             **language_qc(meta),
             **base_features(meta, duration, shots),
-            **brain_features(t, dur, raw, duration, _STATE["spec"], shots, speech_spans(words)),
+            **brain_features(t, dur, raw, duration, st["spec"], shots, speech_spans(words)),
         }
         emb = load_emb(npz_path)
         row["qc_emb_modalities"] = float(sum(m in emb for m in EMB_MODALITIES))
-        return vid, row, p32.mean(axis=0), emb
+        return vid, row, p32.mean(axis=0), emb, runtime_key(meta)
     except Exception as exc:  # noqa: BLE001  one bad clip never stops the table
-        return vid, {"status": "error", "error": f"{type(exc).__name__}: {exc}"[:500]}, None, {}
+        return vid, {"status": "error", "error": f"{type(exc).__name__}: {exc}"[:500]}, None, {}, {}
 
 
 # ── discovery ────────────────────────────────────────────────────────────
@@ -375,10 +401,22 @@ def lockbox_ids(path: Path) -> set[str]:
     return set(sel.loc[sel["split"].astype(str) == "lockbox", "video_id"].astype(str))
 
 
+def cast_feature_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Every base_/brain_/emb_/qc_ column as float32 (the table's storage type; batch and featurize_one)."""
+    for c in [c for c in df.columns if c.startswith(("base_", "brain_", "emb_", "qc_"))]:
+        df[c] = pd.to_numeric(df[c], errors="coerce").astype("float32")
+    return df
+
+
 def build(out_root: Path, roi_map: Path, *, n_jobs: int, manifest: Path | None = None,
           analyses_dir: Path | None = None, n_pca: int = N_PCA, limit: int | None = None,
-          pca_exclude: set[str] | None = None, log=print) -> tuple[pd.DataFrame, dict, object]:
+          pca_exclude: set[str] | None = None, log=print,
+          state_out: dict | None = None) -> tuple[pd.DataFrame, dict, object]:
+    """Feature table, meta and the brain PCA. ``state_out``, when given, receives the featurizer state
+    (``{"arrays": ..., "info": ...}``, see ``write_featurizer``) without changing the table."""
     t0 = time.perf_counter()
+    runtimes: dict[str, dict] = {}
+    pcas: dict[str, object] = {}
     items, failed = discover(out_root)
     if limit is not None:
         items = items[:limit]
@@ -396,8 +434,10 @@ def build(out_root: Path, roi_map: Path, *, n_jobs: int, manifest: Path | None =
         pool = ctx.Pool(n_jobs, initializer=_init, initargs=init_args)
         results = pool.imap_unordered(featurize, items, chunksize=max(1, min(32, len(items) // (n_jobs * 8) or 1)))
     try:
-        for i, (vid, row, vec, emb) in enumerate(results, 1):
+        for i, (vid, row, vec, emb, rt) in enumerate(results, 1):
             rows[vid] = row
+            if rt:
+                runtimes[vid] = rt
             if vec is not None:
                 vecs[vid] = vec
             for m, v in emb.items():
@@ -438,6 +478,7 @@ def build(out_root: Path, roi_map: Path, *, n_jobs: int, manifest: Path | None =
         ipca, Z = fit_pca(X, n_pca, threads=max(1, min(n_jobs, PCA_THREADS)), n_fit=n_fit)
         del X
         if ipca is not None:
+            pcas["brain"] = ipca
             cols = [f"brain_pca_{j + 1:02d}" for j in range(Z.shape[1])]
             pcs = pd.DataFrame(Z, columns=cols)
             pcs.insert(0, "video_id", ok_ids)
@@ -463,6 +504,7 @@ def build(out_root: Path, roi_map: Path, *, n_jobs: int, manifest: Path | None =
                           threads=max(1, min(n_jobs, PCA_THREADS)), n_fit=len(ids_m) - len(held_m))
         if epca is None:
             continue
+        pcas[f"emb_{m}"] = epca
         pcs = pd.DataFrame(Z, columns=[f"emb_{m}_pca_{j + 1:02d}" for j in range(Z.shape[1])])
         pcs.insert(0, "video_id", ids_m)
         df = df.merge(pcs, on="video_id", how="left")
@@ -470,8 +512,7 @@ def build(out_root: Path, roi_map: Path, *, n_jobs: int, manifest: Path | None =
                        "n_fit": len(ids_m) - len(held_m), "n_wrong_dim_dropped": int(dims.sum() - len(ids_m)),
                        "explained_variance_ratio": [round(float(x), 5) for x in epca.explained_variance_ratio_]}
     embs.clear()
-    for c in [c for c in df.columns if c.startswith(("base_", "brain_", "emb_", "qc_"))]:
-        df[c] = pd.to_numeric(df[c], errors="coerce").astype("float32")
+    df = cast_feature_columns(df)
 
     counts = df["status"].value_counts().to_dict()
     meta = {
@@ -504,7 +545,161 @@ def build(out_root: Path, roi_map: Path, *, n_jobs: int, manifest: Path | None =
             f"the first {ONSET_S:g} s (stimulus-onset transient); the z scale and xch_synchrony exclude it.",
         ],
     }
+    if state_out is not None:
+        state_out.update(featurizer_state(df, meta, pcas, runtimes, roi_map, pca_exclude))
     return df, meta, ipca
+
+
+# ── featurizer state: featurise one new clip exactly like a training row ──
+
+
+def sha256_file(path: str | Path) -> str:
+    import hashlib
+
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def featurizer_state(df: pd.DataFrame, meta: dict, pcas: dict, runtimes: dict, roi_map: Path,
+                     pca_exclude: set[str] | None) -> dict:
+    """Arrays (PCA mean/components per block, float32 as in the .pca.npz) and the json-able description."""
+    from tribe_research.brain.proxies import PROXIES_FILE
+
+    arrays, blocks = {}, {}
+    for name, pca in pcas.items():
+        arrays[f"{name}_mean"] = pca.mean_.astype(np.float32)
+        arrays[f"{name}_components"] = pca.components_.astype(np.float32)
+        info = meta["pca"] if name == "brain" else meta["emb"]["per_modality"][name[len("emb_"):]]
+        blocks[name] = {"columns": [f"{name}_pca_{j + 1:02d}" for j in range(pca.components_.shape[0])],
+                        "dim": int(pca.components_.shape[1]), "n_fit": int(info["n_fit"]),
+                        "n_excluded_from_fit": int(info.get("n_excluded_from_fit",
+                                                            info.get("n_clips", 0) - info["n_fit"]))}
+    ok = df[df["status"] == "ok"] if "status" in df else df
+    mix: dict[str, dict[str, int]] = {}
+    for rt in (runtimes[v] for v in ok["video_id"] if v in runtimes):
+        for k, v in rt.items():
+            mix.setdefault(k, {})
+            mix[k][json.dumps(v)] = mix[k].get(json.dumps(v), 0) + 1
+    shots = pd.to_numeric(ok.get("base_has_shots", pd.Series(dtype=float)), errors="coerce")
+    info = {
+        "featurizer_version": FEATURIZER_VERSION,
+        "features_version": FEATURES_VERSION, "emb_version": EMB_VERSION,
+        "roi_feature_version": meta["roi_feature_version"], "proxies_version": meta["proxies_version"],
+        "proxies_sha256": sha256_file(PROXIES_FILE),
+        "roi_map": str(roi_map), "roi_map_sha256": sha256_file(roi_map),
+        "columns": list(df.columns),
+        "feature_columns": [c for c in df.columns if c.startswith(("base_", "brain_", "emb_", "qc_"))],
+        "blocks": blocks,
+        "pca_exclude": {"used": bool(pca_exclude), "n_ids": len(pca_exclude or ()),
+                        "note": "PCA fit rows exclude these (lockbox) clips; they are only projected"
+                        if pca_exclude else "no exclusion set: the PCAs were fit on every clip, lockbox "
+                        "included (build without --exclude-from-pca-fit)"},
+        "imputation": "none: missing values stay NaN; the model pipeline imputes them (tools/fit_models.py)",
+        "training_runtime": mix,
+        "training_has_shots_share": float(shots.mean()) if shots.notna().any() else None,
+        "n_ok": int(len(ok)),
+    }
+    return {"arrays": arrays, "info": info}
+
+
+def write_featurizer(stem: str | Path, state: dict, table_path: Path) -> dict:
+    """``<stem>.featurizer.npz`` + ``.json``; the json pins the npz, the table and the inputs by sha256."""
+    npz = Path(f"{stem}.featurizer.npz")
+    np.savez_compressed(npz, **state["arrays"])
+    info = {**state["info"], "npz": npz.name, "npz_sha256": sha256_file(npz),
+            "features_table": Path(table_path).name, "features_sha256": sha256_file(table_path)}
+    Path(f"{stem}.featurizer.json").write_text(json.dumps(info, indent=2) + "\n")
+    return info
+
+
+def load_featurizer(path: str | Path, roi_map: str | Path | None = None,
+                    analyses_dir: str | Path | None = None) -> dict:
+    """Load ``<stem>.featurizer.json`` (+ npz), verify every pinned sha256, and build the per-clip state.
+
+    Refuses a mismatched npz, ROI map, proxies file or version: a silent train/serve skew is worse than none."""
+    from tribe_research.brain.proxies import PROXIES_FILE
+
+    path = Path(path)
+    if path.suffix == ".npz":
+        path = path.with_suffix(".json")
+    info = json.loads(path.read_text())
+    if info.get("featurizer_version") != FEATURIZER_VERSION:
+        raise ValueError(f"{path}: featurizer_version {info.get('featurizer_version')!r}, "
+                         f"this code reads {FEATURIZER_VERSION!r}")
+    for key, want in (("features_version", FEATURES_VERSION), ("emb_version", EMB_VERSION),
+                      ("roi_feature_version", FEATURE_VERSION), ("proxies_version", ProxySpec.load().version)):
+        if info.get(key) != want:
+            raise ValueError(f"{path}: {key} {info.get(key)!r} != this code's {want!r}")
+    if sha256_file(PROXIES_FILE) != info["proxies_sha256"]:
+        raise ValueError(f"{PROXIES_FILE} changed since the featurizer was built (sha256 mismatch)")
+    npz = path.with_name(info["npz"])
+    if sha256_file(npz) != info["npz_sha256"]:
+        raise ValueError(f"{npz}: sha256 mismatch with {path.name}")
+    roi = Path(roi_map or info["roi_map"])
+    if sha256_file(roi) != info["roi_map_sha256"]:
+        raise ValueError(f"{roi}: ROI map sha256 differs from the one the features were built with")
+    with np.load(npz) as z:
+        arrays = {k: z[k] for k in z.files}
+    return {"info": info, "arrays": arrays, "path": str(path),
+            "clip": clip_state(str(roi), str(analyses_dir) if analyses_dir else None)}
+
+
+def resolve_worker_output(src: str | Path) -> tuple[str, str, str]:
+    """A ``<vid>.npz`` / ``<vid>.json`` / ``<vid>.emb.npz`` path, or a directory holding one clip's outputs,
+    -> the (video_id, json, npz) item ``featurize`` reads (the emb file is found next to the npz)."""
+    p = Path(src)
+    if p.is_dir():
+        found = [q for q in sorted(p.glob("*.json")) if not q.name.endswith(".error.json")
+                 and q.with_suffix(".npz").exists()]
+        if len(found) != 1:
+            raise ValueError(f"{p}: expected one <vid>.json + <vid>.npz, found {len(found)}")
+        p = found[0]
+    name = p.name
+    for suf in (".emb.npz", ".npz", ".json"):
+        if name.endswith(suf):
+            vid = name[: -len(suf)]
+            break
+    else:
+        raise ValueError(f"{p}: not a worker output (<vid>.npz, .json or .emb.npz)")
+    j, n = p.with_name(f"{vid}.json"), p.with_name(f"{vid}.npz")
+    if not (j.exists() and n.exists()):
+        raise ValueError(f"{p}: needs both {j.name} and {n.name}")
+    return vid, str(j), str(n)
+
+
+def project(x: np.ndarray, mean: np.ndarray, components: np.ndarray) -> np.ndarray:
+    """PCA projection with the saved mean/components (what sklearn's PCA/IncrementalPCA.transform computes)."""
+    return ((x.astype(np.float32) - mean) @ components.T).astype(np.float32)
+
+
+def featurize_one(worker_output: str | Path, context: dict | None, state: dict) -> pd.DataFrame:
+    """One clip -> a one-row frame with the training table's exact columns and dtypes.
+
+    Runs the batch path's ``featurize`` on the clip, projects its time-mean map and emb vectors on the saved
+    PCAs (an emb vector of the wrong width is dropped, as in the batch build), then orders and casts the
+    columns like ``build``. ``context`` may carry ``shots_ms``; nothing is imputed."""
+    context = context or {}
+    vid, meta_path, npz_path = resolve_worker_output(worker_output)
+    meta = None
+    if isinstance(context.get("shots_ms"), list):  # read exactly like a worker json that carries shots_ms
+        meta = {**json.loads(Path(meta_path).read_text()), "shots_ms": [int(s) for s in context["shots_ms"]]}
+    _, row, vec, emb, rt = featurize((vid, meta_path, npz_path), state["clip"], meta)
+    row = {"video_id": vid, **row}
+    arrays, blocks = state["arrays"], state["info"]["blocks"]
+    if row.get("status") == "ok":
+        vectors = {"brain": vec, **{f"emb_{m}": v for m, v in emb.items()}}
+        for name, b in blocks.items():
+            v = vectors.get(name)
+            if v is None or v.size != b["dim"]:
+                continue
+            z = project(v[None, :], arrays[f"{name}_mean"], arrays[f"{name}_components"])[0]
+            row.update(zip(b["columns"], map(float, z)))
+    df = pd.DataFrame([row]).reindex(columns=state["info"]["columns"])
+    df.attrs["runtime"] = rt
+    return cast_feature_columns(df)
 
 
 def main() -> int:
@@ -523,8 +718,10 @@ def main() -> int:
     args = ap.parse_args()
 
     excl = lockbox_ids(args.exclude_from_pca_fit) if args.exclude_from_pca_fit else None
+    state: dict = {}
     df, meta, ipca = build(args.out_root, args.roi_map, n_jobs=args.n_jobs, manifest=args.manifest,
-                           analyses_dir=args.analyses_dir, n_pca=args.n_pca, limit=args.limit, pca_exclude=excl)
+                           analyses_dir=args.analyses_dir, n_pca=args.n_pca, limit=args.limit, pca_exclude=excl,
+                           state_out=state)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     if args.out.suffix == ".csv":
         df.to_csv(args.out, index=False)
@@ -536,6 +733,7 @@ def main() -> int:
         np.savez_compressed(f"{stem}.pca.npz", mean=ipca.mean_.astype(np.float32),
                             components=ipca.components_.astype(np.float32),
                             explained_variance_ratio=ipca.explained_variance_ratio_)
+    write_featurizer(stem, state, args.out)
     print(json.dumps({"out": str(args.out), "rows": len(df), **{k: meta[k] for k in ("status_counts", "timing_s")},
                       "n_base": len(meta["columns"]["base"]), "n_brain": len(meta["columns"]["brain"]),
                       "n_emb": len(meta["columns"]["emb"])}, indent=2))

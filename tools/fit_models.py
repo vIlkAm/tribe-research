@@ -44,7 +44,14 @@ changing a clip toward a feature value would change its performance.
 
     python tools/fit_models.py --features results/features/features.parquet \
         --members results/run_full/members.csv --outcomes results/outcomes.parquet \
-        --selection results/study/selection.csv --out-dir results/models [--score-lockbox]
+        --selection results/study/selection.csv --out-dir results/models [--score-lockbox] \
+        [--save-model results/models/served [--save-feature-set BE] [--save-model-kind stack] \
+         [--lockbox-ext results/study/lockbox_ext.csv]]
+
+``--save-model DIR`` is opt-in and runs only after the evaluation above has written its outputs (which it does
+not change): it refits the chosen feature set/model exactly as the lockbox fit does (all non-lockbox train rows,
+same seed and groups), and writes the model, its manifest (stage-1 metrics, hashes, versions) and the reference
+tables tools/predict.py ranks a new clip against (content-scheme out-of-fold predictions; never a lockbox row).
 """
 
 from __future__ import annotations
@@ -223,6 +230,24 @@ def load_posts(members: pd.DataFrame, outcomes: pd.DataFrame, targets: list[str]
     return df.reset_index(drop=True), {"targets": tspec, **info}
 
 
+def follower_bucket(follower_count) -> pd.Series:
+    """A's follower term: floor(log10(1 + followers)); unknown stays NaN."""
+    fc = pd.to_numeric(pd.Series(follower_count), errors="coerce")
+    return np.floor(np.log10(1.0 + fc.clip(lower=0)))
+
+
+def post_time(posted_at) -> tuple[pd.Series, pd.Series]:
+    """(weekday, hour + minute/60) in UTC; unparseable stays NaN."""
+    ts = pd.to_datetime(pd.Series(posted_at), utc=True, errors="coerce", format="mixed")
+    return ts.dt.weekday.astype("float"), ts.dt.hour + ts.dt.minute / 60.0
+
+
+def aspect(height, width) -> pd.Series:
+    """base_aspect: height / width (0 width -> NaN)."""
+    return pd.to_numeric(pd.Series(height), errors="coerce") / pd.to_numeric(
+        pd.Series(width), errors="coerce").replace(0, np.nan)
+
+
 def build_dataset(features: pd.DataFrame, members: pd.DataFrame, outcomes: pd.DataFrame,
                   targets: list[str], selection: pd.DataFrame | None = None,
                   exclude_cols: list[str] | None = None,
@@ -239,8 +264,7 @@ def build_dataset(features: pd.DataFrame, members: pd.DataFrame, outcomes: pd.Da
             if src in sel:
                 extra[dst] = pd.to_numeric(sel[src], errors="coerce")
         if {"width", "height"} <= set(sel.columns):
-            extra["base_aspect"] = pd.to_numeric(sel["height"], errors="coerce") / pd.to_numeric(
-                sel["width"], errors="coerce").replace(0, np.nan)
+            extra["base_aspect"] = aspect(sel["height"], sel["width"])
         sel = sel[cols].merge(extra, on="video_id")
         df = df.merge(sel, on="video_id", how="inner")
         info["n_posts_in_selection"] = int(len(df))
@@ -263,13 +287,11 @@ def build_dataset(features: pd.DataFrame, members: pd.DataFrame, outcomes: pd.Da
     info["n_posts_with_features"] = int(len(df))
 
     if "follower_count" in df:
+        df["base_follower_bucket"] = follower_bucket(df["follower_count"])
         fc = pd.to_numeric(df["follower_count"], errors="coerce")
-        df["base_follower_bucket"] = np.floor(np.log10(1.0 + fc.clip(lower=0)))
         info["follower_known_share"] = round(float(fc.notna().mean()), 4) if len(df) else None
     if "posted_at" in df:
-        ts = pd.to_datetime(df["posted_at"], utc=True, errors="coerce", format="mixed")
-        df["base_post_weekday"] = ts.dt.weekday.astype("float")
-        hours = ts.dt.hour + ts.dt.minute / 60.0
+        df["base_post_weekday"], hours = post_time(df["posted_at"])
         if hours.dropna().nunique() > 1:  # date-only timestamps carry no hour
             df["base_post_hour"] = hours.astype("float")
     df = df.reset_index(drop=True)
@@ -1830,6 +1852,281 @@ def _run(features, members, outcomes, targets, out_dir, selection, schemes, mode
     return res
 
 
+# ── served model artefact (--save-model) ──────────────────────────────────
+
+ARTEFACT_VERSION = "perf_artefact_v1"
+DEFAULT_LOCKBOX_EXT = Path(__file__).resolve().parents[1] / "results/study/lockbox_ext.csv"
+
+
+def _sha256(path) -> str | None:
+    import hashlib
+
+    if path is None or not Path(path).exists():
+        return None
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _git() -> dict:
+    import subprocess
+
+    root = Path(__file__).resolve().parents[1]
+    try:
+        head = subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"], capture_output=True, text=True,
+                              check=True).stdout.strip()
+        dirty = bool(subprocess.run(["git", "-C", str(root), "status", "--porcelain"], capture_output=True,
+                                    text=True, check=True).stdout.strip())
+        return {"commit": head, "dirty": dirty}
+    except Exception:  # noqa: BLE001
+        return {"commit": None, "dirty": None}
+
+
+def _pipeline_terms(pipe, X: pd.DataFrame) -> tuple[np.ndarray, list[str], np.ndarray]:
+    """(transformed design, output names, ridge coefficients) of a make_model("ridge") pipeline."""
+    T = np.asarray(pipe[:-1].transform(X), float)
+    return T, list(pipe.named_steps["pre"].get_feature_names_out()), np.asarray(pipe[-1].coef_, float)
+
+
+def linear_terms(est, X: pd.DataFrame) -> pd.DataFrame:
+    """Per-row additive terms of a fitted ``stack`` or ``ridge`` model: prediction = row sum + one constant.
+
+    Names: ``num__<col>`` / ``cat__<col>_<level>`` for the final ridge's own columns; for ``stack`` each block
+    score is expanded into its block ridge's columns, ``<block>:<col>`` (brain:…, emb:…), which is exact because
+    the block model is linear in its standardised inputs. Differences between rows (or to a reference average)
+    are therefore exact decompositions of prediction differences. Model attributions, not causes."""
+    X = X.reset_index(drop=True)
+    if isinstance(est, BlockStackRegressor):
+        scores, expanded = {}, {}
+        for b, m in est.block_models_.items():
+            cols = est.blocks_[b]
+            scores[f"stack_{b}"] = m.predict(X[cols])
+            names = list(m[0].get_feature_names_out())  # the imputer drops all-NaN training columns
+            expanded[b] = (names, np.asarray(m[:-1].transform(X[cols]), float) * m[-1].coef_)
+        Xf = pd.concat([X, pd.DataFrame(scores, index=X.index)], axis=1)
+        T, names, coef = _pipeline_terms(est.final_, Xf[input_columns(est.final_cols_)])
+        scale = est.final_.named_steps["pre"].named_transformers_["num"][-1].scale_
+        num = [n for n in names if n.startswith("num__")]
+        out = {}
+        for j, n in enumerate(names):
+            if n.startswith("num__stack_"):
+                b = n[len("num__stack_"):]
+                f = coef[j] / scale[num.index(n)]
+                bn, bt = expanded[b]
+                for i, c in enumerate(bn):
+                    out[f"{b}:{c}"] = f * bt[:, i]
+            else:
+                out[n] = T[:, j] * coef[j]
+        return pd.DataFrame(out)
+    if hasattr(est, "named_steps") and isinstance(est[-1], GroupedRidgeCV):
+        T, names, coef = _pipeline_terms(est, X)
+        return pd.DataFrame(T * coef, columns=names)
+    raise ValueError(f"no linear decomposition for {type(est).__name__}")
+
+
+def imputation_medians(est) -> dict:
+    """The medians the fitted pipeline actually imputes with (fit on its training rows)."""
+    def med(imp):
+        return {str(c): float(v) for c, v in zip(imp.get_feature_names_out(), imp.statistics_)
+                if np.isfinite(v)}
+
+    if isinstance(est, BlockStackRegressor):
+        return {"blocks": {b: med(m[0]) for b, m in est.block_models_.items()},
+                "final": med(est.final_.named_steps["pre"].named_transformers_["num"][0])}
+    return {"final": med(est.named_steps["pre"].named_transformers_["num"][0])}
+
+
+def _wsum(x) -> dict | None:
+    if not x:
+        return None
+    return {"point": x.get("point"), "ci": x.get("ci")}
+
+
+def served_metrics(res: dict, target: str, feature_set: str, model: str) -> dict:
+    """The stage-1 (and, when scored, lockbox) numbers tools/predict.py derives model_status/brain_claim from."""
+    tr = res["targets"][target]
+    sch = tr.get("schemes", {})
+
+    def delta(scheme, a, b):
+        return _wsum(sch.get(scheme, {}).get("pooled", {}).get("deltas", {}).get(f"{a}-{b}", {})
+                     .get("within_stratum_spearman"))
+
+    lb = tr.get("lockbox", {}).get("pooled") if res["config"].get("score_lockbox") else None
+    served = f"{feature_set}_{model}"
+    return {
+        "metric": "within_stratum_spearman (weighted 1/incl_prob in CV; lockbox unweighted)",
+        "n_boot": res["config"]["n_boot"], "schemes": list(sch), "score_lockbox": bool(lb),
+        "go": {"contrast": "BE_stack-A_stack", "content": delta("content", "BE_stack", "A_stack"),
+               "account": delta("account", "BE_stack", "A_stack")},
+        "served_go": {"contrast": f"{served}-A_{model}", "content": delta("content", served, f"A_{model}"),
+                      "account": delta("account", served, f"A_{model}")},
+        "served_cv": _wsum(sch.get("content", {}).get("pooled", {}).get("models", {}).get(served, {})
+                           .get("within_stratum_spearman")),
+        "brain": {"contrast": "BE_stack-E_stack", "content": delta("content", "BE_stack", "E_stack"),
+                  "lockbox": _wsum(lb["deltas"].get("BE_stack-E_stack", {}).get("within_stratum_spearman"))
+                  if lb else None},
+        "served_lockbox": _wsum(lb["models"].get(served, {}).get("within_stratum_spearman")) if lb else None,
+    }
+
+
+def read_lockbox_ext(path) -> set[str]:
+    if path is None or not Path(path).exists():
+        return set()
+    t = read_table(Path(path))
+    if "video_id" not in t:
+        raise SystemExit(f"{path}: needs a video_id column")
+    return set(t["video_id"].astype(str))
+
+
+def _stratum_pct(y: np.ndarray, strata: np.ndarray, w: np.ndarray) -> np.ndarray:
+    """Weighted mid-rank of y within its stratum / the stratum's weight (0..1), the metric's rank basis."""
+    codes = pd.factorize(strata)[0]
+    W = np.bincount(codes, w)
+    return _wranks(y, codes, w) / W[codes]
+
+
+def save_model(features, members, outcomes, *, res: dict, eval_dir: Path, model_dir: Path, selection=None,
+               feature_set: str = "BE", model: str = "stack", lockbox_ext: set[str] | None = None,
+               exclude_cols=None, exclude_non_english: bool = True, paths: dict | None = None,
+               log=print) -> dict:
+    """Refit the served model on all non-lockbox train rows and write it with its reference tables.
+
+    Runs after ``run`` and reads only its outputs (``res`` and ``eval_dir/oof_predictions.csv``); the evaluation
+    is untouched. The fit is ``fit_predict`` with the evaluation's feature sets, seed and ``fit_weighted``, i.e.
+    exactly the model the lockbox would be scored with. Refuses (SystemExit) when a stage-2 lockbox-extension
+    content is a train row: the evaluation itself would then have trained on the lockbox."""
+    import joblib
+    import sklearn
+
+    cfg = res["config"]
+    if model not in ("stack", "ridge"):
+        raise SystemExit(f"--save-model-kind {model!r}: only stack/ridge (linear, so drivers are exact)")
+    if model not in res["models"] or "content" not in cfg["schemes"]:
+        raise SystemExit(f"--save-model needs the content scheme and {model!r} in --models (its out-of-fold "
+                         "predictions are the reference tables and its metrics set model_status)")
+    df_all, _, _ = build_dataset(features, members, outcomes, list(res["targets"]), selection, exclude_cols,
+                                 exclude_non_english=exclude_non_english)
+    lockbox_ext = set(lockbox_ext or ())
+    train_ids = set(df_all.loc[df_all["split"] == "train", "video_id"].astype(str))
+    clash = sorted(train_ids & lockbox_ext)
+    if clash:
+        raise SystemExit(f"{len(clash)} lockbox-extension contents are train rows in this selection (e.g. "
+                         f"{clash[:3]}); the evaluation used them. Mark them lockbox before fitting.")
+    lock_ids = set(df_all.loc[df_all["split"] == "lockbox", "video_id"].astype(str)) | lockbox_ext
+    if selection is not None and {"video_id", "split"} <= set(selection.columns):
+        lock_ids |= set(selection.loc[selection["split"].astype(str) == "lockbox", "video_id"].astype(str))
+    oof_all = pd.read_csv(eval_dir / "oof_predictions.csv", dtype={"vp_id": str, "video_id": str})
+    model_dir.mkdir(parents=True, exist_ok=True)
+    pred_col = f"pred_{feature_set}_{model}"
+    git = _git()
+    stamp = time.strftime("%Y%m%d")
+    manifest = {
+        "artefact_version": ARTEFACT_VERSION,
+        "model_version": f"perf-{model}-{feature_set}_v1+{stamp}.{(git['commit'] or 'nogit')[:7]}",
+        "feature_set": feature_set, "model": model, "created_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "git": git, "versions": {"sklearn": sklearn.__version__, "numpy": np.__version__, "pandas": pd.__version__,
+                                 "joblib": joblib.__version__, "python": sys.version.split()[0]},
+        "config": {k: cfg.get(k) for k in ("seed", "n_splits", "fit_weighted", "min_account_n", "schemes",
+                                            "n_boot", "score_lockbox")},
+        "exclude_non_english": exclude_non_english, "inputs": {}, "lockbox_ids": "lockbox_ids.json",
+        "n_lockbox_ids": len(lock_ids), "targets": {},
+        "reference_rules": {"percentile": "weighted (1/incl_prob) mid-rank among the deal×platform reference "
+                            "contents' content-CV out-of-fold predictions; null below 30 contents",
+                            "min_reference_n": 30, "min_account_posts": cfg.get("min_account_n", 40)},
+    }
+    for key, path in (paths or {}).items():
+        manifest["inputs"][key] = {"path": str(path) if path else None, "sha256": _sha256(path)}
+    feat = (paths or {}).get("features")
+    fz = Path(f"{Path(feat).with_suffix('')}.featurizer.json") if feat else None
+    manifest["inputs"]["featurizer"] = {"path": str(fz) if fz and fz.exists() else None,
+                                        "sha256": _sha256(fz) if fz else None}
+    (model_dir / "lockbox_ids.json").write_text(json.dumps(sorted(lock_ids)) + "\n")
+    for t in res["targets"]:
+        ycol = f"y_{t}"
+        dfl = df_all[np.isfinite(df_all[ycol].to_numpy(float))]
+        df = dfl[dfl["split"] == "train"].reset_index(drop=True)
+        y, w = df[ycol].to_numpy(float), df["_w"].to_numpy(float)
+        fsets = feature_sets(df)
+        if feature_set not in fsets:
+            raise SystemExit(f"[{t}] feature set {feature_set!r} not available (have {sorted(fsets)}); "
+                             "choose one with --save-feature-set")
+        cols = fsets[feature_set]
+        use = input_columns(cols)
+        est, _ = fit_predict(model, cols, df, y, w, df.iloc[:1], cfg["seed"], cfg["fit_weighted"])
+        mfile = model_dir / f"model_{t}.joblib"
+        joblib.dump(est, mfile)
+        # reference: content-scheme out-of-fold predictions of this model, joined to the train rows
+        o = oof_all[(oof_all["target"] == t) & (oof_all["scheme"] == "content")]
+        if pred_col not in o:
+            raise SystemExit(f"[{t}] {pred_col} missing from oof_predictions.csv")
+        ref = o[["vp_id", "video_id", "y", "w", pred_col]].rename(columns={pred_col: "pred"}).merge(
+            df[["vp_id", "deal_id", "platform", "social_account_id", "incl_prob", "_content"]].astype(
+                {"vp_id": str}), on="vp_id", how="inner", validate="one_to_one")
+        if len(ref) != len(o) or not np.allclose(ref["y"], df.set_index("vp_id").loc[ref["vp_id"], ycol]):
+            raise SystemExit(f"[{t}] oof_predictions.csv does not match this dataset (rerun the evaluation)")
+        ref = ref[~ref["video_id"].isin(lock_ids)]  # none by construction (train rows only); belt and braces
+        content = (ref.groupby(["deal_id", "platform", "video_id"], sort=True)
+                   .agg(pred=("pred", "mean"), y=("y", "mean"), w=("w", "first"), incl_prob=("incl_prob", "first"),
+                        n_posts=("vp_id", "size")).reset_index())
+        content["obs_pct"] = _stratum_pct(content["y"].to_numpy(float),
+                                          (content["deal_id"] + "|" + content["platform"]).to_numpy(),
+                                          content["w"].to_numpy(float))
+        n_acct = df.groupby(["deal_id", "platform", "social_account_id"]).size()
+        big = n_acct[n_acct >= cfg.get("min_account_n", 40)].reset_index()[["deal_id", "platform",
+                                                                            "social_account_id"]]
+        big = big[big["social_account_id"] != "missing"]
+        acct = (ref.merge(big, on=["deal_id", "platform", "social_account_id"])
+                .groupby(["deal_id", "platform", "social_account_id", "video_id"], sort=True)
+                .agg(pred=("pred", "mean"), y=("y", "mean"), w=("w", "first")).reset_index())
+        acct = acct.merge(n_acct.rename("n_train_posts").reset_index(), on=["deal_id", "platform",
+                                                                           "social_account_id"])
+        # reference-average linear terms per deal×platform (drivers are relative to these)
+        terms = linear_terms(est, df[use])
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            pred_in = est.predict(df[use])
+        key = df[["deal_id", "platform"]].reset_index(drop=True)
+        tw = terms.mul(w, axis=0)
+        g = pd.concat([key, tw, pd.DataFrame({"_w": w, "_p": pred_in * w, "_n": 1})], axis=1).groupby(
+            ["deal_id", "platform"], sort=True).sum()
+        rterms = g[terms.columns].div(g["_w"], axis=0)
+        rterms.insert(0, "pred_mean", g["_p"] / g["_w"])
+        rterms.insert(0, "n_posts", g["_n"].astype(int))
+        files = {"model": mfile.name, "reference": f"reference_{t}.csv",
+                 "reference_accounts": f"reference_accounts_{t}.csv", "reference_terms": f"reference_terms_{t}.csv",
+                 "imputation": f"imputation_{t}.json"}
+        content.to_csv(model_dir / files["reference"], index=False)
+        acct.to_csv(model_dir / files["reference_accounts"], index=False)
+        rterms.reset_index().to_csv(model_dir / files["reference_terms"], index=False)
+        (model_dir / files["imputation"]).write_text(json.dumps(imputation_medians(est), indent=1) + "\n")
+        metrics = served_metrics(res, t, feature_set, model)
+        # prereg: a confirmatory brain claim needs the stage-2 lockbox (the sealed 225 + the extension)
+        scored = set(oof_all.loc[(oof_all["target"] == t) & (oof_all["scheme"] == "lockbox"), "video_id"])
+        metrics["lockbox_contents"] = {"n": len(scored), "n_extension": len(scored & lockbox_ext),
+                                       "includes_extension": bool(scored & lockbox_ext)}
+        manifest["targets"][t] = {
+            "files": files, "sha256": {k: _sha256(model_dir / v) for k, v in files.items()},
+            "columns": {"cat": cols[0], "num": cols[1]}, "input_columns": use,
+            "n_train_posts": int(len(df)), "n_train_contents": int(df["video_id"].nunique()),
+            "train_video_ids_sha256": _sha256_text("\n".join(sorted(set(df["video_id"].astype(str))))),
+            "n_reference_contents": int(len(content)), "deals": sorted(df["deal_id"].unique().tolist()),
+            "strata": sorted((df["deal_id"] + "|" + df["platform"]).unique().tolist()),
+            "metrics": metrics,
+        }
+        log(f"  saved {t}: {mfile} ({len(df)} train posts, {len(content)} reference contents)")
+    (model_dir / "train_video_ids.json").write_text(json.dumps(sorted(train_ids)) + "\n")
+    (model_dir / "manifest.json").write_text(json.dumps(manifest, indent=2, default=_json_default) + "\n")
+    return manifest
+
+
+def _sha256_text(s: str) -> str:
+    import hashlib
+
+    return hashlib.sha256(s.encode()).hexdigest()
+
+
 def _json_default(o):
     if isinstance(o, np.floating):
         return float(o) if np.isfinite(o) else None
@@ -1868,17 +2165,49 @@ def main() -> int:
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--keep-non-english", action="store_true",
                     help="keep clips whisperx confidently detected as non-English (their text features are garbage)")
+    ap.add_argument("--save-model", type=Path, default=None, metavar="DIR",
+                    help="after the evaluation: refit the served model on all non-lockbox train rows and write it "
+                         "with its manifest and reference tables (tools/predict.py)")
+    ap.add_argument("--save-feature-set", default="BE", choices=("A", "B", "E", "BE"))
+    ap.add_argument("--save-model-kind", default="stack", choices=("stack", "ridge"))
+    ap.add_argument("--lockbox-ext", type=Path, default=DEFAULT_LOCKBOX_EXT,
+                    help="stage-2 lockbox extension (video_id); with --save-model only: never trained on or used "
+                         "as a reference (default: %(default)s when it exists)")
     args = ap.parse_args()
-    run(read_table(args.features), read_table(args.members), read_table(args.outcomes), targets=args.targets,
-        out_dir=args.out_dir, selection=read_table(args.selection) if args.selection else None,
+    features, members, outcomes = read_table(args.features), read_table(args.members), read_table(args.outcomes)
+    selection = read_table(args.selection) if args.selection else None
+    ext = read_lockbox_ext(args.lockbox_ext) if args.save_model else set()
+    if args.save_model and ext and selection is not None and "video_id" in selection:  # fail before a long run
+        tr_ids = set(selection.loc[selection.get("split", pd.Series("train", index=selection.index)).astype(str)
+                                   == "train", "video_id"].astype(str))
+        if tr_ids & ext:
+            raise SystemExit(f"{len(tr_ids & ext)} lockbox-extension contents are train rows in {args.selection}")
+    res = run(features, members, outcomes, targets=args.targets,
+        out_dir=args.out_dir, selection=selection,
         schemes=args.schemes, models=args.models, n_splits=args.n_splits, n_boot=args.n_boot, seed=args.seed,
         min_deal_n=args.min_deal_n, perm_repeats=args.perm_repeats, perm_model=args.perm_model,
         perm_per_feature=not args.no_perm_per_feature, exclude_cols=args.exclude_if_true,
         fit_weighted=args.fit_weighted, niche_base=args.niche_base, niche=not args.no_niche,
         min_account_n=args.min_account_n, score_lockbox=args.score_lockbox, threads=args.threads,
         exclude_non_english=not args.keep_non_english)
+    if args.save_model:
+        from threadpoolctl import threadpool_limits
+
+        with threadpool_limits(args.threads):
+            _save_from_cli(args, features, members, outcomes, selection, res, ext)
     return 0
 
 
+def _save_from_cli(args, features, members, outcomes, selection, res, ext):
+    save_model(features, members, outcomes, res=res, eval_dir=args.out_dir, model_dir=args.save_model,
+               selection=selection, feature_set=args.save_feature_set, model=args.save_model_kind,
+               lockbox_ext=ext, exclude_cols=args.exclude_if_true, exclude_non_english=not args.keep_non_english,
+               paths={"features": args.features, "members": args.members, "outcomes": args.outcomes,
+                      "selection": args.selection, "lockbox_ext": args.lockbox_ext if ext else None})
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    # run through the importable module, so a saved model pickles as fit_models.<Class>, not __main__.<Class>
+    import fit_models
+
+    sys.exit(fit_models.main())
