@@ -19,7 +19,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 KEY="${POD_KEY:-$HOME/.ssh/id_ed25519}"
 JOB="${JOB:-/workspace/tribe-job}"
 SSH=(ssh -p "$POD_PORT" -i "$KEY" -o StrictHostKeyChecking=accept-new)
-RSYNC=(rsync -a --info=progress2 -e "${SSH[*]}")
+RSYNC=(rsync -rlpt --info=progress2 -e "${SSH[*]}")
 # stock RunPod images lack rsync, and setup.sh (which installs it) arrives by rsync
 need_rsync() {
   "${SSH[@]}" "$POD" 'command -v rsync >/dev/null || { apt-get update -qq && apt-get install -y -qq rsync >/dev/null; }'
