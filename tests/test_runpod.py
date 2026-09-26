@@ -427,6 +427,7 @@ def test_gpus_lists_cheapest_first_with_both_clouds_and_spot(isolated, capsys):
     isolated.on("POST", "graphql", graphql_key="secureSpotPrice", body=TYPES)
     isolated.on("POST", "graphql", graphql_key="dataCenters { id name", body=DCS)
     isolated.on("POST", "graphql", graphql_key="PriceDetail", body={"errors": [{"message": "Cannot query field"}]})
+    isolated.on("GET", runpod.CATALOG_URL, status=404, body={"error": "not found"})
     code, o, e = run(["gpus"], capsys)
     assert code == 0, e
     rows = [ln for ln in o.splitlines()[2:-1]]
@@ -434,7 +435,7 @@ def test_gpus_lists_cheapest_first_with_both_clouds_and_spot(isolated, capsys):
     assert all(x in rows[0] for x in ("0.34", "0.20", "0.69", "0.50", "US-TX-3:Low"))
     assert "A4000" not in o                                    # 16 GB VRAM: hidden
     assert "H100" not in o                                     # no stock, not on the shortlist
-    assert "showing list prices" in e
+    assert "showing list prices" in e and "v2 catalog unavailable" in e
     code, o, e = run(["gpus", "--all"], capsys)
     assert "RTX A4000" in o and "VRAM too small" in o and "H100 NVL" in o
 
@@ -450,12 +451,20 @@ def test_gpus_uses_host_ram_filter_and_falls_back_without_spot(isolated, capsys)
                               "minMemory": 62, "maxUnreservedGpuCount": 6},
                       "com": {"stockStatus": "Low", "uninterruptablePrice": 0.71, "minimumBidPrice": 0.3,
                               "minMemory": 100, "maxUnreservedGpuCount": 2}}]}})
+    isolated.on("GET", runpod.CATALOG_URL, body={"data": [
+        {"id": "NVIDIA L40S", "price": {"secure": 0.86, "community": 0.79}, "availability": "MEDIUM"},
+        {"id": "NVIDIA GeForce RTX 4090", "price": {"secure": 0.69, "community": 0.31}, "availability": "HIGH"}]})
     code, o, e = run(["gpus", "--dc", "EU-RO-1", "--gpu-count", "2", "--min-ram-gb", "40"], capsys)
     assert code == 0, e
     assert "spot prices unavailable" in e
     row = next(ln for ln in o.splitlines() if ln.startswith("L40S"))
     assert "0.71" in row and "0.99" in row and "Low/High" in row and " 62 " in row and "   6 " in row
     assert "network volumes here: yes" in o and "80 GB asked" in o
+    assert "MEDIUM" in row and "0.71" in row                 # host-matched price wins over the list price
+    r4090 = next(ln for ln in o.splitlines() if ln.startswith("RTX 4090"))
+    assert "0.31" in r4090 and "HIGH" in r4090               # documented catalog price beats the old list price
+    cat = next(c[1] for c in isolated.calls if c[1].startswith(runpod.CATALOG_URL))
+    assert "count=2" in cat and "product=POD" in cat and "cloud=COMMUNITY" in cat
     detail = [c[2] for c in isolated.calls if c[2] and "PriceDetail" in c[2]["query"]]
     assert detail[0]["variables"] == {"n": 2, "ram": 80, "dc": "EU-RO-1"}   # GraphQL variables
 

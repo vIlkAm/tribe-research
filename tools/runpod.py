@@ -41,6 +41,9 @@ PUBKEY_FILE = Path.home() / ".ssh" / "id_ed25519.pub"
 
 REST_URL = "https://rest.runpod.io/v1"
 GRAPHQL_URL = "https://api.runpod.io/graphql"
+# Documented v2 catalog (docs.runpod.io/api-reference-v2/catalog/list-gpu-types):
+# list price per GPU per hour and availability for a pod of `count` GPUs.
+CATALOG_URL = "https://api.runpod.io/v2/catalog/gpus"
 HTTP_TIMEOUT = 30
 USER_AGENT = "tribe-research-runpod/1.0"
 
@@ -361,6 +364,22 @@ def money(v) -> str:
     return f"{f:.2f}" if f > 0 else "-"
 
 
+def catalog(count: int, cloud: str = "COMMUNITY") -> dict[str, dict]:
+    """{gpu type id: catalog entry} from the v2 catalog, with availability for ``count`` GPUs."""
+    q = urllib.parse.urlencode({"include": "AVAILABILITY", "product": "POD", "count": count, "cloud": cloud})
+    status, raw = _http("GET", f"{CATALOG_URL}?{q}")
+    if status >= 400:
+        raise ApiError(f"catalog: HTTP {status}: {scrub(raw[:300].decode(errors='replace'))}")
+    try:
+        doc = json.loads(raw)
+    except ValueError:
+        raise ApiError("catalog: non-JSON response") from None
+    items = doc if isinstance(doc, list) else next(
+        (doc[k] for k in ("data", "gpus", "items", "gpuTypes") if isinstance(doc.get(k), list)), [])
+    return {g.get("id") or g.get("gpuTypeId"): g for g in items if isinstance(g, dict)
+            and (g.get("id") or g.get("gpuTypeId"))}
+
+
 def cmd_gpus(args) -> int:
     try:
         types = graphql(Q_GPU_TYPES_SPOT).get("gpuTypes") or []
@@ -389,6 +408,12 @@ def cmd_gpus(args) -> int:
         err(f"note: per-host price/RAM query failed ({e}); showing list prices, "
             "and stock is not filtered by host RAM")
 
+    cat: dict[str, dict] = {}
+    try:
+        cat = catalog(args.gpu_count)
+    except ApiError as e:
+        err(f"note: v2 catalog unavailable ({e}); no availability for {args.gpu_count} GPU/pod")
+
     rows = []
     for t in types:
         gid = t.get("id")
@@ -401,13 +426,16 @@ def cmd_gpus(args) -> int:
         vram = to_float(t.get("memoryInGb"))
         if not args.all and gid not in SHORTLIST and (vram < args.min_vram_gb or not in_stock):
             continue
+        c = cat.get(gid) or {}
         p = {
-            "com": com.get("uninterruptablePrice") or (t.get("communityPrice") if t.get("communityCloud") else None),
+            "com": com.get("uninterruptablePrice") or (c.get("price") or {}).get("community")
+            or (t.get("communityPrice") if t.get("communityCloud") else None),
             "com_spot": com.get("minimumBidPrice") or t.get("communitySpotPrice"),
             "sec": sec.get("uninterruptablePrice") or (t.get("securePrice") if t.get("secureCloud") else None),
             "sec_spot": sec.get("minimumBidPrice") or t.get("secureSpotPrice"),
         }
         on_demand = [to_float(v) for v in (p["com"], p["sec"]) if to_float(v) > 0]
+        p["avail"] = str(c.get("availability") or "-") if cat else "?"
         rows.append((min(on_demand) if on_demand else 9e9, gid, vram, p, sec, com, where))
     rows.sort(key=lambda r: (r[0], r[1]))
 
@@ -416,7 +444,7 @@ def cmd_gpus(args) -> int:
         f"({ram_total} GB asked); $/h per GPU, on-demand and spot (bid)"
         + (f"; network volumes here: {'yes' if storage.get(args.dc) else 'no'}" if args.dc in storage else ""))
     out(f"{'GPU':<30} {'VRAM':>4} {'COM':>5} {'spot':>5} {'SEC':>5} {'spot':>5} "
-        f"{'stock com/sec':>14} {'RAM':>4} {'free':>4}  datacenters with stock")
+        f"{'stock com/sec':>14} {'RAM':>4} {'free':>4} {f'x{args.gpu_count}':>6}  datacenters with stock")
     for _, gid, vram, p, sec, com, where in rows:
         stock = f"{com.get('stockStatus') or '-'}/{sec.get('stockStatus') or '-'}" if (sec or com) else "?"
         rams = [to_float(x.get("minMemory")) for x in (com, sec) if x.get("minMemory")]
@@ -426,9 +454,11 @@ def cmd_gpus(args) -> int:
         flag = "" if vram >= args.min_vram_gb else "  (VRAM too small for TRIBE)"
         dcs_txt = " ".join(f"{dc}:{s}" for dc, s in where) or "-"
         out(f"{short_gpu(gid):<30} {vram:>4.0f} {money(p['com']):>5} {money(p['com_spot']):>5} "
-            f"{money(p['sec']):>5} {money(p['sec_spot']):>5} {stock:>14} {ram:>4} {free:>4}  {dcs_txt}{flag}")
+            f"{money(p['sec']):>5} {money(p['sec_spot']):>5} {stock:>14} {ram:>4} {free:>4} {p['avail']:>6}"
+            f"  {dcs_txt}{flag}")
     out("COM = community cloud (cheapest; pod volume only), SEC = secure cloud (network volumes). "
-        "RAM = least host RAM (GB) the API reports for a matching host; ? = not reported.")
+        "RAM = least host RAM (GB) the API reports for a matching host; ? = not reported. "
+        f"x{args.gpu_count} = community availability for a {args.gpu_count}-GPU pod (v2 catalog).")
     return 0
 
 

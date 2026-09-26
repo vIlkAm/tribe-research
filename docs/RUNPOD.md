@@ -13,7 +13,16 @@ RUNPOD_API_KEY=...
 HF_TOKEN=...
 ```
 
-The HF account must have accepted Meta's licence for `meta-llama/Llama-3.2-3B`.
+Keys with the least access that works:
+
+- **Runpod:** console → Settings → API Keys → **Restricted**, with read/write
+  for Pods and read for everything else this tool uses (GPU catalog, billing
+  balance); no Serverless, registries or templates. The watchdog uses this key
+  to stop pods at the cap, so it must live here: a Runpod MCP sign-in is
+  session-scoped and can't back an unattended cap. Pods created through the
+  Runpod MCP also skip `pod-create`'s watchdog check, so create them here.
+- **Hugging Face:** a fine-grained **read** token.
+  The HF account must have accepted Meta's licence for `meta-llama/Llama-3.2-3B`.
 `tools/runpod.py` reads both, never prints them, and masks the `env` block in
 any pod JSON it shows. The pod gets this server's `~/.ssh/id_ed25519.pub` as
 `PUBLIC_KEY`, so no console SSH-key setup is needed.
