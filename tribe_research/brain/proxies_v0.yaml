@@ -15,7 +15,7 @@
 # Cognitive control must never be hypothesis_positive: preferred short videos
 # showed dACC/dlPFC *deactivation* (Hong et al. 2026, spec [S3]).
 #
-# Copy rules (spec §08): no "firing", no "caused", no mind-reading claims.
+# Copy rules (spec v0.2 §09): no "firing", no "caused", no mind-reading claims.
 # tests/test_brain.py scans every string below.
 version: proxies_v0
 channels:

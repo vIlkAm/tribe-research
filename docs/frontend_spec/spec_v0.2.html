@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<title>Neural Video Intelligence - Frontend Spec v0.2</title>
+<style>
+@page { size: A4; margin: 0; }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: "Liberation Sans", Arial, Helvetica, sans-serif;
+  color: #1F2937; font-size: 9.4pt; line-height: 1.42;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+.page {
+  width: 210mm; height: 297mm; padding: 15mm 16mm 12mm 16mm;
+  page-break-after: always; break-after: page; overflow: visible; position: relative;
+}
+.page:last-child { page-break-after: auto; break-after: auto; }
+code, pre, .mono { font-family: "Liberation Mono", "DejaVu Sans Mono", monospace; }
+code { font-size: 0.86em; background: #F3F4F8; border-radius: 3px; padding: 0 2px; color: #273046; }
+a { color: #2F5BD8; text-decoration: none; }
+.chip {
+  display: inline-block; background: #EEF0FD; color: #3B4CCA; font-size: 6.8pt; letter-spacing: 0.08em;
+  padding: 3px 10px; border-radius: 999px; margin-bottom: 8px; text-transform: uppercase;
+}
+h1 { font-size: 18pt; color: #111827; margin: 0 0 4px 0; font-weight: 700; letter-spacing: -0.01em; }
+h2 { font-size: 11.5pt; color: #111827; margin: 12px 0 5px 0; font-weight: 600; }
+h3 { font-size: 10.5pt; color: #111827; margin: 0 0 4px 0; font-weight: 700; }
+h4 { font-size: 9.5pt; margin: 0 0 3px 0; color: #111827; }
+h2 code, h3 code { font-size: 0.9em; }
+p { margin: 0 0 5px 0; }
+.lead { font-size: 10.3pt; color: #374151; margin: 2px 0 10px 0; line-height: 1.45; }
+.note { font-size: 8pt; color: #6B7280; margin-top: 6px; }
+.small { font-size: 7.8pt; color: #4B5563; }
+.tiny { font-size: 7pt; color: #6B7280; }
+.mt { margin-top: 10px; }
+ul, ol { margin: 3px 0 6px 0; padding-left: 16px; }
+ul.tight li, ol.tight li { margin-bottom: 2.5px; }
+
+/* pills */
+.pill { display: inline-block; font-size: 6.8pt; padding: 1.5px 7px; border-radius: 999px; line-height: 1.5; white-space: nowrap; vertical-align: 1px; }
+.pill.blue { background: #EEF0FD; color: #3B4CCA; }
+.pill.green { background: #E7F6EE; color: #1E7B4A; }
+.pill.orange { background: #FDF1E6; color: #B45309; }
+.pill.red { background: #FDECEC; color: #B42318; font-weight: 700; letter-spacing: 0.04em; }
+.pill.grey { background: #EEF0F3; color: #4B5563; }
+.pill.purple { background: #F2EDFA; color: #6B46A8; }
+.pill.dashed { background: #FFF8F1; color: #9A4B0C; border: 1px dashed #D9822B; }
+.tag { display: inline-block; font-size: 6.5pt; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #3B4CCA; background: #E4E7FB; border-radius: 3px; padding: 0 5px; margin-right: 4px; }
+.new { display: inline-block; font-size: 6pt; font-weight: 700; color: #3B4CCA; background: #E4E7FB; border-radius: 3px; padding: 0 4px; margin-right: 3px; vertical-align: 1px; }
+.illus { font-size: 7pt; letter-spacing: 0.05em; text-transform: uppercase; color: #9A4B0C; background: repeating-linear-gradient(135deg, #FFF8F1, #FFF8F1 6px, #FDF1E6 6px, #FDF1E6 12px); border: 1px dashed #E8B98A; border-radius: 4px; padding: 2px 8px; margin: 0 0 6px 0; display: inline-block; }
+.illus-i { font-size: 6.3pt; color: #9A4B0C; background: #FDF1E6; border-radius: 3px; padding: 0 4px; white-space: nowrap; }
+
+/* cards + grids */
+.card { border: 1.5px solid #E2E5EC; border-radius: 9px; padding: 10px 12px; background: #fff; }
+.card p { font-size: 9pt; }
+.card ul { font-size: 8.6pt; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+.grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.grid3 .card h3 { margin-bottom: 4px; }
+.grid3 .card .pill { margin-top: 4px; }
+
+/* callouts */
+.callout { border: 1px solid #E5E7EB; border-left: 4px solid #C8692A; background: #FFF8F1; border-radius: 6px; padding: 8px 12px; margin: 10px 0; font-size: 9pt; }
+.callout.blue { border-left-color: #4F5BD5; background: #F7F8FE; }
+.callout.green { border-left-color: #2E8B57; background: #F4FAF6; }
+.grid2 > .callout { margin: 0; }
+
+/* tables */
+table { width: 100%; border-collapse: collapse; font-size: 8.3pt; margin: 4px 0 6px 0; table-layout: fixed; }
+th { background: #F3F4F8; color: #374151; font-weight: 700; text-align: left; padding: 5px 7px; border: 1px solid #E1E4EA; }
+td { padding: 5px 7px; border: 1px solid #E1E4EA; vertical-align: top; background: #fff; }
+tbody tr:nth-child(odd) td { background: #FCFCFD; }
+table.t-sm { font-size: 7.8pt; }
+table.t-sm td, table.t-sm th { padding: 4px 6px; }
+td code { word-break: break-word; }
+.swatch { display: inline-block; width: 11px; height: 11px; border-radius: 3px; vertical-align: -2px; margin-right: 4px; }
+
+/* cover */
+.cover { padding-top: 34mm; }
+.eyebrow { color: #3B4CCA; font-size: 7.5pt; letter-spacing: 0.22em; margin-bottom: 36mm; }
+.title { font-size: 28pt; margin-bottom: 8px; }
+.subtitle { font-size: 13pt; color: #374151; max-width: 150mm; line-height: 1.4; margin-bottom: 12px; }
+.pills .pill { font-size: 7.5pt; margin-right: 5px; }
+.covermeta { position: absolute; left: 16mm; right: 16mm; bottom: 26mm; border-top: 1px solid #E1E4EA; padding-top: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px 30px; }
+.covermeta .k { font-size: 9pt; color: #111827; }
+.covermeta .v { font-size: 9pt; color: #374151; }
+.covermeta .small { font-size: 7.5pt; color: #3B4CCA; margin-top: 2px; }
+
+/* flow */
+.flow { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+.flowbox { flex: 1; border: 1.5px solid #E2E5EC; border-radius: 8px; padding: 10px 6px; text-align: center; font-size: 8pt; background: #FAFBFC; min-height: 44px; display: flex; align-items: center; justify-content: center; }
+.arrow { color: #6B7280; }
+
+/* mock */
+.mock { border: 1.5px solid #D9DDE5; border-radius: 10px; background: #F5F6F9; padding: 7px; margin-bottom: 8px; }
+.topbar { background: #1F2633; color: #E5E7EB; font-size: 6.9pt; border-radius: 5px; padding: 5px 8px; display: flex; justify-content: space-between; align-items: center; }
+.synth { background: #D92D20; color: #fff; font-weight: 700; font-size: 6.5pt; letter-spacing: 0.08em; padding: 1px 7px; border-radius: 999px; }
+.mockgrid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 6px; margin-top: 6px; }
+.mcol { display: flex; flex-direction: column; gap: 6px; }
+.panel { background: #fff; border: 1px solid #E1E4EA; border-radius: 7px; padding: 6px; }
+.player { background: linear-gradient(135deg, #252C3A, #4A5263); color: #fff; border-radius: 5px; height: 26mm; display: flex; align-items: center; justify-content: center; font-size: 9pt; }
+.empty { margin-top: 6px; border: 1px dashed #CBD2DC; border-radius: 6px; padding: 6px 8px; font-size: 7.6pt; color: #4B5563; background: #FAFBFC; }
+.empty .pill { margin-left: 4px; font-size: 6pt; }
+.legend { font-size: 6.8pt; color: #374151; margin-top: 2px; }
+.lg { margin-right: 8px; white-space: nowrap; }
+.dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 3px; vertical-align: 0; }
+.brainpanel { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; align-items: center; }
+.brainpanel img { width: 100%; border-radius: 4px; display: block; }
+.readout { font-size: 7pt; line-height: 1.55; }
+.rot { font-weight: 700; margin-bottom: 1px; }
+.ro .sw { display: inline-block; width: 6px; height: 6px; border-radius: 2px; margin-right: 3px; }
+.braincap { grid-column: 1 / span 2; font-size: 6.2pt; color: #6B7280; }
+.mi-time { font-size: 7.4pt; color: #6B7280; margin-bottom: 2px; }
+.mi { font-size: 7.6pt; margin-bottom: 3px; }
+.btns span { display: inline-block; font-size: 6.8pt; color: #3B4CCA; background: #EEF0FD; border-radius: 999px; padding: 1px 8px; margin-right: 4px; }
+
+/* §03 toggles */
+.toggles { display: flex; flex-wrap: wrap; gap: 4px 8px; margin-bottom: 6px; }
+.tog { font-size: 7.8pt; display: inline-flex; align-items: center; gap: 4px; color: #374151; }
+.tog .knob { width: 18px; height: 10px; border-radius: 6px; background: #D1D5DB; position: relative; flex: none; }
+.tog .knob::after { content: ""; position: absolute; top: 1px; left: 1px; width: 8px; height: 8px; border-radius: 50%; background: #fff; }
+.tog.on .knob { background: #4F5BD5; }
+.tog.on .knob::after { left: 9px; }
+.tog.disabled { opacity: 0.6; display: flex; margin-top: 3px; align-items: flex-start; }
+.tog.disabled .knob { background: #E5E7EB; margin-top: 2px; }
+.tog .reason { color: #6B7280; font-size: 7.2pt; }
+.card .sub { font-size: 7.2pt; color: #6B7280; margin-top: 4px; border-top: 1px solid #EEF0F3; padding-top: 4px; }
+
+/* §04 */
+.figure { border: 1.5px solid #E2E5EC; border-radius: 9px; padding: 8px 8px 4px 8px; margin-top: 8px; }
+.figcap { font-size: 7.4pt; color: #6B7280; margin-top: 2px; }
+.cardhead { font-size: 9.5pt; margin: 12px 0 5px 0; }
+.momentcard { border-color: #E8B98A; }
+.mc-head { display: flex; justify-content: space-between; align-items: center; }
+.mc-time { font-size: 7.5pt; color: #6B7280; letter-spacing: 0.05em; }
+.mc-title { font-weight: 700; font-size: 10pt; margin-top: 2px; }
+.mc-big { font-size: 20pt; font-weight: 700; color: #111827; line-height: 1.1; margin-top: 2px; }
+.mc-big.muted { color: #9CA3AF; }
+.mc-sub { font-size: 7.4pt; color: #6B7280; margin-bottom: 4px; }
+.mc-row { font-size: 8.2pt; margin-top: 3px; }
+.ev { display: inline-block; font-family: "Liberation Mono", monospace; font-size: 6.8pt; background: #F3F4F8; border-radius: 3px; padding: 0 4px; margin-right: 3px; }
+.mc-foot { font-size: 6.8pt; color: #6B7280; margin-top: 5px; border-top: 1px solid #F0F1F4; padding-top: 4px; }
+.mc-foot code { font-size: 6.6pt; }
+.futurecard { border-style: dashed; background: #FCFCFD; }
+.futurecard p { font-size: 8pt; margin-bottom: 2px; color: #4B5563; }
+.futurelabel { font-size: 6.6pt; text-transform: uppercase; letter-spacing: 0.05em; color: #9A4B0C; background: #FDF1E6; border-radius: 3px; padding: 1px 5px; display: inline-block; margin-bottom: 4px; }
+
+/* §05 */
+.emptycard { border-style: dashed; border-color: #CBD2DC; background: #FAFBFC; text-align: center; padding: 12px; }
+.ec-title { font-size: 7pt; letter-spacing: 0.08em; text-transform: uppercase; color: #6B7280; }
+.ec-body { font-size: 12pt; font-weight: 700; color: #374151; margin: 3px 0; }
+.ec-sub { font-size: 8pt; color: #6B7280; }
+.metric .mk { font-size: 6.8pt; letter-spacing: 0.08em; color: #6B7280; }
+.metric .mv { font-size: 18pt; font-weight: 700; color: #9CA3AF; }
+.metric .ms { font-size: 7.4pt; color: #6B7280; }
+
+/* §06 */
+.variant .vl { font-size: 12pt; font-weight: 700; margin: 4px 0; }
+.variant p { font-size: 8.8pt; margin-bottom: 4px; }
+.delta { display: inline-block; font-size: 6.8pt; background: #E7F6EE; color: #1E7B4A; border-radius: 999px; padding: 0 6px; margin-left: 3px; }
+
+/* §07 */
+.codebox { border: 1.5px solid #E2E5EC; border-radius: 9px; overflow: hidden; margin-top: 4px; }
+.codehead { background: #F3F4F8; font-weight: 700; font-size: 8.5pt; padding: 5px 10px; border-bottom: 1px solid #E1E4EA; }
+.codesub { font-weight: 400; color: #6B7280; font-size: 7.2pt; }
+pre { margin: 0; padding: 7px 10px; font-size: 6.55pt; line-height: 1.34; white-space: pre-wrap; word-break: break-word; color: #1F2937; }
+
+/* §08 */
+.grid-img { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 6px; }
+figure { margin: 0; }
+figure img { width: 100%; display: block; border-radius: 6px; border: 1px solid #E1E4EA; }
+img.pix { image-rendering: pixelated; }
+figcaption { font-size: 7.2pt; color: #6B7280; margin-top: 3px; }
+.legendfig img { width: 70%; }
+.tooltip { border: 1px solid #D1D5DB; border-radius: 7px; box-shadow: 0 2px 6px rgba(17,24,39,0.08); padding: 7px 9px; font-size: 7.8pt; background: #fff; margin-top: 6px; }
+.tt-h { font-size: 8.6pt; }
+.tt-rel { font-size: 6.8pt; color: #6B7280; }
+.tt-r { color: #374151; margin-top: 2px; }
+.tt-c { color: #4B5563; margin-top: 2px; font-style: italic; }
+.tt-f { color: #B45309; font-size: 6.8pt; margin-top: 3px; }
+.braincap2 { font-size: 7.8pt; margin-top: 8px; color: #374151; border-left: 3px solid #4F5BD5; padding-left: 7px; }
+
+/* refs */
+.refs { font-size: 8.3pt; padding-left: 18px; }
+.refs li { margin-bottom: 5px; }
+.disclaimer { font-size: 7.3pt; color: #6B7280; border-top: 1px solid #E1E4EA; padding-top: 6px; margin-top: 8px; }
+ul.changelog { font-size: 9pt; padding-left: 16px; }
+ul.changelog li { margin-bottom: 6px; }
+ul.changelog li b { display: inline-block; min-width: 20mm; }
+
+</style></head>
+<body>
+<section class="page cover">
+<div class="eyebrow">PRODUCT + FRONTEND IMPLEMENTATION SPEC</div>
+<h1 class="title">Neural Video Intelligence</h1>
+<p class="subtitle">How to present predicted brain-response proxies, behavioral outcomes, and real platform performance without turning the science into a fake "virality score".</p>
+<div class="pills"><span class="pill blue">TRIBE v2</span><span class="pill green">Behavioral prediction</span><span class="pill orange">Cross-platform metrics</span></div>
+<div class="covermeta">
+  <div><div class="k">Audience</div><div class="v">Frontend engineers, product designers, model/API engineers</div></div>
+  <div><div class="k">Version</div><div class="v">0.2 - 26 Sep 2026</div><div class="small">Changes from 0.1: see last page</div></div>
+  <div><div class="k">Dataset context</div><div class="v">~8k-10k unique short-form videos with Instagram, TikTok and YouTube metrics where available</div></div>
+  <div><div class="k">Goal</div><div class="v">A compelling analysis UI that remains scientifically honest and useful for editors</div></div>
+</div>
+</section>
+<section class="page "><div class="chip">01 / PRODUCT PRINCIPLE</div><h1>What the interface is actually showing</h1><p class="lead">The product should look like an advanced “brain + behavior” analysis system, but every visual must make clear which layer is measured, predicted, or merely a research proxy.</p>
+<div class="grid3">
+ <div class="card"><h3>Observed</h3><p>Real platform outcomes. Views, watch time, retention, shares, saves, comments, likes, completion, velocity and account context.</p><span class="pill green">ground truth</span></div>
+ <div class="card"><h3>Predicted behavior</h3><p>Model outputs. Expected 3s/5s hold, completion, share rate, save rate, replay likelihood and normalized distribution potential.</p><span class="pill blue">trained prediction</span></div>
+ <div class="card"><h3>Neural proxies</h3><p>Research-derived latent signals. Attention, value, social relevance, cognitive friction, sensory drive and memorability proxies.</p><span class="pill orange">not literal intent</span></div>
+</div>
+<div class="callout blue"><span class="tag">v0.2 data</span> In the v0.2 data only the neural-proxy layer exists. <code>predictions.status</code> is <code>not_available</code> until a behavior model is trained on real outcomes; observed metrics arrive later from an exported outcome file.</div>
+<div class="callout orange">Never write "brain firing" in the product. TRIBE v2 predicts cortical fMRI BOLD responses on an average-subject cortical surface. BOLD is a slow hemodynamic signal related to neural activity, not a direct recording of spikes. Use copy such as <i>predicted cortical response</i>, <i>neural proxy</i>, or <i>brain-response estimate</i>. [S1] When a proxy rises strongly, say "strong predicted response" (e.g. "Strong predicted attention capture"), not "firing".</div>
+<h2>North-star interaction</h2>
+<p>The editor scrubs the video and sees what changes in the predicted audience response at that exact moment, then receives a concrete reason and an edit hypothesis. The timeline is the primary product; the 3D brain is the visual explainer.</p>
+<div class="flow"><div class="flowbox">Video moment</div><div class="arrow">&rarr;</div><div class="flowbox">Predicted brain-response proxies</div><div class="arrow">&rarr;</div><div class="flowbox">Predicted audience behavior</div><div class="arrow">&rarr;</div><div class="flowbox">Edit recommendation</div><div class="arrow">&rarr;</div><div class="flowbox">Real post outcome</div></div>
+<p class="note">In v0.2 the chain stops after the second box: neural proxies and rule-based moments are available; predicted audience behavior and real post outcomes are not yet connected.</p>
+</section>
+<section class="page "><div class="chip">02 / MAIN SCREEN</div><h1>Primary analysis view</h1><p class="lead">The screen should answer three questions in under five seconds: <b>Where does the video lose or gain attention? Why? What should I change?</b></p>
+<div class="mock">
+ <div class="topbar"><span>Neural Video Intelligence / Analysis a_dcd5bbec8ea7 &middot; neural tribe-roi-proxies_v0 &middot; Research only &middot; Confidence: uncalibrated</span><span class="synth">SYNTHETIC</span></div>
+ <div class="mockgrid">
+  <div class="mcol">
+   <div class="panel"><div class="player">VIDEO PLAYER - timeline synchronized</div>
+    <div class="empty"><b>Predicted behavior: not available yet</b> &mdash; behavior model not trained <span class="pill grey">predictions.status = not_available</span></div>
+   </div>
+   <div class="panel"><svg viewBox="0 0 360 150" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Liberation Sans, Arial" font-size="7"><rect x="8" y="8" width="49.1" height="110" fill="#EEF0F4"/><text x="11" y="16" fill="#6B7280" font-size="6">onset</text><rect x="155.4" y="8" width="73.7" height="110" fill="#FFF4E8" stroke="#D9822B" stroke-dasharray="3,2"/><line x1="8.0" x2="8.0" y1="8" y2="118" stroke="#EEF0F3"/><line x1="57.1" x2="57.1" y1="8" y2="118" stroke="#EEF0F3"/><line x1="106.3" x2="106.3" y1="8" y2="118" stroke="#EEF0F3"/><line x1="155.4" x2="155.4" y1="8" y2="118" stroke="#EEF0F3"/><line x1="204.6" x2="204.6" y1="8" y2="118" stroke="#EEF0F3"/><line x1="253.7" x2="253.7" y1="8" y2="118" stroke="#EEF0F3"/><line x1="302.9" x2="302.9" y1="8" y2="118" stroke="#EEF0F3"/><line x1="352.0" x2="352.0" y1="8" y2="118" stroke="#EEF0F3"/><line x1="8" x2="352" y1="62" y2="62" stroke="#D1D5DB" stroke-width="0.6"/><path d="M8.0,56.8 L32.6,56.8 L32.6,38.6 L57.1,38.6 L57.1,25.6 L81.7,25.6 L81.7,46.4 L106.3,46.4 L106.3,49.0 L130.9,49.0 L130.9,51.6 L155.4,51.6 L155.4,88.0 L180.0,88.0 L180.0,93.2 L204.6,93.2 L204.6,82.8 L229.1,82.8 L229.1,54.2 L253.7,54.2 L253.7,38.6 L278.3,38.6 L278.3,33.4 L302.9,33.4 L302.9,46.4 L327.4,46.4 L327.4,51.6 L352.0,51.6" fill="none" stroke="#4F5BD5" stroke-width="1.6"/><path d="M8.0,59.4 L32.6,59.4 L32.6,51.6 L57.1,51.6 L57.1,41.2 L81.7,41.2 L81.7,43.8 L106.3,43.8 L106.3,54.2 L130.9,54.2 L130.9,56.8 L155.4,56.8 L155.4,59.4 L180.0,59.4 L180.0,67.2 L204.6,67.2 L204.6,62.0 L229.1,62.0 L229.1,49.0 L253.7,49.0 L253.7,38.6 L278.3,38.6 L278.3,46.4 L302.9,46.4 L302.9,56.8 L327.4,56.8 L327.4,62.0 L352.0,62.0" fill="none" stroke="#2E8B57" stroke-width="1.6"/><path d="M8.0,69.8 L32.6,69.8 L32.6,56.8 L57.1,56.8 L57.1,49.0 L81.7,49.0 L81.7,46.4 L106.3,46.4 L106.3,51.6 L130.9,51.6 L130.9,59.4 L155.4,59.4 L155.4,64.6 L180.0,64.6 L180.0,69.8 L204.6,69.8 L204.6,62.0 L229.1,62.0 L229.1,56.8 L253.7,56.8 L253.7,41.2 L278.3,41.2 L278.3,36.0 L302.9,36.0 L302.9,49.0 L327.4,49.0 L327.4,56.8 L352.0,56.8" fill="none" stroke="#D9822B" stroke-width="1.6"/><path d="M8.0,49.0 L32.6,49.0 L32.6,67.2 L57.1,67.2 L57.1,77.6 L81.7,77.6 L81.7,72.4 L106.3,72.4 L106.3,62.0 L130.9,62.0 L130.9,54.2 L155.4,54.2 L155.4,46.4 L180.0,46.4 L180.0,38.6 L204.6,38.6 L204.6,43.8 L229.1,43.8 L229.1,59.4 L253.7,59.4 L253.7,72.4 L278.3,72.4 L278.3,80.2 L302.9,80.2 L302.9,69.8 L327.4,69.8 L327.4,62.0 L352.0,62.0" fill="none" stroke="#8E6CC0" stroke-width="1.6"/><line x1="76.8" x2="76.8" y1="8" y2="130" stroke="#111827" stroke-width="0.8"/><text x="8" y="127" fill="#6B7280" font-size="6">shots</text><line x1="111.2" x2="111.2" y1="121" y2="129" stroke="#374151" stroke-width="1"/><line x1="231.6" x2="231.6" y1="121" y2="129" stroke="#374151" stroke-width="1"/><line x1="293.0" x2="293.0" y1="121" y2="129" stroke="#374151" stroke-width="1"/><text x="8" y="141" fill="#6B7280" font-size="6">speech</text><rect x="22.7" y="135" width="113.0" height="5" rx="1.5" fill="#CBD5E1"/><rect x="153.0" y="135" width="110.6" height="5" rx="1.5" fill="#CBD5E1"/><rect x="278.3" y="135" width="59.0" height="5" rx="1.5" fill="#CBD5E1"/><text x="8.0" y="149" fill="#9CA3AF" font-size="5.5" text-anchor="middle">0s</text><text x="57.1" y="149" fill="#9CA3AF" font-size="5.5" text-anchor="middle">2s</text><text x="106.3" y="149" fill="#9CA3AF" font-size="5.5" text-anchor="middle">4s</text><text x="155.4" y="149" fill="#9CA3AF" font-size="5.5" text-anchor="middle">6s</text><text x="204.6" y="149" fill="#9CA3AF" font-size="5.5" text-anchor="middle">8s</text><text x="253.7" y="149" fill="#9CA3AF" font-size="5.5" text-anchor="middle">10s</text><text x="302.9" y="149" fill="#9CA3AF" font-size="5.5" text-anchor="middle">12s</text><text x="352.0" y="149" fill="#9CA3AF" font-size="5.5" text-anchor="middle">14s</text></svg>
+    <div class="legend"><span class="lg"><span class="dot" style="background:#4F5BD5"></span>Attention proxy</span><span class="lg"><span class="dot" style="background:#2E8B57"></span>Social relevance</span><span class="lg"><span class="dot" style="background:#D9822B"></span>Value proxy</span><span class="lg"><span class="dot" style="background:#8E6CC0"></span>Cognitive-control response</span></div>
+    <div class="tiny">Steps = 1 s native TRIBE resolution &middot; grey = onset window &middot; dashed orange = candidate edit moment &middot; illustrative values</div>
+   </div>
+  </div>
+  <div class="mcol">
+   <div class="panel brainpanel">
+    <img src="img/brain_tile_2.png" alt="brain tile">
+    <div class="readout"><div class="rot">t = 02.8s</div><div class="ro"><span class="sw" style="background:#4F5BD5"></span>Attention proxy <b>+1.4 z</b></div><div class="ro"><span class="sw" style="background:#2E8B57"></span>Social relevance <b>+0.8 z</b></div><div class="ro"><span class="sw" style="background:#D9822B"></span>Value proxy <b>+0.5 z</b></div><div class="ro"><span class="sw" style="background:#8E6CC0"></span>Cognitive-control response <b>−0.6 z</b></div></div>
+    <div class="braincap">TRIBE v2 prediction &middot; average subject &middot; research proxy, not measured brain activity</div>
+   </div>
+   <div class="panel">
+    <h4>Moment insight</h4>
+    <div class="mi-time">06.0 &ndash; 09.0 s &middot; Attention proxy drop</div>
+    <p class="mi">Attention proxy falls 1.8 z below its level in the preceding 3 s while the shot stays unchanged, relative to this clip.</p>
+    <p class="mi"><span class="pill dashed">Untested edit hypothesis</span> Test a visual state change here (cut, B-roll, zoom or caption change).</p>
+    <div class="btns"><span>Compare edit</span><span>See evidence</span></div>
+   </div>
+  </div>
+ </div>
+</div><table class="t-sm"><colgroup><col style="width:13%"><col style="width:19%"><col style="width:33%"><col style="width:35%"></colgroup><thead><tr><th>Region</th><th>Purpose</th><th>Frontend rule</th><th>v0.2 binding</th></tr></thead><tbody><tr><td>Top bar</td><td>Video/model identity, processing state, confidence</td><td>Always show model version and whether the result is research-only.</td><td><code>model_versions.neural</code>, “Research only” (<code>research_only</code> is always true), confidence “uncalibrated”; red SYNTHETIC pill when <code>synthetic: true</code>.</td></tr><tr><td>Video player</td><td>Source of truth for time</td><td>Scrubbing must update every plot and brain map within one animation frame after data is loaded.</td><td>Time base is stimulus time; sample index = floor(t &times; <code>timing.display_hz</code>).</td></tr><tr><td>Outcome strip</td><td>Predicted behavioral metrics</td><td>Use probabilities/rates with intervals, not a universal score.</td><td>Must render the <code>not_available</code> state (empty card + <code>predictions.reason</code>) without placeholder numbers.</td></tr><tr><td>Timeline</td><td>Primary analysis tool</td><td>Allow toggling signals; default to 3-4 lines max to prevent chart noise.</td><td>Show <code>channels[]</code> with <code>default_visible: true</code> (4 lines); draw steps, keep gaps.</td></tr><tr><td>Brain map</td><td>Research explainer</td><td>Relative response only. Tooltip names ROI, proxy, z-score and evidence source.</td><td>Pre-rendered sprite tile for the current time (<code>assets.brain_map</code>); gap &rarr; dimmed + “no prediction”.</td></tr><tr><td>Moment insight</td><td>Turns model output into action</td><td>Every recommendation must point to a timestamp and a measurable hypothesis.</td><td><code>moments[]</code>: observations or untested edit hypotheses with a <code>test_metric</code>; no behavior deltas.</td></tr></tbody></table></section>
+<section class="page "><div class="chip">03 / SIGNAL TAXONOMY</div><h1>What should be displayed as a "good" neural response?</h1><p class="lead">Do not encode one universal direction. Some useful content correlates involve increased activity; preferred short-video viewing has also been associated with <b>deactivation</b> of dACC/dlPFC relative to videos that viewers terminate early. The frontend therefore displays <b>pattern-specific proxies</b>, not “more = better”. [S3]</p><table class=""><colgroup><col style="width:16%"><col style="width:34%"><col style="width:27%"><col style="width:23%"></colgroup><thead><tr><th>Frontend signal</th><th>Scientific basis</th><th>Display direction</th><th>Copy</th></tr></thead><tbody><tr><td><b>Attention capture</b></td><td>Temporal reliability / synchrony; attention and sensory networks</td><td>Higher can be better, but compare against behavioral outcomes</td><td>“Strong predicted attention capture”</td></tr><tr><td><b>Sustained attention</b></td><td>Stable response through time; eventual product label learned from retention</td><td>Higher desired</td><td>“Attention remains stable through payoff”</td></tr><tr><td><b>Value / reward proxy</b></td><td>vmPFC/OFC cortical proxy; TRIBE checkpoint does not include NAcc</td><td>Higher hypothesized positive</td><td>“Higher cortical value proxy”</td></tr><tr><td><b>Social relevance</b></td><td>dmPFC / TPJ / precuneus networks associated with thinking about others and sharing</td><td>Higher hypothesized positive for transmission</td><td>“Higher social-relevance proxy”</td></tr><tr><td><b>Self relevance</b></td><td>mPFC / PCC-related self-processing</td><td>Context-dependent</td><td>“Self-relevance proxy rises here”</td></tr><tr><td><b>Cognitive friction</b></td><td>dACC / dlPFC control demand</td><td>Do not hard-code sign; learn from own dataset</td><td>“Control-network response changes”</td></tr><tr><td><b>Memorability</b></td><td>BOLD Moments labels + cortical correlates</td><td>Higher desired for recall, not necessarily watch time</td><td>“Predicted memorability”</td></tr><tr><td><b>Arousal / orienting</b></td><td>Future EEG/pupil student model from EMD</td><td>Context-dependent; peak timing matters</td><td>“Arousal proxy peak”</td></tr></tbody></table><div class="callout blue"><b>Important:</b> neural synchrony is a better mental model for “the content is controlling attention” than raw activation. Prior naturalistic-media work linked temporal reliability across viewers to audience preferences and broad audience response. [S5]</div><p class="note">Continued on the next page: the v0.2 channel keys that implement this taxonomy.</p></section>
+<section class="page "><div class="chip">03 / SIGNAL TAXONOMY (CONT.)</div><h1>v0.2 channel keys</h1><p class="lead">Generated from <code>tribe_research/brain/proxies_v0.yaml</code> (<code>proxies_v0</code>). Each channel is the vertex-weighted mean of its HCP-MMP1 ROI groups, z-scored within the clip. Labels and colours below are the exact strings the UI receives.</p><table class="t-sm"><colgroup><col style="width:10%"><col style="width:20%"><col style="width:18%"><col style="width:11%"><col style="width:12%"><col style="width:29%"></colgroup><thead><tr><th>key</th><th>label</th><th>direction</th><th>default_<wbr>visible</th><th>color</th><th>regions_text</th></tr></thead><tbody><tr><td><code>attention</code></td><td>Attention proxy</td><td><span class="pill blue">hypothesis_positive</span></td><td>true</td><td><span class="swatch" style="background:#4F5BD5"></span><span class="mono">#4F5BD5</span></td><td>Dorsal attention (FEF / IPS) and ventral attention / salience (insula / frontal operculum)</td></tr><tr><td><code>social</code></td><td>Social relevance</td><td><span class="pill blue">hypothesis_positive</span></td><td>true</td><td><span class="swatch" style="background:#2E8B57"></span><span class="mono">#2E8B57</span></td><td>TPJ / posterior STS and dmPFC</td></tr><tr><td><code>value</code></td><td>Value proxy</td><td><span class="pill blue">hypothesis_positive</span></td><td>true</td><td><span class="swatch" style="background:#D9822B"></span><span class="mono">#D9822B</span></td><td>vmPFC / medial OFC (cortical proxy only; no NAcc in the TRIBE checkpoint)</td></tr><tr><td><code>control</code></td><td>Cognitive-control response</td><td><span class="pill purple">no_monotonic</span></td><td>true</td><td><span class="swatch" style="background:#8E6CC0"></span><span class="mono">#8E6CC0</span></td><td>dACC and dlPFC</td></tr><tr><td><code>self</code></td><td>Self relevance</td><td><span class="pill grey">context_dependent</span></td><td>false</td><td><span class="swatch" style="background:#C0507A"></span><span class="mono">#C0507A</span></td><td>mPFC, PCC and precuneus</td></tr><tr><td><code>language</code></td><td>Language / semantic load</td><td><span class="pill grey">context_dependent</span></td><td>false</td><td><span class="swatch" style="background:#3A8FB7"></span><span class="mono">#3A8FB7</span></td><td>IFG (44/45), STG/STS language areas</td></tr><tr><td><code>sensory</code></td><td>Sensory drive</td><td><span class="pill grey">context_dependent</span></td><td>false</td><td><span class="swatch" style="background:#7A8A99"></span><span class="mono">#7A8A99</span></td><td>Early visual, visual motion (MT+) and auditory cortex</td></tr></tbody></table><h2>The <code>direction</code> enum</h2><table class="t-sm"><colgroup><col style="width:24%"><col style="width:76%"></colgroup><thead><tr><th>value</th><th>Frontend meaning</th></tr></thead><tbody><tr><td><code>learned_positive</code></td><td>Higher is associated with better outcomes, validated on our held-out outcomes. No channel has this yet.</td></tr><tr><td><code>learned_negative</code></td><td>Lower is associated with better outcomes, validated on our held-out outcomes. No channel has this yet.</td></tr><tr><td><code>hypothesis_positive</code></td><td>Literature prior only: higher is hypothesized positive and must still be validated. Label it a hypothesis; no good/bad colouring.</td></tr><tr><td><code>context_dependent</code></td><td>Meaning depends on the content and the moment. Neutral colouring; describe, never grade.</td></tr><tr><td><code>no_monotonic</code></td><td>Neither direction is better; never colour one direction as good.</td></tr></tbody></table><div class="grid2 mt"><div class="card"><h3>Mapping notes</h3><ul><li><b>Cognitive friction</b> ships as <code>control</code> (“Cognitive-control response”) with <code>direction: no_monotonic</code>: the original “do not hard-code sign” rule, now machine-readable.</li><li><b>Sustained attention</b> is not its own channel. It is delivered as <code>channels[attention].summary.stability</code> (1 / (1 + sd of post-onset first differences)).</li><li>No channel is <code>learned_*</code> in v0.2, so no proxy may be shown as good or bad.</li></ul></div><div class="card"><h3>Timeline toggles</h3><div class="toggles"><span class="tog on"><span class="knob"></span><span class="dot" style="background:#4F5BD5"></span>Attention proxy</span><span class="tog on"><span class="knob"></span><span class="dot" style="background:#2E8B57"></span>Social relevance</span><span class="tog on"><span class="knob"></span><span class="dot" style="background:#D9822B"></span>Value proxy</span><span class="tog on"><span class="knob"></span><span class="dot" style="background:#8E6CC0"></span>Cognitive-control response</span><span class="tog "><span class="knob"></span><span class="dot" style="background:#C0507A"></span>Self relevance</span><span class="tog "><span class="knob"></span><span class="dot" style="background:#3A8FB7"></span>Language / semantic load</span><span class="tog "><span class="knob"></span><span class="dot" style="background:#7A8A99"></span>Sensory drive</span></div><div class="sub">From <code>unavailable_channels</code>: disabled, with the reason text</div><div class="tog disabled"><span class="knob"></span><span><b>Memorability</b> <span class="reason">Needs a BOLD Moments student model (backend guide §06); not built.</span></span></div><div class="tog disabled"><span class="knob"></span><span><b>Arousal</b> <span class="reason">Needs an EEG/pupil student model (EEG Moments); not built.</span></span></div></div></div></section>
+<section class="page "><div class="chip">04 / TIMELINE</div><h1>The timeline is the core feature</h1><p class="lead">Everything should resolve to timestamped curves and events. The editor needs to know <b>when</b> the video works, not merely whether the whole video scores well.</p><h2>Required lanes &rarr; v0.2 data</h2><table class="t-sm"><colgroup><col style="width:27%"><col style="width:35%"><col style="width:38%"></colgroup><thead><tr><th>Required lane (v0.1)</th><th>v0.2 source</th><th>Rendering</th></tr></thead><tbody><tr><td>Observed retention / replay curve when available</td><td><code>unavailable_channels</code> key <code>observed_retention</code> (kind observed)</td><td>Disabled lane with reason: “Outcome import not built yet.”</td></tr><tr><td>Predicted hold / completion trajectory</td><td><code>unavailable_channels</code> key <code>hold</code> (kind behavior)</td><td>Disabled lane with reason: “Behavior model not trained yet.”</td></tr><tr><td>Attention, social relevance, value, cognitive-control response</td><td><code>channels[]</code> with <code>default_visible: true</code></td><td>Step lines in <code>color</code>; self / language / sensory are off by default.</td></tr><tr><td>Shot boundaries</td><td><code>events.shots_ms</code></td><td><code>[]</code> = computed, no cuts found; <code>null</code> = not computed (then <code>unavailable_lanes</code> contains <code>shots</code>).</td></tr><tr><td>Speech</td><td><code>events.words</code> (start_ms, end_ms, text) and <code>events.speech_spans_ms</code></td><td>Words closer than 0.6 s merge into one span. Empty in the sample (<code>quality.has_words: false</code>).</td></tr><tr><td>Text changes, speaker changes, audio onsets</td><td><code>events.unavailable_lanes</code> (<code>text_changes</code>, <code>speaker_changes</code>, <code>audio_onsets</code>)</td><td>Disabled lanes with their reason; never guessed.</td></tr><tr><td>Model-generated candidate edit zones</td><td><code>moments[]</code></td><td>Observation = thin outline; <code>edit_hypothesis_untested</code> = dashed highlight.</td></tr></tbody></table><div class="figure"><svg viewBox="0 0 640 336" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Liberation Sans, Arial" font-size="9"><defs><pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="5" stroke="#9CA3AF" stroke-width="1.4"/></pattern></defs><rect x="118" y="18" width="72.9" height="304" fill="#F1F2F5"/><text x="154.4" y="12" fill="#6B7280" font-size="7.5" text-anchor="middle">onset window 0–2 s</text><rect x="555.1" y="18" width="36.4" height="304" fill="url(#hatch)" opacity="0.55"/><text x="573.4" y="12" fill="#6B7280" font-size="7.5" text-anchor="middle">gap: no prediction</text><text x="4" y="36" fill="#9CA3AF" font-size="9">Observed retention</text><text x="4" y="45" fill="#9CA3AF" font-size="6.5">observed_retention</text><rect x="118" y="26" width="510" height="18" rx="3" fill="#F9FAFB" stroke="#E5E7EB" stroke-dasharray="3,2"/><text x="373.0" y="38" fill="#9CA3AF" font-size="8" text-anchor="middle">unavailable · Outcome import not built yet.</text><text x="4" y="62" fill="#9CA3AF" font-size="9">Predicted hold</text><text x="4" y="71" fill="#9CA3AF" font-size="6.5">hold</text><rect x="118" y="52" width="510" height="18" rx="3" fill="#F9FAFB" stroke="#E5E7EB" stroke-dasharray="3,2"/><text x="373.0" y="64" fill="#9CA3AF" font-size="8" text-anchor="middle">unavailable · Behavior model not trained yet.</text><text x="4" y="94" fill="#111827" font-size="9">Attention proxy</text><text x="4" y="103" fill="#9CA3AF" font-size="6.5">attention</text><line x1="118" x2="628" y1="95" y2="95" stroke="#E5E7EB" stroke-width="0.8"/><path d="M118.0,93.0 L154.4,93.0 L154.4,86.0 L190.9,86.0 L190.9,81.0 L227.3,81.0 L227.3,89.0 L263.7,89.0 L263.7,90.0 L300.1,90.0 L300.1,91.0 L336.6,91.0 L336.6,105.0 L373.0,105.0 L373.0,107.0 L409.4,107.0 L409.4,103.0 L445.9,103.0 L445.9,92.0 L482.3,92.0 L482.3,86.0 L518.7,86.0 L518.7,84.0 L555.1,84.0 M591.6,91.0 L628.0,91.0" fill="none" stroke="#4F5BD5" stroke-width="1.8"/><text x="4" y="130" fill="#111827" font-size="9">Social relevance</text><text x="4" y="139" fill="#9CA3AF" font-size="6.5">social</text><line x1="118" x2="628" y1="131" y2="131" stroke="#E5E7EB" stroke-width="0.8"/><path d="M118.0,130.0 L154.4,130.0 L154.4,127.0 L190.9,127.0 L190.9,123.0 L227.3,123.0 L227.3,124.0 L263.7,124.0 L263.7,128.0 L300.1,128.0 L300.1,129.0 L336.6,129.0 L336.6,130.0 L373.0,130.0 L373.0,133.0 L409.4,133.0 L409.4,131.0 L445.9,131.0 L445.9,126.0 L482.3,126.0 L482.3,122.0 L518.7,122.0 L518.7,125.0 L555.1,125.0 M591.6,131.0 L628.0,131.0" fill="none" stroke="#2E8B57" stroke-width="1.8"/><text x="4" y="166" fill="#111827" font-size="9">Value proxy</text><text x="4" y="175" fill="#9CA3AF" font-size="6.5">value</text><line x1="118" x2="628" y1="167" y2="167" stroke="#E5E7EB" stroke-width="0.8"/><path d="M118.0,170.0 L154.4,170.0 L154.4,165.0 L190.9,165.0 L190.9,162.0 L227.3,162.0 L227.3,161.0 L263.7,161.0 L263.7,163.0 L300.1,163.0 L300.1,166.0 L336.6,166.0 L336.6,168.0 L373.0,168.0 L373.0,170.0 L409.4,170.0 L409.4,167.0 L445.9,167.0 L445.9,165.0 L482.3,165.0 L482.3,159.0 L518.7,159.0 L518.7,157.0 L555.1,157.0 M591.6,165.0 L628.0,165.0" fill="none" stroke="#D9822B" stroke-width="1.8"/><text x="4" y="202" fill="#111827" font-size="9">Cognitive-control response</text><text x="4" y="211" fill="#9CA3AF" font-size="6.5">control</text><line x1="118" x2="628" y1="203" y2="203" stroke="#E5E7EB" stroke-width="0.8"/><path d="M118.0,198.0 L154.4,198.0 L154.4,205.0 L190.9,205.0 L190.9,209.0 L227.3,209.0 L227.3,207.0 L263.7,207.0 L263.7,203.0 L300.1,203.0 L300.1,200.0 L336.6,200.0 L336.6,197.0 L373.0,197.0 L373.0,194.0 L409.4,194.0 L409.4,196.0 L445.9,196.0 L445.9,202.0 L482.3,202.0 L482.3,207.0 L518.7,207.0 L518.7,210.0 L555.1,210.0 M591.6,203.0 L628.0,203.0" fill="none" stroke="#8E6CC0" stroke-width="1.8"/><text x="4" y="232" fill="#111827" font-size="9">Shots</text><text x="4" y="241" fill="#9CA3AF" font-size="6.5">events.shots_ms</text><line x1="271.0" x2="271.0" y1="224" y2="238" stroke="#374151" stroke-width="1.4"/><line x1="449.5" x2="449.5" y1="224" y2="238" stroke="#374151" stroke-width="1.4"/><line x1="540.6" x2="540.6" y1="224" y2="238" stroke="#374151" stroke-width="1.4"/><text x="4" y="256" fill="#111827" font-size="9">Speech</text><text x="4" y="265" fill="#9CA3AF" font-size="6.5">events.speech_spans_ms</text><rect x="139.9" y="250" width="167.6" height="9" rx="2" fill="#CBD5E1"/><rect x="332.9" y="250" width="163.9" height="9" rx="2" fill="#CBD5E1"/><rect x="518.7" y="250" width="87.4" height="9" rx="2" fill="#CBD5E1"/><text x="4" y="280" fill="#9CA3AF" font-size="9">Text / speaker / audio</text><text x="4" y="289" fill="#9CA3AF" font-size="6.5">events.unavailable_lanes</text><rect x="118" y="270" width="510" height="16" rx="3" fill="#F9FAFB" stroke="#E5E7EB" stroke-dasharray="3,2"/><text x="373.0" y="281" fill="#9CA3AF" font-size="8" text-anchor="middle">unavailable · No OCR pass yet. · No diarization pass yet. · No audio-onset detector yet.</text><text x="4" y="304" fill="#111827" font-size="9">Candidate zones</text><text x="4" y="313" fill="#9CA3AF" font-size="6.5">moments[]</text><rect x="336.6" y="295" width="109.3" height="16" rx="3" fill="#FFF4E8" stroke="#D9822B" stroke-dasharray="4,2"/><text x="391.2" y="306" fill="#9A4B0C" font-size="7.5" text-anchor="middle">untested edit hypothesis</text><rect x="482.3" y="295" width="72.9" height="16" rx="3" fill="none" stroke="#6B7280" stroke-width="0.8"/><text x="518.7" y="306" fill="#4B5563" font-size="7.5" text-anchor="middle">observation</text><rect x="336.6" y="78" width="109.3" height="144" fill="#D9822B" opacity="0.06"/><line x1="118.0" x2="118.0" y1="316" y2="319" stroke="#9CA3AF"/><text x="118.0" y="327" fill="#9CA3AF" font-size="7" text-anchor="middle">0 s</text><line x1="154.4" x2="154.4" y1="316" y2="319" stroke="#9CA3AF"/><line x1="190.9" x2="190.9" y1="316" y2="319" stroke="#9CA3AF"/><text x="190.9" y="327" fill="#9CA3AF" font-size="7" text-anchor="middle">2 s</text><line x1="227.3" x2="227.3" y1="316" y2="319" stroke="#9CA3AF"/><line x1="263.7" x2="263.7" y1="316" y2="319" stroke="#9CA3AF"/><text x="263.7" y="327" fill="#9CA3AF" font-size="7" text-anchor="middle">4 s</text><line x1="300.1" x2="300.1" y1="316" y2="319" stroke="#9CA3AF"/><line x1="336.6" x2="336.6" y1="316" y2="319" stroke="#9CA3AF"/><text x="336.6" y="327" fill="#9CA3AF" font-size="7" text-anchor="middle">6 s</text><line x1="373.0" x2="373.0" y1="316" y2="319" stroke="#9CA3AF"/><line x1="409.4" x2="409.4" y1="316" y2="319" stroke="#9CA3AF"/><text x="409.4" y="327" fill="#9CA3AF" font-size="7" text-anchor="middle">8 s</text><line x1="445.9" x2="445.9" y1="316" y2="319" stroke="#9CA3AF"/><line x1="482.3" x2="482.3" y1="316" y2="319" stroke="#9CA3AF"/><text x="482.3" y="327" fill="#9CA3AF" font-size="7" text-anchor="middle">10 s</text><line x1="518.7" x2="518.7" y1="316" y2="319" stroke="#9CA3AF"/><line x1="555.1" x2="555.1" y1="316" y2="319" stroke="#9CA3AF"/><text x="555.1" y="327" fill="#9CA3AF" font-size="7" text-anchor="middle">12 s</text><line x1="591.6" x2="591.6" y1="316" y2="319" stroke="#9CA3AF"/><line x1="628.0" x2="628.0" y1="316" y2="319" stroke="#9CA3AF"/><text x="628.0" y="327" fill="#9CA3AF" font-size="7" text-anchor="middle">14 s</text></svg><div class="figcap">Lane layout with illustrative values: 1 s steps on the 2 Hz grid, a hatched gap with no prediction, the onset window shaded, and a dashed candidate zone.</div></div></section>
+<section class="page "><div class="chip">04 / TIMELINE (CONT.)</div><h1>Timing rules and moments</h1><div class="grid2"><div><h2>Timing rules</h2><ul class="tight">
+<li><b>Grid.</b> Values sit on a 2 Hz display grid from t = 0 (<code>timing.display_hz</code>); <code>values[k]</code> covers [k/2, (k+1)/2) s.</li>
+<li><b>Steps.</b> The grid is filled by sample-and-hold from the native TRIBE step (<code>timing.native_tr_s</code>, 1.0 s in the sample). Draw steps; do not smooth or imply finer resolution.</li>
+<li><b>Gaps.</b> <code>null</code> = no prediction (TRIBE drops segments with no events; spans in <code>timing.gaps_ms</code>). Leave a visible gap/hatch; never interpolate.</li>
+<li><b>Onset.</b> <code>timing.onset_window_ms</code> [0, 2000] is the onset response. Shade it lightly and exclude it from “strongest moment” call-outs (<code>moment.in_onset_window</code>). The z scale is estimated outside it (<code>within_clip_z_excluding_onset</code>).</li>
+<li><b>Time base.</b> <code>time_base: "stimulus"</code>: the 5 s hemodynamic lag is already removed, so t lines up with the video frame.</li>
+</ul><h2>Moment rules (<code>moments.py</code>)</h2><ul class="tight">
+<li><code>kind</code>: <code>attention_drop</code>, <code>broad_response</code> (&ge; 3 channels rising together), <code>proxy_rise</code>, <code>proxy_fall</code>.</li>
+<li>Runs enter at |z| &ge; 1.0, stay while |z| &ge; 0.5, last &ge; 1.5 s; a gap ends a run. At most 12 moments.</li>
+<li><code>attention_drop</code>: a fall run &ge; 1.5 z below the highest attention level in the preceding 3 s. Evidence adds <code>static_visual</code> (no shot boundary from 1 s before the run to its end), <code>speech_continues</code> (speech covers &ge; half the span), <code>language_load_high</code> (mean language z &gt; 0.5).</li>
+<li>Only drops carry a <code>hypothesis</code> + <code>test_metric</code> (status <code>edit_hypothesis_untested</code>); everything else is an <code>observation</code>. <code>severity</code> ranks within this clip only.</li>
+</ul></div><div><h3 class="cardhead">v0.2 moment card</h3><div class="card momentcard">
+ <div class="mc-head"><span class="mc-time">06.0 &ndash; 09.0 S</span><span class="pill dashed">Untested edit hypothesis</span></div>
+ <div class="mc-title">Attention proxy drop</div>
+ <div class="mc-big">&minus;1.8 z</div>
+ <div class="mc-sub">vs the preceding 3 s (drop from its highest level there), relative to this clip</div>
+ <div class="mc-row"><b>Evidence:</b> <span class="ev">attention_drop</span><span class="ev">static_visual</span><span class="ev">speech_continues</span></div>
+ <div class="mc-row"><b>Hypothesis (untested):</b> Test a visual state change here (cut, B-roll, zoom or caption change).</div>
+ <div class="mc-row"><b>Test metric:</b> retention over this span (observed, or predicted once the behavior model exists)</div>
+ <div class="mc-foot">kind <code>attention_drop</code> &middot; status <code>edit_hypothesis_untested</code> &middot; confidence <code>uncalibrated</code> &middot; in_onset_window <code>false</code>. Illustrative values; no behavior delta is shown because v0.2 has none.</div>
+</div><h3 class="cardhead">Target design</h3><div class="card futurecard">
+ <div class="futurelabel">Future &middot; once the behavior model exists &middot; illustrative v0.1 value, not in v0.2 data</div>
+ <div class="mc-time">02.4 - 03.8 S</div>
+ <div class="mc-big muted">-9 pts</div>
+ <div class="mc-sub">predicted 5s hold impact vs local baseline</div>
+ <p>Pattern: attention falls while semantic load stays high and the visual scene is unchanged.</p>
+ <p>Hypothesis: payoff arrives too late.</p>
+ <p>Action: bring the reveal forward by ~3.5s or introduce a visual state change.</p>
+ <p class="tiny">The language should remain an edit hypothesis until it is validated by real posting outcomes.</p>
+</div></div></div><h2>Interaction</h2><ul class="tight"><li>Hover: crosshair on all lanes.</li><li>Click: jump player and brain view to timestamp.</li><li>Drag: select a segment and request “explain this span”.</li><li>Shift-click: add segment to edit comparison.</li></ul><div class="callout green">MVP recommendation: ship a polished 2D cortical map or pre-rendered multi-view surface before investing in a heavy WebGL 3D brain. The timeline and edit explanation create the real product value.</div></section>
+<section class="page "><div class="chip">05 / OUTCOME LAYER</div><h1>Behavioral predictions must be separate from neural proxies</h1><div class="callout orange"><b>v0.2:</b> <code>predictions</code> = <code>{status: "not_available", reason, metrics: {}}</code>. Render an empty state with <code>reason</code>; never show placeholder numbers. The schema forbids metrics while the status is <code>not_available</code>.</div><div class="card emptycard"><div class="ec-title">Predicted behavior</div><div class="ec-body">Behavior model not trained yet.</div><div class="ec-sub">Hold, completion and share predictions appear here once a behavior model has been trained and calibrated on real outcomes.</div></div><h2>Target design</h2><div class="illus">Target design &middot; illustrative v0.1 values &middot; not in v0.2 data</div><div class="grid4"><div class="card metric"><div class="mk">3S HOLD</div><div class="mv">81%</div><div class="ms">76-85% interval</div></div><div class="card metric"><div class="mk">5S HOLD</div><div class="mv">74%</div><div class="ms">69-79% interval</div></div><div class="card metric"><div class="mk">COMPLETION</div><div class="mv">61%</div><div class="ms">duration-normalized</div></div><div class="card metric"><div class="mk">SHARE RATE</div><div class="mv">P74</div><div class="ms">creator-normalized percentile</div></div></div><h2>Recommended grouping</h2><div class="grid3"><div class="card"><h3>Retention</h3><p>1s/3s/5s hold, average watch %, completion, predicted drop zones.</p></div><div class="card"><h3>Transmission</h3><p>Shares/sends, saves, replay likelihood, social-relevance contribution.</p></div><div class="card"><h3>Distribution</h3><p>Normalized expected views, velocity and platform-specific expansion potential.</p></div></div><div class="callout orange"><b>Avoid "viral probability" in the first version.</b> Platform distribution is a feedback process influenced by account, exposure, timing and early feedback. Show normalized predictions per metric, plus uncertainty. Add a single headline only after the model has been calibrated on real held-out posts.</div><h2>Cross-platform view</h2><div class="illus">Target design &middot; illustrative v0.1 values &middot; not in v0.2 data</div><table class="t-sm"><thead><tr><th>Metric</th><th>TikTok</th><th>Instagram</th><th>YouTube Shorts</th><th>Intrinsic content estimate</th></tr></thead><tbody><tr><td>5s hold</td><td>76%</td><td>71%</td><td>79%</td><td><b>75%</b></td></tr><tr><td>Completion</td><td>58%</td><td>62%</td><td>65%</td><td><b>61%</b></td></tr><tr><td>Share percentile</td><td>P82</td><td>P88</td><td>P66</td><td><b>P79</b></td></tr><tr><td>Distribution residual</td><td>+0.9</td><td>+0.5</td><td>+0.3</td><td><b>+0.6</b></td></tr></tbody></table><p class="note">Values above are illustrative. “Intrinsic” should come from a hierarchical content-quality model, not a simple average.</p></section>
+<section class="page "><div class="chip">06 / COMPARISON</div><h1>Variant comparison should be a first-class workflow</h1><p class="lead">The product becomes much more useful when an editor can compare the original cut against proposed revisions before publishing.</p><div class="illus">Target design &middot; illustrative v0.1 values &middot; not in v0.2 data</div><div class="grid3"><div class="card variant"><span class="pill grey">Original</span><div class="vl">A</div><p><b>5s hold:</b> 68%</p><p><b>Completion:</b> 54%</p><p><b>Share percentile:</b> P61</p><p class="tiny">Largest risk: 2.1-4.4s payoff delay.</p></div><div class="card variant"><span class="pill blue">Edit 1</span><div class="vl">B</div><p><b>5s hold:</b> 76% <span class="delta">+8</span></p><p><b>Completion:</b> 58% <span class="delta">+4</span></p><p><b>Share percentile:</b> P64</p><p class="tiny">Reveal moved to 2.7s.</p></div><div class="card variant"><span class="pill orange">Edit 2</span><div class="vl">C</div><p><b>5s hold:</b> 72% <span class="delta">+4</span></p><p><b>Completion:</b> 63% <span class="delta">+9</span></p><p><b>Share percentile:</b> P75 <span class="delta">+14</span></p><p class="tiny">Shorter intro + social framing.</p></div></div><div class="callout blue"><span class="tag">v0.2 data</span> Behavior deltas require the behavior model (P1). Until then a comparison can only place the neural lanes of two analyses side by side, and each stays relative to its own clip: within-clip z-values are not comparable across clips, so no neural delta should be computed either.</div><h2>Diff UX</h2><ul class="tight"><li>Align variants by semantic moment as well as timestamp when cuts change duration.</li><li>Show deltas in predicted behavior first; neural differences second, as which moments and channels differ between cuts, never as z-value deltas (each clip is normalised on its own).</li><li>Each delta must show confidence and model version.</li><li>Allow “publish as experiment” to create a backend experiment object and later attach real outcomes.</li></ul><div class="callout blue"><b>Long-term loop:</b> recommendation &rarr; edited variant &rarr; real post &rarr; measured uplift &rarr; training example. That feedback loop is the defensible asset; the brain visualization is a feature layer, not the moat.</div></section>
+<section class="page "><div class="chip">07 / API CONTRACT</div><h1>Frontend data contract</h1><p class="lead">The UI should not know how TRIBE, EEG proxies or behavior models are implemented. It consumes a versioned analysis object with aligned time-series channels. v0.2 freezes that object as <code>nvi.analysis.v0.2</code>: <code>docs/analysis.schema.json</code> (JSON Schema 2020-12), with a synthetic example bundle in <code>docs/sample_analysis/</code>.</p><div class="codebox"><div class="codehead">GET /v1/analyses/{analysis_id} &nbsp;<span class="codesub">excerpt of docs/sample_analysis/cd20b16879d630c4/analysis.json (synthetic)</span></div><pre>{
+  &quot;schema_version&quot;: &quot;nvi.analysis.v0.2&quot;,
+  &quot;analysis_id&quot;: &quot;a_dcd5bbec8ea7&quot;,
+  &quot;video_id&quot;: &quot;cd20b16879d630c4&quot;,
+  &quot;source_name&quot;: &quot;clip&quot;,
+  &quot;duration_ms&quot;: 26100,
+  &quot;status&quot;: &quot;complete&quot;,
+  &quot;research_only&quot;: true,
+  &quot;synthetic&quot;: true,
+  &quot;model_versions&quot;: {&quot;neural&quot;: &quot;tribe-roi-proxies_v0&quot;, &quot;behavior&quot;: null, &quot;explain&quot;: &quot;neural-moments-0.1.0&quot;},
+  &quot;provenance&quot;: {&quot;tribe_commit&quot;: null, &quot;roi_map&quot;: {…}, &quot;proxies_version&quot;: &quot;proxies_v0&quot;,
+                 &quot;feature_version&quot;: &quot;summary_v0&quot;,
+                 &quot;normalization&quot;: &quot;within_clip_z_excluding_onset&quot;},
+  &quot;timing&quot;: {
+    &quot;time_base&quot;: &quot;stimulus&quot;,
+    &quot;note&quot;: &quot;TRIBE predictions are pre-shifted 5 s for hemodynamic lag; t=0 is the first video frame.&quot;,
+    &quot;native_tr_s&quot;: 1.0,
+    &quot;display_hz&quot;: 2,
+    &quot;n_display_samples&quot;: 53,
+    &quot;onset_window_ms&quot;: [0, 2000],
+    &quot;gaps_ms&quot;: []
+  },
+  &quot;predictions&quot;: {&quot;status&quot;: &quot;not_available&quot;, &quot;reason&quot;: &quot;Behavior model not trained yet.&quot;, &quot;metrics&quot;: {}},
+  &quot;channels&quot;: [
+    {
+      &quot;key&quot;: &quot;attention&quot;,
+      &quot;label&quot;: &quot;Attention proxy&quot;,
+      &quot;kind&quot;: &quot;neural_proxy&quot;,
+      &quot;unit&quot;: &quot;z_within_clip&quot;,
+      &quot;direction&quot;: &quot;hypothesis_positive&quot;,
+      &quot;direction_note&quot;: &quot;Higher can be better, but compare against behavioral outcomes before relying on it.&quot;,
+      &quot;confidence&quot;: &quot;uncalibrated&quot;,
+      &quot;source_model&quot;: &quot;tribev2&quot;,
+      &quot;research_status&quot;: &quot;research_proxy&quot;,
+      &quot;hz&quot;: 2,
+      &quot;native_tr_s&quot;: 1.0,
+      &quot;resampling&quot;: &quot;sample_and_hold&quot;,
+      &quot;default_visible&quot;: true,
+      &quot;color&quot;: &quot;#4F5BD5&quot;,
+      &quot;basis&quot;: {
+        &quot;roi_groups&quot;: [&quot;attention_dorsal&quot;, &quot;attention_ventral&quot;],
+        &quot;regions_text&quot;: &quot;Dorsal attention (FEF / IPS) and ventral attention / salience (insula / frontal operculum)&quot;,
+        &quot;atlas&quot;: &quot;HCP-MMP1&quot;
+      },
+      &quot;copy&quot;: {
+        &quot;tooltip&quot;: &quot;Predicted response in attention and salience networks, relative to the rest of this clip.&quot;,
+        &quot;rise&quot;: &quot;Strong predicted attention capture&quot;,
+        &quot;fall&quot;: &quot;Predicted attention response falls&quot;
+      },
+      &quot;values&quot;: [-1.258, -1.258, -2.242, -2.242, 0.453, … (53 total)],
+      &quot;summary&quot;: {
+        &quot;mean_0_3s&quot;: -1.016,
+        &quot;mean_0_5s&quot;: -0.677,
+        &quot;peak_z&quot;: 2.06,
+        &quot;peak_time_ms&quot;: 23000,
+        &quot;trough_z&quot;: -2.242,
+        &quot;trough_time_ms&quot;: 1000,
+        &quot;stability&quot;: 0.396
+      }
+    },
+    … 6 more: social, value, control, self, language, sensory
+  ],
+  … continued</pre></div></section>
+<section class="page "><div class="chip">07 / API CONTRACT (CONT.)</div><div class="codebox"><pre>  …
+  &quot;unavailable_channels&quot;: [
+    {
+      &quot;key&quot;: &quot;memorability&quot;,
+      &quot;kind&quot;: &quot;neural_proxy&quot;,
+      &quot;reason&quot;: &quot;Needs a BOLD Moments student model (backend guide §06); not built.&quot;
+    },
+    {
+      &quot;key&quot;: &quot;arousal&quot;,
+      &quot;kind&quot;: &quot;neural_proxy&quot;,
+      &quot;reason&quot;: &quot;Needs an EEG/pupil student model (EEG Moments); not built.&quot;
+    },
+    {&quot;key&quot;: &quot;hold&quot;, &quot;kind&quot;: &quot;behavior&quot;, &quot;reason&quot;: &quot;Behavior model not trained yet.&quot;},
+    {&quot;key&quot;: &quot;observed_retention&quot;, &quot;kind&quot;: &quot;observed&quot;, &quot;reason&quot;: &quot;Outcome import not built yet.&quot;}
+  ],
+  &quot;events&quot;: {
+    &quot;shots_ms&quot;: [],
+    &quot;words&quot;: [],
+    &quot;speech_spans_ms&quot;: [],
+    &quot;unavailable_lanes&quot;: [
+      {&quot;key&quot;: &quot;text_changes&quot;, &quot;reason&quot;: &quot;No OCR pass yet.&quot;},
+      {&quot;key&quot;: &quot;speaker_changes&quot;, &quot;reason&quot;: &quot;No diarization pass yet.&quot;},
+      {&quot;key&quot;: &quot;audio_onsets&quot;, &quot;reason&quot;: &quot;No audio-onset detector yet.&quot;}
+    ]
+  },
+  &quot;moments&quot;: [
+    … m1–m3 (observations),
+    {
+      &quot;kind&quot;: &quot;attention_drop&quot;,
+      &quot;start_ms&quot;: 6000,
+      &quot;end_ms&quot;: 9000,
+      &quot;channels&quot;: [&quot;attention&quot;],
+      &quot;peak_z&quot;: -1.45,
+      &quot;severity&quot;: 0.97,
+      &quot;title&quot;: &quot;Attention proxy drop&quot;,
+      &quot;description&quot;: &quot;Attention proxy falls while the shot stays unchanged. Drop of 2.9 z, relative to this clip.&quot;,
+      &quot;evidence&quot;: [&quot;attention_drop&quot;, &quot;static_visual&quot;],
+      &quot;hypothesis&quot;: &quot;Test a visual state change here (cut, B-roll, zoom or caption change).&quot;,
+      &quot;test_metric&quot;: &quot;retention over this span (observed, or predicted once the behavior model exists)&quot;,
+      &quot;status&quot;: &quot;edit_hypothesis_untested&quot;,
+      &quot;relative_to&quot;: &quot;this_clip&quot;,
+      &quot;confidence&quot;: &quot;uncalibrated&quot;,
+      &quot;in_onset_window&quot;: false,
+      &quot;id&quot;: &quot;m4&quot;
+    },
+    … m5–m12 (12 total)
+  ],
+  &quot;assets&quot;: {
+    &quot;region_map&quot;: {
+      &quot;idmap_src&quot;: &quot;../_static/region_idmap.png&quot;,
+      &quot;legend_src&quot;: &quot;../_static/region_legend.png&quot;,
+      &quot;ids&quot;: {&quot;#4f5bd5&quot;: &quot;attention&quot;, &quot;#2e8b57&quot;: &quot;social&quot;, … 7 total}
+    },
+    &quot;brain_map&quot;: {
+      &quot;mode&quot;: &quot;proxy&quot;,
+      &quot;src&quot;: &quot;brain_proxy.jpg&quot;,
+      &quot;tile_w&quot;: 480,
+      &quot;tile_h&quot;: 360,
+      &quot;cols&quot;: 10,
+      &quot;rows&quot;: 3,
+      &quot;frame_start_ms&quot;: [0, 1000, 2000, 3000, 4000, … (27 total)],
+      &quot;frame_end_ms&quot;: [1000, 2000, 3000, 4000, 5000, … (27 total)],
+      &quot;views&quot;: [&quot;left lateral&quot;, &quot;right lateral&quot;, &quot;left medial&quot;, &quot;right medial&quot;],
+      &quot;colormap&quot;: {&quot;name&quot;: &quot;RdBu_r&quot;, &quot;vmin&quot;: -2.5, &quot;vmax&quot;: 2.5, &quot;threshold&quot;: 0.5, &quot;unit&quot;: &quot;z_within_clip&quot;}
+    }
+  },
+  &quot;quality&quot;: {
+    &quot;n_segments&quot;: 27,
+    &quot;has_words&quot;: false,
+    &quot;warnings&quot;: [
+      &quot;SYNTHETIC: dry-run predictions, not TRIBE output.&quot;,
+      &quot;No transcribed words: language-driven signals rely on audio/video only.&quot;
+    ]
+  }
+}</pre></div></section>
+<section class="page "><div class="chip">07 / API CONTRACT (CONT.)</div><h1>Signal metadata and contract rules</h1><h2>Top-level keys</h2><table class="t-sm"><colgroup><col style="width:36%"><col style="width:64%"></colgroup><thead><tr><th>Key</th><th>Frontend use</th></tr></thead><tbody><tr><td><code>schema_version</code></td><td><code>"nvi.analysis.v0.2"</code>; refuse unknown versions.</td></tr><tr><td><code>analysis_id</code>, <code>video_id</code>, <code>source_name</code></td><td>Identity; <code>source_name</code> is the upstream id for the later outcome join.</td></tr><tr><td><code>duration_ms</code>, <code>status</code></td><td>Timeline length; status is queued, processing, complete or failed.</td></tr><tr><td><code>research_only</code>, <code>synthetic</code></td><td>Always true / SYNTHETIC banner when true.</td></tr><tr><td><code>model_versions</code>, <code>provenance</code></td><td>Top bar and “See evidence”; <code>behavior</code> is null in v0.2.</td></tr><tr><td><code>timing</code></td><td>Grid, native step, onset window and gaps (§04 cont.).</td></tr><tr><td><code>predictions</code></td><td><code>not_available</code> in v0.2: empty state (§05).</td></tr><tr><td><code>channels</code>, <code>unavailable_channels</code></td><td>Timeline lanes and toggles (§03 cont., §04).</td></tr><tr><td><code>events</code>, <code>moments</code></td><td>Event lanes and candidate zones (§04).</td></tr><tr><td><code>assets</code></td><td>Brain map sprite, region map, legend (§08).</td></tr><tr><td><code>quality</code></td><td><code>warnings</code> render as notices next to the top bar.</td></tr></tbody></table><h2>Required metadata on every signal</h2><table class="t-sm"><colgroup><col style="width:20%"><col style="width:38%"><col style="width:42%"></colgroup><thead><tr><th>v0.1 requirement</th><th>v0.2 field(s)</th><th>Value in v0.2 data</th></tr></thead><tbody><tr><td>kind</td><td><code>kind</code></td><td><code>"neural_proxy"</code> (enum: neural_proxy, behavior, observed)</td></tr><tr><td>unit</td><td><code>unit</code></td><td><code>"z_within_clip"</code> (constant)</td></tr><tr><td>direction</td><td><code>direction</code> + <code>direction_note</code></td><td>enum in §03 (cont.); note is display copy</td></tr><tr><td>confidence</td><td><code>confidence</code></td><td><code>"uncalibrated"</code> (enum: uncalibrated, low, medium, high)</td></tr><tr><td>source model</td><td><code>source_model</code> (+ <code>model_versions.neural</code>)</td><td><code>"tribev2"</code> / <code>"tribe-roi-proxies_v0"</code></td></tr><tr><td>time resolution</td><td><code>hz</code>, <code>native_tr_s</code>, <code>resampling</code></td><td><code>2</code>, <code>1.0</code>, <code>"sample_and_hold"</code></td></tr><tr><td>research status</td><td><code>research_status</code></td><td><code>"research_proxy"</code> (enum: research_proxy, validated)</td></tr></tbody></table><div class="grid2 mt"><div class="callout orange"><b>Never infer semantics from a channel name on the frontend.</b> The backend must explicitly state whether higher/lower has a learned positive association, a hypothesis-only direction, or no monotonic interpretation.</div><div class="callout blue"><b>Contract rules.</b> All values are within-clip z-scores: never compare them across clips. <code>severity</code> ranks moments within this clip only. <code>synthetic: true</code> must show a SYNTHETIC banner. <code>research_only</code> is always true. Asset paths are relative to the analysis.json folder.</div></div></section>
+<section class="page "><div class="chip">08 / BRAIN MAP ASSETS</div><h1>Pre-rendered cortical views, synchronized to time</h1><p class="lead">The brain is rendered offline, so the frontend only swaps sprite tiles and reads pixels. It needs no WebGL.</p><div class="grid-img"><figure><img src="img/brain_tile_0.png" alt="brain_map tile 0"><figcaption><b>assets.brain_map</b>, tile 0 (0–1000 ms, inside the onset window). Synthetic sample — dry-run predictions, real HCP-MMP1 regions.</figcaption></figure><figure><img class="pix" src="../sample_analysis/_static/region_idmap.png" alt="region idmap"><figcaption><b>assets.region_map.idmap_src</b>: flat colour per channel, same tile geometry. Synthetic sample — dry-run predictions, real HCP-MMP1 regions.</figcaption></figure></div><table class="t-sm"><colgroup><col style="width:28%"><col style="width:72%"></colgroup><thead><tr><th>Sprite field</th><th>Meaning</th></tr></thead><tbody><tr><td><code>mode</code></td><td><code>"proxy"</code>: each channel’s region painted with its z. <code>"research_vertex"</code>: per-vertex map.</td></tr><tr><td><code>src</code></td><td>Sprite image, relative to the analysis.json folder (<code>brain_proxy.jpg</code>).</td></tr><tr><td><code>tile_w</code>, <code>tile_h</code></td><td>Tile size in px (480 &times; 360). Each tile holds 4 views in a 2&times;2 layout.</td></tr><tr><td><code>cols</code>, <code>rows</code></td><td>Sprite grid, row-major (10 &times; 3 in the sample; 27 tiles used).</td></tr><tr><td><code>frame_start_ms</code>, <code>frame_end_ms</code></td><td>One entry per tile = one native TRIBE step. Show tile <i>i</i> while frame_start_ms[i] &le; t &lt; frame_end_ms[i].</td></tr><tr><td><code>views</code></td><td>left lateral, right lateral, left medial, right medial.</td></tr><tr><td><code>colormap</code></td><td><code>RdBu_r</code> diverging, vmin -2.5 / vmax 2.5, threshold 0.5 (faded below), unit <code>z_within_clip</code>.</td></tr></tbody></table><div class="grid2 mt"><div><h2>Region hover (<code>assets.region_map</code>)</h2><ol class="tight"><li>Map the cursor position inside the current brain tile to idmap pixel coordinates (scale by <code>tile_w</code>/<code>tile_h</code>).</li><li>Sample the lossless idmap PNG at native size with smoothing off (never the JPEG sprite); format as lowercase <code>#rrggbb</code>.</li><li>Look it up in <code>ids</code> &rarr; channel key. <code>#000000</code> = no channel: no tooltip.</li><li>Tooltip: <code>label</code>, <code>basis.regions_text</code>, current z (<code>values[floor(t &times; display_hz)]</code>) and <code>copy.tooltip</code>.</li></ol><p class="small">The idmap is static per ROI-map version. <code>legend_src</code> shows channel colours, directions and the colormap.</p></div><div><div class="tooltip"><div class="tt-h"><span class="dot" style="background:#4F5BD5"></span>Attention proxy <b>+1.4 z</b> <span class="tt-rel">relative to this clip</span></div><div class="tt-r">Dorsal attention (FEF / IPS) and ventral attention / salience (insula / frontal operculum)</div><div class="tt-c">Predicted response in attention and salience networks, relative to the rest of this clip.</div><div class="tt-f">Research proxy &middot; uncalibrated</div></div><div class="braincap2">Always caption the brain: <b>TRIBE v2 prediction &middot; average subject &middot; research proxy, not measured brain activity</b></div></div></div></section>
+<section class="page "><div class="chip">08 / BRAIN MAP ASSETS (CONT.)</div><figure class="legendfig"><img src="../sample_analysis/_static/region_legend.png" alt="region legend"><figcaption><b>assets.region_map.legend_src</b>: channel colours, <code>direction</code> and the RdBu_r scale. Synthetic sample — dry-run predictions, real HCP-MMP1 regions.</figcaption></figure><div class="grid2 mt"><div class="card"><h3>Gaps and onset</h3><p>If t falls in <code>timing.gaps_ms</code> (no tile covers it), dim the brain panel and label it “no prediction”. Never hold the previous tile silently. Tiles inside the onset window get the same light “onset response” note as the timeline.</p></div><div class="card"><h3><code>assets.research_vertex_map</code></h3><p>Same sprite shape with <code>mode: "research_vertex"</code> (<code>brain_vertex.jpg</code> in real bundles): the raw per-vertex prediction. Show it only when Research mode is enabled. Absent from the synthetic sample. Optional <code>summary_png</code> and <code>demo_mp4</code> are also absent there.</p></div></div><div class="callout orange"><b>Colour is relative.</b> Red/blue shows a region above/below its own average in this clip. It does not mean good/bad and is not comparable across clips; regions below the 0.5 z threshold are faded.</div></section>
+<section class="page "><div class="chip">09 / UI STATES</div><h1>States, confidence and wording</h1><table class="t-sm"><colgroup><col style="width:28%"><col style="width:30%"><col style="width:42%"></colgroup><thead><tr><th>State</th><th>UI treatment</th><th>Recommended wording</th></tr></thead><tbody><tr><td>Research-only neural signal</td><td>Orange “Research proxy” badge</td><td>“Predicted social-relevance response”</td></tr><tr><td>Behavior model calibrated</td><td>Blue metric + interval</td><td>“Predicted 5-second hold: 74% (69-79%)” <span class="illus-i">illustrative, not v0.2</span></td></tr><tr><td>Low confidence / OOD</td><td>Muted chart, warning icon</td><td>“Low confidence: this format is underrepresented in training data.”</td></tr><tr><td>Observed post data</td><td>Green “Observed” badge</td><td>“Actual 5-second hold: 78%” <span class="illus-i">illustrative, not v0.2</span></td></tr><tr><td>Edit hypothesis</td><td>Dashed highlight</td><td>“Test moving the reveal earlier.”</td></tr><tr><td>Validated edit uplift</td><td>Solid highlight + experiment ID</td><td>“Variant B improved normalized 5s hold by +6.1 pts.” <span class="illus-i">illustrative, not v0.2</span></td></tr><tr><td><span class="new">v0.2</span> SYNTHETIC data</td><td><span class="pill red">SYNTHETIC</span> red banner when <code>synthetic: true</code></td><td>“SYNTHETIC — dry-run data, not model output”</td></tr><tr><td><span class="new">v0.2</span> Behavior not available</td><td>Empty card, no numbers</td><td>“Behavior model not trained yet”</td></tr><tr><td><span class="new">v0.2</span> No prediction gap</td><td>Hatched/dimmed lane; brain dimmed</td><td>“no prediction”</td></tr><tr><td><span class="new">v0.2</span> Onset window</td><td>Muted shading over 0–2 s</td><td>“first 2 s: onset response”</td></tr><tr><td><span class="new">v0.2</span> Candidate moment (observation)</td><td>Thin outline</td><td>“Observation · relative to this clip”</td></tr><tr><td><span class="new">v0.2</span> Edit hypothesis, untested</td><td>Dashed highlight</td><td>“Untested edit hypothesis”</td></tr><tr><td><span class="new">v0.2</span> Uncalibrated confidence</td><td>Muted confidence label</td><td>“Uncalibrated research proxy”</td></tr></tbody></table><h2>Copy rules</h2><ul class="tight"><li>Prefer “associated with” and “proxy for” over “means”.</li><li>Never say a specific cortical region “caused” a viewer to share.</li><li>Never claim the model reads a specific viewer’s mind.</li><li>Do not expose raw 20,484-vertex values unless “Research mode” is enabled.</li><li>Keep editor-facing language behavioral: hook, payoff, pacing, novelty, social value, friction.</li><li><span class="new">v0.2</span> Say “strong predicted response”, never “brain firing”.</li><li><span class="new">v0.2</span> Every z-value is relative to this clip.</li><li><span class="new">v0.2</span> Never show a proxy as good/bad unless its direction is <code>learned_positive</code>/<code>learned_negative</code>.</li></ul></section>
+<section class="page "><div class="chip">10 / BUILD ORDER</div><h1>Frontend MVP build order</h1><table class="t-sm"><colgroup><col style="width:9%"><col style="width:33%"><col style="width:31%"><col style="width:27%"></colgroup><thead><tr><th>Priority</th><th>Component</th><th>Why</th><th>Data available in v0.2</th></tr></thead><tbody><tr><td><span class="pill green">P0</span></td><td>Video player + synchronized multi-signal timeline</td><td>Core analysis interaction.</td><td>Yes: neural lanes, shots, speech</td></tr><tr><td><span class="pill green">P0</span></td><td>Behavior prediction cards + confidence</td><td>Connects analysis to measurable outcomes.</td><td>No: render the not_available empty state</td></tr><tr><td><span class="pill green">P0</span></td><td>Moment inspector + edit hypothesis</td><td>Turns model signal into action.</td><td>Yes: <code>moments[]</code></td></tr><tr><td><span class="pill green">P0</span></td><td>2D cortical map synchronized to timeline</td><td>Strong demo value with manageable complexity.</td><td>Yes: brain map sprite + region map</td></tr><tr><td><span class="pill blue">P1</span></td><td>Original vs edit comparison</td><td>Creates iterative workflow.</td><td>No: deltas need the behavior model</td></tr><tr><td><span class="pill blue">P1</span></td><td>Observed outcome overlay</td><td>Closes model-to-reality loop.</td><td>No: outcome import not built</td></tr><tr><td><span class="pill blue">P2</span></td><td>3D WebGL brain</td><td>Great showcase; limited incremental utility.</td><td>No: 2D pre-rendered views only</td></tr><tr><td><span class="pill blue">P2</span></td><td>Cross-platform intrinsic-quality panel</td><td>Requires backend hierarchical model to be trustworthy.</td><td>No</td></tr><tr><td><span class="pill red">Avoid</span></td><td>Universal 0-100 “viral brain score”</td><td>Invites overclaiming and hides metric-specific signal.</td><td>—</td></tr></tbody></table><div class="callout green"><b>Definition of a good demo:</b> a creator can play a clip, scrub to a weak moment, see exactly which predicted signals changed, receive a concrete edit hypothesis, compare a revised cut, and later overlay the real platform outcome.</div><div class="callout blue"><span class="tag">v0.2 data</span> A v0.2 demo can cover the first four steps (play, scrub, see which proxies changed, read an untested edit hypothesis). Comparing a revised cut on behavior and overlaying real outcomes wait for the behavior model and the outcome import.</div></section>
+<section class="page "><div class="chip">11 / RESEARCH BASIS</div><h1>Research references used for the UI taxonomy</h1><ol class="refs"><li><b>[S1] TRIBE v2.</b> d’Ascoli et al. (2026), <i>A foundation model of vision, audition, and language for in-silico neuroscience</i>. Official repository describes multimodal prediction onto the fsaverage5 cortical surface (~20k vertices). <a href="https://github.com/facebookresearch/tribev2">github.com/facebookresearch/tribev2</a></li><li><b>[S2] BOLD Moments Dataset.</b> 1,102 three-second videos, fMRI responses from 10 subjects, rich labels including memorability. <a href="https://www.nature.com/articles/s41467-024-50310-3">Nature Communications (2024)</a>; <a href="https://github.com/blahner/BOLDMomentsDataset">dataset repo</a>.</li><li><b>[S3] Preferred short-video viewing.</b> Hong et al. (2026), <i>Brain activity inhibition during Short Video Viewing</i>. Preferred videos watched to completion showed greater dACC/dlPFC deactivation than less-preferred videos terminated early. <a href="https://doi.org/10.1016/j.neuroimage.2026.121722">doi:10.1016/j.neuroimage.2026.121722</a></li><li><b>[S4] Sharing and social relevance.</b> Scholz et al., <i>The Value of Sharing Information</i>. Value, self-related and social-cognition systems were associated with selection/sharing; dmPFC/TPJ showed sharing-specific associations in whole-brain analyses. <a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC5507728/">PMC5507728</a></li><li><b>[S5] Neural synchrony and audience preference.</b> Dmochowski et al. (2014), <i>Audience preferences are predicted by temporal reliability of neural processing</i>. <a href="https://www.nature.com/articles/ncomms5567">Nature Communications 5:4567</a></li><li><b>[S6] EEG Moments Dataset.</b> 1,102 three-second videos, 128-channel EEG and eye tracking from 6 subjects; same stimuli as BOLD Moments. <a href="https://arxiv.org/abs/2608.28768">arXiv:2608.28768</a>; <a href="https://github.com/OpenNeuroDatasets/ds008257">OpenNeuro mirror</a>.</li><li><b>[S7] SmartEdit.</b> Gupta et al. (ICME 2025), edit-signal-based short-video engagement prediction and improvement suggestions. <a href="https://research.adobe.com/publication/smartedit-editing-driven-engagement-prediction-and-enhancement-of-short-videos/">Adobe Research</a>.</li><li><b>[S8] SnapUGC / VQualA.</b> Large real-world short-video engagement dataset and ICCV 2025 challenge; engagement models benefit from multimodal video/audio/text features. <a href="https://openaccess.thecvf.com/content/ICCV2025W/VQualA/html/Li_VQualA_2025_Challenge_on_Engagement_Prediction_for_Short_Videos_Methods_ICCVW_2025_paper.html">ICCV Open Access</a>.</li><li><b>[S9] HCP-MMP1 atlas.</b> Glasser et al. (2016), <i>A multi-modal parcellation of human cerebral cortex</i>. Nature 536:171–178. fsaverage projection from figshare 3498446, mirrored at <a href="https://github.com/tannerjared/HCP-MMP1">github.com/tannerjared/HCP-MMP1</a>.</li></ol><p class="disclaimer">Scientific interpretations here are design priors, not validated biomarkers of virality. Product claims should be calibrated only after held-out evaluation on the company’s own platform outcomes.</p></section>
+<section class="page "><div class="chip">CHANGELOG</div><h1>Changelog 0.1 &rarr; 0.2</h1><ul class="changelog"><li><b>Cover</b> Version 0.2 - 26 Sep 2026, with a pointer to this page.</li><li><b>§01</b> Blue v0.2 note: only the neural-proxy layer exists and <code>predictions.status</code> is <code>not_available</code>. Terminology callout adds “strong predicted response” wording.</li><li><b>§02</b> Mock rebuilt for v0.2 data: honest top bar with SYNTHETIC pill, exact proxy labels, sprite brain tile, behavior empty state, v0.2 moment. Region table adds a “v0.2 binding” column.</li><li><b>§03</b> New continuation page: v0.2 channel keys from <code>proxies_v0.yaml</code>, the <code>direction</code> enum, sustained attention as <code>summary.stability</code>, memorability/arousal as disabled toggles.</li><li><b>§04</b> Required lanes mapped to fields, with a new lane figure. Timing rules: 2 Hz grid, sample-and-hold steps, null gaps, onset window, stimulus time. New moment-rules summary. v0.2 moment card with no behavior delta; the −9 pts card is kept only as a labelled future example.</li><li><b>§05</b> Orange callout and empty state for <code>predictions: not_available</code>. The v0.1 numbers are labelled illustrative target design.</li><li><b>§06</b> Variant numbers labelled illustrative. Note: deltas require the behavior model (P1); within-clip z-values are not comparable across clips, so neural differences are shown as differing moments/channels, never z deltas.</li><li><b>§07</b> Now three pages. Example replaced by an excerpt of the real <code>nvi.analysis.v0.2</code> sample. New top-level keys table. Signal metadata mapped to field names, plus contract rules.</li><li><b>§08 (new)</b> Brain map assets: <code>brain_map</code> sprite, <code>research_vertex_map</code>, <code>region_map</code> hover lookup, legend, required brain caption.</li><li><b>§09</b> Renumbered from 08. Seven new v0.2 UI states and three new copy rules. v0.1 example numbers labelled illustrative.</li><li><b>§10</b> Renumbered from 09. Added a “Data available in v0.2” column and a v0.2 demo note.</li><li><b>§11</b> Renumbered from 10. Added [S9] Glasser et al. (2016), HCP-MMP1.</li></ul><p class="note">Data contract: <code>docs/analysis.schema.json</code> (<code>nvi.analysis.v0.2</code>, frozen). Example: <code>docs/sample_analysis/</code> (synthetic).</p></section>
+
+</body></html>
