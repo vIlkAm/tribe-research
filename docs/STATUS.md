@@ -19,6 +19,8 @@ extractor embeddings and metadata. The brain-analysis half works on real clips
 today. The performance half is being trained tonight, once enough clips have
 gone through the GPU.
 
+End product, gaps to a business and the demo plan: [`VISION_AND_DEMO.md`](VISION_AND_DEMO.md).
+
 ## Pipeline and where each part stands
 
 | Step | Runs on | State |

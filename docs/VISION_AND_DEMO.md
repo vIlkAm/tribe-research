@@ -88,7 +88,9 @@ To make it land:
 
 - **tyler-b2:** prereg, `fit_models`, preliminary model, `data-frontend40-v2`,
   `docs/MODEL.md`; owns `STATUS.md`.
-- **tyler-29:** pods and the single $17 watchdog.
+- **tyler-29:** pods, `run_queue.sh` / `drive_pod.sh` and the single $17 watchdog.
+- **tyler-3f:** time-resolved moments (`moments_pop`, prereg family 6: M1–M3 and
+  the M4 "good vs bad clip" contrast); freezes the moment norms before the stage-1 fit.
 - **Frontend agent:** build against `nvi.analysis.v0.2` and the fixtures; start with
   the `not_trained` state; swap in v2 bundles when they land.
 - **tyler-5b (reporter):** status for the owner; does not touch prereg, fit or releases.
