@@ -90,6 +90,16 @@ def build_analysis(
         warnings.append("Clip too short to exclude the onset window from the z-score scale.")
     if not words:
         warnings.append("No transcribed words: language-driven signals rely on audio/video only.")
+    for code in meta.get("quality_warnings") or []:
+        # worker codes (pod/worker.py transcript_quality); transcript_empty is the no-words line above
+        if code.startswith("transcript_non_english:"):
+            warnings.append(f"Speech looks non-English ({code.split(':', 1)[1]}); it was transcribed as "
+                            "English, so word timing and language-driven signals may be wrong.")
+        elif code == "transcript_non_ascii_words":
+            warnings.append("Many transcribed words have non-English letters; language-driven signals "
+                            "may be unreliable.")
+        elif code != "transcript_empty":
+            warnings.append(f"Quality flag: {code}.")
     roi_synthetic = bool(roi.provenance.get("synthetic") or roi.provenance.get("groups_version") == "SYNTHETIC")
     if roi_synthetic:
         warnings.append("SYNTHETIC ROI map: region assignment is not anatomical.")

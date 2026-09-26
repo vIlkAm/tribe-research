@@ -725,7 +725,9 @@ def main() -> int:
     shard = load_shard(args.manifest, args.worker_id, args.num_workers)
     out_dir = args.out_root / f"worker-{args.worker_id}"
     out_dir.mkdir(parents=True, exist_ok=True)
-    pending = [r for r in shard if not (out_dir / f"{r['video_id']}.json").exists()]
+    # done in any worker dir counts: batches may be re-sliced for a different GPU count
+    done = {p.name[:-5] for p in args.out_root.glob("worker-*/*.json") if not p.name.endswith(".error.json")}
+    pending = [r for r in shard if r["video_id"] not in done]
     todo = pending[: args.limit] if args.limit is not None else pending
     log.info(
         "shard: %d videos (%.1f min); %d already done; %d to process",

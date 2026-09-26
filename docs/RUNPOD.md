@@ -264,6 +264,55 @@ Then terminate:
 pod may find no free GPU on its host when resumed, so pull, then terminate.
 Stop the watchdog once `pod-list` shows no `tribe-` pods.
 
+## Quick batches, frontend handoff, overnight
+
+The curated study set (`docs/STUDY_SET.md`) is sliced into disjoint batches
+that share one `$JOB/outputs`. Keep **one pod** for the day: setup is paid per
+pod. The watchdog stops a pod after 20 min at 0 % GPU, so run batches back to
+back or pass `--idle-minutes 60` for an interactive session.
+
+```bash
+# on this server, once the GPU count N of the pod is known
+.venv/bin/python tools/make_batches.py --gpus N      # results/batches/{b00_pilot,b01_frontend,b02..,d00_deep_dive..}
+tools/pod.sh push-code
+tools/pod.sh push-batch results/batches/b00_pilot
+# on the pod
+bash $JOB/code/pod/setup.sh && source $JOB/code/pod/env.sh
+$JOB/code/pod/launch_all.sh                           # N workers, nohup
+# next batch: push-batch results/batches/b01_frontend, launch_all.sh again
+```
+
+Back here after each batch: pull, build bundles, validate and package.
+
+```bash
+tools/pod.sh pull study_run
+.venv/bin/python tools/brain_report.py --out-root results/study_run/outputs \
+    --report-dir results/study_run/report --roi-map tribe_research/assets/roi_map_roi_groups_v0.npz \
+    --videos-root results/study/staging --analysis --jobs 8 --skip-existing
+.venv/bin/python tools/handoff.py --analyses results/study_run/report/analyses \
+    --out results/handoff/study_run.tar.gz --expect-real
+```
+
+`handoff.py` validates every bundle against the contract and stops on the
+first invalid one; the tarball never contains clip footage (`*.mp4`). Send
+b00 + b01 (50 clips) to the frontend first. Each later batch is a small
+representative sample, so a finished prefix is usable on its own.
+
+Overnight: push every remaining batch's clips, then run them one after the
+other in a single `nohup` loop on the pod, and keep a pull loop here. The
+watchdog's idle stop ends billing after the last batch; its `--max-usd` must
+cover the whole run (set it from the measured $/clip, not the $10 default).
+
+```bash
+for b in results/batches/b0[2-9] results/batches/d*; do tools/pod.sh push-batch "$b"; done
+# on the pod
+nohup bash -c 'for m in $JOB/batches/b0[2-9].jsonl $JOB/batches/d*.jsonl; do
+  cp "$m" $JOB/manifest.jsonl; $JOB/code/pod/launch_all.sh; sleep 30
+  while pgrep -f pod/worker.py >/dev/null; do sleep 60; done; done' > $JOB/logs/overnight.log 2>&1 &
+# here
+while sleep 900; do tools/pod.sh pull study_run; done
+```
+
 ## Which videos to send
 
 The backfilled clips are company-owned and cleared by the owner (2026-09-26)

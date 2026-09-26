@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -44,6 +45,9 @@ def main() -> int:
     ap.add_argument("--no-research-vertex", action="store_true", help="skip the per-vertex research sprite")
     ap.add_argument("--only", nargs="*", default=None, help="video_ids to include")
     ap.add_argument("--synthetic", action="store_true", help="label visuals as synthetic (dry-run data)")
+    ap.add_argument("--jobs", type=int, default=8, help="parallel processes (this host also runs production)")
+    ap.add_argument("--skip-existing", action="store_true",
+                    help="keep bundles whose analysis.json is newer than the prediction (incremental pulls)")
     args = ap.parse_args()
 
     roi = RoiMap.load(args.roi_map)
@@ -60,41 +64,69 @@ def main() -> int:
         print("no completed videos found", file=sys.stderr)
         return 1
 
+    if bundles:
+        from tribe_research.brain import bundle
+
+        region_map = bundle.write_static(ana_dir, roi, spec)
+    else:
+        region_map = None
+    job = dict(out_root=args.out_root, feat_dir=feat_dir, ana_dir=ana_dir, roi_path=args.roi_map,
+               videos_root=args.videos_root, bundles=bundles, synthetic=args.synthetic,
+               research_vertex=not args.no_research_vertex, png=args.png, video=args.video,
+               region_map=region_map, skip_existing=args.skip_existing)
     rows = []
-    region_map = None
-    for m in metas:
-        vid = m["video_id"]
-        npz = args.out_root / f"worker-{m['worker_id']}" / f"{vid}.npz"
-        t, curves, summaries = video_features(npz, roi, m["tr_s"])
-        np.savez_compressed(
-            feat_dir / f"{vid}.roi.npz", seg_start=t, curves=curves.astype(np.float16),
-            group_names=np.array(roi.group_names), feature_version=FEATURE_VERSION,
-            roi_provenance=json.dumps(roi.provenance),
-        )
-        for s in summaries:
-            rows.append({"video_id": vid, "source_name": m.get("source_name"), **s,
-                         "roi_groups_version": roi.provenance.get("groups_version"),
-                         "tribe_commit": m.get("tribe_commit")})
+    from concurrent.futures import ProcessPoolExecutor
 
-        if bundles:
-            from tribe_research.brain import bundle
-
-            if region_map is None:
-                region_map = bundle.write_static(ana_dir, roi, spec)
-            src = args.videos_root / m["path"] if args.videos_root else None
-            if src is not None and not src.exists():
-                src = None
-            a = bundle.write_bundle(ana_dir, m, npz, roi, spec, region_map, source_video=src,
-                                    synthetic=args.synthetic, research_vertex=not args.no_research_vertex,
-                                    png=args.png, video=args.video)
-            print(f"  {len(a['moments'])} moments, {len(a['quality']['warnings'])} warnings")
-        print(f"{vid}  {m.get('source_name')}  {len(t)} steps")
+    with ProcessPoolExecutor(max(1, args.jobs), initializer=_init, initargs=(job,)) as ex:
+        for vid_rows, line in ex.map(_one, metas, chunksize=1):
+            rows.extend(vid_rows)
+            print(line, flush=True)
 
     with (feat_dir / "summaries.jsonl").open("w") as f:
         for r in rows:
             f.write(json.dumps(r) + "\n")
     print(f"{len(metas)} videos -> {args.report_dir}")
     return 0
+
+
+_JOB: dict = {}
+
+
+def _init(job: dict) -> None:
+    os.nice(5)  # yield to production services on this host
+    _JOB.clear()
+    _JOB.update(job, roi=RoiMap.load(job["roi_path"]), spec=ProxySpec.load())
+
+
+def _one(m: dict) -> tuple[list[dict], str]:
+    """Features (always, cheap) and, if asked, the bundle for one video."""
+    j = _JOB
+    roi, vid = j["roi"], m["video_id"]
+    npz = j["out_root"] / f"worker-{m['worker_id']}" / f"{vid}.npz"
+    t, curves, summaries = video_features(npz, roi, m["tr_s"])
+    np.savez_compressed(
+        j["feat_dir"] / f"{vid}.roi.npz", seg_start=t, curves=curves.astype(np.float16),
+        group_names=np.array(roi.group_names), feature_version=FEATURE_VERSION,
+        roi_provenance=json.dumps(roi.provenance),
+    )
+    rows = [{"video_id": vid, "source_name": m.get("source_name"), **s,
+             "roi_groups_version": roi.provenance.get("groups_version"),
+             "tribe_commit": m.get("tribe_commit")} for s in summaries]
+    line = f"{vid}  {m.get('source_name')}  {len(t)} steps"
+    if j["bundles"]:
+        done = j["ana_dir"] / vid / "analysis.json"
+        if j["skip_existing"] and done.exists() and done.stat().st_mtime >= npz.stat().st_mtime:
+            return rows, line + "  (bundle kept)"
+        from tribe_research.brain import bundle
+
+        src = j["videos_root"] / m["path"] if j["videos_root"] else None
+        if src is not None and not src.exists():
+            src = None
+        a = bundle.write_bundle(j["ana_dir"], m, npz, roi, j["spec"], j["region_map"], source_video=src,
+                                synthetic=j["synthetic"], research_vertex=j["research_vertex"],
+                                png=j["png"], video=j["video"])
+        line += f"  {len(a['moments'])} moments, {len(a['quality']['warnings'])} warnings"
+    return rows, line
 
 
 if __name__ == "__main__":

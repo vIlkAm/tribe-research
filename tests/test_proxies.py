@@ -233,3 +233,18 @@ def test_bundle_end_to_end(tmp_path):
     assert seen <= set(region["ids"]) | {"#000000"}
     assert set(region["ids"].values()) == {c.key for c in SPEC.channels}
     assert (ana / "v1" / region["legend_src"]).exists()
+
+
+def test_worker_quality_warnings_reach_the_bundle():
+    T = 12
+    preds = preds_with({"attention": np.linspace(-1, 1, T).astype(np.float32)}, T)
+    t = np.arange(T, dtype=float)
+    meta = {"video_id": "abc", "duration_s": 12.0, "tr_s": 1.0, "tribe_commit": "af58661",
+            "quality_warnings": ["transcript_empty", "transcript_non_english:es", "transcript_non_ascii_words"]}
+    a = build_analysis(meta=meta, preds=preds, seg_start=t, seg_duration=np.ones(T), roi=synth_roi(),
+                       spec=SPEC, words=[], shots_ms=None)
+    w = a["quality"]["warnings"]
+    assert sum("No transcribed words" in x for x in w) == 1          # empty maps to the existing line
+    assert any("non-English (es)" in x for x in w)
+    assert any("non-English letters" in x for x in w)
+    assert not FORBIDDEN.search(" ".join(w))

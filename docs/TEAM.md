@@ -32,8 +32,13 @@ needs to know how TRIBE works; the backend never assumes a UI layout.
 - **Real now:** 7 neural proxy channels, candidate moments, shots/speech lanes,
   brain sprites and hover map. The format is final for v0.2; only the numbers
   in the sample are fake (dry-run).
-- **Next:** first RunPod run on ~60 real clips, then real `analysis.json`
-  bundles are shared with the frontend (never the clips themselves).
+- **Next:** the first real run on a curated 1,500-clip study set, in batches.
+  The first 50 real bundles (pilot + a wiring set with the shortest and longest
+  clips, a >60 s clip and a near-silent one) come as a tarball from
+  `tools/handoff.py`: `index.json` plus `<video_id>/analysis.json`,
+  `brain_proxy.jpg`, `brain_vertex.jpg` (Research mode) and `_static/`. Every bundle is schema-validated before it
+  ships; clips themselves are never included. Same format as the sample.
+  `quality.warnings` can now also say the speech looks non-English.
 - **Later:** import real outcomes (retention etc.), then a behavior model. Only
   then does `predictions` become `available`, and the hold/completion cards get
   real numbers. Until then the frontend shows the empty state.

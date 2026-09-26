@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
@@ -202,3 +203,50 @@ def test_word_export_failure_keeps_the_clip(tmp_path, monkeypatch):
     monkeypatch.setattr(model, "words", lambda events: (_ for _ in ()).throw(KeyError("text")))
     meta = worker.process(model, row, videos / "c.mp4", tmp_path, {})
     assert meta["words"] == [] and (tmp_path / "v.npz").exists()
+
+
+def test_resume_survives_reslicing_for_a_different_gpu_count(tmp_path):
+    videos = tmp_path / "videos"
+    videos.mkdir()
+    for i, secs in enumerate([10, 12, 8]):
+        fake_mp4(videos / f"c{i}.mp4", secs, bytes([i]))
+    m2, m1, out = tmp_path / "m2.jsonl", tmp_path / "m1.jsonl", tmp_path / "outputs"
+    _run(ROOT / "tools/make_manifest.py", "--videos-root", videos, "--workers", 2, "--out", m2)
+    _run(ROOT / "tools/make_manifest.py", "--videos-root", videos, "--workers", 1, "--out", m1)
+    for w in (0, 1):
+        _run(ROOT / "pod/worker.py", "--manifest", m2, "--videos-root", videos, "--out-root", out,
+             "--num-workers", 2, "--worker-id", w, "--dry-run")
+    again = _run(ROOT / "pod/worker.py", "--manifest", m1, "--videos-root", videos, "--out-root", out,
+                 "--num-workers", 1, "--worker-id", 0, "--dry-run")
+    assert "3 already done; 0 to process" in again.stderr
+
+
+def test_bundles_in_parallel_then_handoff(tmp_path):
+    import tarfile
+
+    roi = ROOT / "tribe_research/assets/roi_map_roi_groups_v0.npz"
+    if not roi.exists():
+        pytest.skip("ROI map asset not built")
+    videos, out, rep = tmp_path / "videos", tmp_path / "outputs", tmp_path / "report"
+    videos.mkdir()
+    for i, secs in enumerate([8, 9]):
+        fake_mp4(videos / f"c{i}.mp4", secs, bytes([i]))
+    manifest = tmp_path / "m.jsonl"
+    _run(ROOT / "tools/make_manifest.py", "--videos-root", videos, "--workers", 1, "--out", manifest)
+    _run(ROOT / "pod/worker.py", "--manifest", manifest, "--videos-root", videos, "--out-root", out,
+         "--num-workers", 1, "--dry-run")
+    _run(ROOT / "tools/brain_report.py", "--out-root", out, "--report-dir", rep, "--roi-map", roi,
+         "--analysis", "--synthetic", "--no-research-vertex", "--jobs", 2)
+    kept = _run(ROOT / "tools/brain_report.py", "--out-root", out, "--report-dir", rep, "--roi-map", roi,
+                "--analysis", "--synthetic", "--no-research-vertex", "--jobs", 2, "--skip-existing")
+    assert kept.stdout.count("(bundle kept)") == 2
+    (rep / "analyses" / next(p.name for p in (rep / "analyses").iterdir() if p.name != "_static")
+     / "demo.mp4").write_bytes(b"x")                       # footage must never ship
+    tgz = tmp_path / "h.tar.gz"
+    _run(ROOT / "tools/handoff.py", "--analyses", rep / "analyses", "--out", tgz)
+    names = tarfile.open(tgz).getnames()
+    assert "h/index.json" in names and not any(n.endswith(".mp4") for n in names)
+    assert sum(n.endswith("/analysis.json") for n in names) == 2
+    real = _run(ROOT / "tools/handoff.py", "--analyses", rep / "analyses", "--out", tmp_path / "r.tar.gz",
+                "--expect-real", check=False)
+    assert real.returncode == 1 and not (tmp_path / "r.tar.gz").exists()

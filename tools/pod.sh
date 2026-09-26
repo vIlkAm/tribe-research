@@ -7,6 +7,7 @@
 #   tools/pod.sh ssh                                   # interactive shell
 #   tools/pod.sh push-code                             # pod/ tools/ tribe_research/ -> $JOB/code/
 #   tools/pod.sh push-videos ./videos                  # clip folder -> $JOB/videos/
+#   tools/pod.sh push-batch results/batches/b02        # batch clips (added) + its manifest -> $JOB/
 #   tools/pod.sh pull run1                             # $JOB/outputs + logs + manifest -> results/run1/
 #
 # Only pushes what you name. Nothing here listens on a port (AGENTS.md).
@@ -32,6 +33,15 @@ case "$cmd" in
     src="${1:?usage: pod.sh push-videos <local-dir>}"
     "${SSH[@]}" "$POD" "mkdir -p $JOB/videos"
     "${RSYNC[@]}" "${src%/}/" "$POD:$JOB/videos/" ;;
+  push-batch)
+    # tools/make_batches.py output: videos are added to $JOB/videos (earlier batches stay,
+    # finished outputs are skipped); the batch manifest becomes $JOB/manifest.jsonl
+    b="${1:?usage: pod.sh push-batch <results/batches/NAME>}"
+    [ -f "$b/manifest.jsonl" ] || { echo "no $b/manifest.jsonl" >&2; exit 1; }
+    "${SSH[@]}" "$POD" "mkdir -p $JOB/videos $JOB/batches"
+    "${RSYNC[@]}" "${b%/}/videos/" "$POD:$JOB/videos/"
+    "${RSYNC[@]}" "$b/manifest.jsonl" "$POD:$JOB/batches/$(basename "$b").jsonl"
+    "${RSYNC[@]}" "$b/manifest.jsonl" "$POD:$JOB/manifest.jsonl" ;;
   pull)
     run="${1:?usage: pod.sh pull <run-name>}"
     dest="$ROOT/results/$run"
@@ -43,5 +53,5 @@ case "$cmd" in
     "${RSYNC[@]}" "$POD:$JOB/code/tribe_research/assets/" "$ROOT/tribe_research/assets/" || true
     echo "pulled to $dest" ;;
   *)
-    sed -n '2,12p' "$0"; exit 2 ;;
+    sed -n '2,13p' "$0"; exit 2 ;;
 esac

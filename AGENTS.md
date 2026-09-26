@@ -63,7 +63,9 @@ the owner explicitly decides to connect it:
 | `tools/build_run_manifest.py` | Unique contents across posts/platforms + full-run plan |
 | `tools/qc_files.py` | Decode/audio/resolution check per planned file |
 | `tools/select_study_set.py` | Curated ~1,500 study set, lockbox, pilot, account deep-dive (`docs/STUDY_SET.md`) |
-| `tools/pod.sh` | Full-SSH push/pull/shell between this server and a pod |
+| `tools/make_batches.py` | Study set → ordered disjoint pod batches (pilot, frontend wiring set, 200s, deep-dive) |
+| `tools/handoff.py` | Validate bundles against the contract, index, tarball for the frontend (no footage) |
+| `tools/pod.sh` | Full-SSH push/pull/shell between this server and a pod (`push-batch`) |
 | `tools/make_manifest.py` | Content-hash IDs, durations, duration-balanced worker assignment |
 | `tools/merge.py` | `index.jsonl` + `benchmark.json`, reports missing/failed by category |
 | `tools/build_roi_map.py` | HCP-MMP1 → fsaverage5 ROI map artifact (build on the pod; figshare blocks this host) |
