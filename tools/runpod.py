@@ -52,8 +52,11 @@ PREFIX = "tribe-"  # the watchdog only ever touches pods with this name prefix
 # Docker Hub naming both (digest sha256:61a4aafb0094cd77…, ~7.4 GB compressed).
 DEFAULT_IMAGE = "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04"
 MOUNT_PATH = "/workspace"
-# Host drivers that can run a CUDA 12.4 image (REST allowedCudaVersions enum, >= 12.4).
+# Host drivers (REST allowedCudaVersions enum). The image is CUDA 12.4, but whisperx 3.8.6
+# (pod/whisper_server.py and TRIBE's own `uvx whisperx`) runs torch 2.8 wheels built for
+# CUDA 12.8, so an older driver would fail at transcription after setup was paid for.
 CUDA_VERSIONS = ["12.4", "12.5", "12.6", "12.7", "12.8", "12.9", "13.0"]
+DEFAULT_MIN_CUDA = "12.8"
 # torch 2.6 in setup.sh has no Blackwell kernels; setup.sh refuses these anyway.
 BLACKWELL_MARKERS = ("B200", "B300", "BLACKWELL", "RTX 5060", "RTX 5070", "RTX 5080", "RTX 5090")
 # Snapshot of the REST gpuTypeIds enum (openapi.json, 2026-09-26).
@@ -427,12 +430,15 @@ def cmd_gpus(args) -> int:
         if not args.all and gid not in SHORTLIST and (vram < args.min_vram_gb or not in_stock):
             continue
         c = cat.get(gid) or {}
+        # lowestPrice is for the whole pod (live: 4x A100 PCIe = 4.76 = 4 x 1.19); show per GPU
+        per_gpu = lambda v: to_float(v) / args.gpu_count if to_float(v) > 0 else None  # noqa: E731
         p = {
-            "com": com.get("uninterruptablePrice") or (c.get("price") or {}).get("community")
+            "com": per_gpu(com.get("uninterruptablePrice")) or (c.get("price") or {}).get("community")
             or (t.get("communityPrice") if t.get("communityCloud") else None),
-            "com_spot": com.get("minimumBidPrice") or t.get("communitySpotPrice"),
-            "sec": sec.get("uninterruptablePrice") or (t.get("securePrice") if t.get("secureCloud") else None),
-            "sec_spot": sec.get("minimumBidPrice") or t.get("secureSpotPrice"),
+            "com_spot": per_gpu(com.get("minimumBidPrice")) or t.get("communitySpotPrice"),
+            "sec": per_gpu(sec.get("uninterruptablePrice"))
+            or (t.get("securePrice") if t.get("secureCloud") else None),
+            "sec_spot": per_gpu(sec.get("minimumBidPrice")) or t.get("secureSpotPrice"),
         }
         on_demand = [to_float(v) for v in (p["com"], p["sec"]) if to_float(v) > 0]
         p["avail"] = str(c.get("availability") or "-") if cat else "?"
@@ -487,7 +493,8 @@ def cmd_volume_list(args) -> int:
 def build_pod_payload(*, name: str, gpu_type: str, gpu_count: int, cloud: str, image: str,
                       container_disk_gb: int, public_key: str, hf_token: str,
                       volume_id: str | None = None, pod_volume_gb: int = 120, dc: str | None = None,
-                      min_ram_gb: int = 48, interruptible: bool = False) -> dict:
+                      min_ram_gb: int = 48, interruptible: bool = False,
+                      min_cuda: str = DEFAULT_MIN_CUDA) -> dict:
     payload = {
         "name": name,
         "imageName": image,
@@ -501,7 +508,8 @@ def build_pod_payload(*, name: str, gpu_type: str, gpu_count: int, cloud: str, i
         "containerDiskInGb": container_disk_gb,
         "ports": ["22/tcp"],  # full SSH only; the REST default would also publish Jupyter
         "supportPublicIp": True,  # community hosts without a public IP cannot expose TCP
-        "allowedCudaVersions": list(CUDA_VERSIONS),
+        "allowedCudaVersions": [v for v in CUDA_VERSIONS
+                                if tuple(map(int, v.split("."))) >= tuple(map(int, min_cuda.split(".")))],
         "env": {"PUBLIC_KEY": public_key, "HF_TOKEN": hf_token},
     }
     if volume_id:
@@ -565,7 +573,7 @@ def cmd_pod_create(args) -> int:
                                 image=args.image, container_disk_gb=args.container_disk_gb,
                                 public_key=public_key, hf_token=hf_token, volume_id=args.volume_id,
                                 pod_volume_gb=args.volume_gb, dc=dc, min_ram_gb=args.min_ram_gb,
-                                interruptible=args.interruptible)
+                                interruptible=args.interruptible, min_cuda=args.min_cuda)
     if args.dry_run:
         out(json.dumps(redact(payload), indent=2))
         out("(dry run: nothing sent)")
@@ -959,6 +967,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="pod volume at /workspace when no --volume-id (deleted on terminate)")
     s.add_argument("--container-disk-gb", type=int, default=30)
     s.add_argument("--min-ram-gb", type=int, default=48, help="host RAM per GPU (REST minRAMPerGPU)")
+    s.add_argument("--min-cuda", default=DEFAULT_MIN_CUDA, choices=CUDA_VERSIONS,
+                   help="lowest host driver CUDA version (whisperx needs torch 2.8 / CUDA 12.8)")
     s.add_argument("--image", default=DEFAULT_IMAGE)
     s.add_argument("--max-hours", type=float, required=True, help="watchdog stops/terminates the pod after this")
     s.add_argument("--dc", help="datacenter; with --volume-id it is taken from the volume")

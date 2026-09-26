@@ -20,17 +20,23 @@ KEY="${POD_KEY:-$HOME/.ssh/id_ed25519}"
 JOB="${JOB:-/workspace/tribe-job}"
 SSH=(ssh -p "$POD_PORT" -i "$KEY" -o StrictHostKeyChecking=accept-new)
 RSYNC=(rsync -a --info=progress2 -e "${SSH[*]}")
+# stock RunPod images lack rsync, and setup.sh (which installs it) arrives by rsync
+need_rsync() {
+  "${SSH[@]}" "$POD" 'command -v rsync >/dev/null || { apt-get update -qq && apt-get install -y -qq rsync >/dev/null; }'
+}
 
 cmd="${1:-}"; shift || true
 case "$cmd" in
   ssh)
     exec "${SSH[@]}" "$POD" "$@" ;;
   push-code)
+    need_rsync
     "${SSH[@]}" "$POD" "mkdir -p $JOB/code"
     "${RSYNC[@]}" --delete --exclude __pycache__ --exclude '*.pyc' \
       "$ROOT/pod" "$ROOT/tools" "$ROOT/tribe_research" "$POD:$JOB/code/" ;;
   push-videos)
     src="${1:?usage: pod.sh push-videos <local-dir>}"
+    need_rsync
     "${SSH[@]}" "$POD" "mkdir -p $JOB/videos"
     "${RSYNC[@]}" "${src%/}/" "$POD:$JOB/videos/" ;;
   push-batch)
@@ -38,6 +44,7 @@ case "$cmd" in
     # finished outputs are skipped); the batch manifest becomes $JOB/manifest.jsonl
     b="${1:?usage: pod.sh push-batch <results/batches/NAME>}"
     [ -f "$b/manifest.jsonl" ] || { echo "no $b/manifest.jsonl" >&2; exit 1; }
+    need_rsync
     "${SSH[@]}" "$POD" "mkdir -p $JOB/videos $JOB/batches"
     "${RSYNC[@]}" "${b%/}/videos/" "$POD:$JOB/videos/"
     "${RSYNC[@]}" "$b/manifest.jsonl" "$POD:$JOB/batches/$(basename "$b").jsonl"
@@ -46,6 +53,7 @@ case "$cmd" in
     run="${1:?usage: pod.sh pull <run-name>}"
     dest="$ROOT/results/$run"
     mkdir -p "$dest"
+    need_rsync
     "${RSYNC[@]}" "$POD:$JOB/outputs/" "$dest/outputs/"
     "${RSYNC[@]}" "$POD:$JOB/logs/" "$dest/logs/"
     "${RSYNC[@]}" "$POD:$JOB/manifest.jsonl" "$dest/"

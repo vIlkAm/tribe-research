@@ -189,7 +189,7 @@ def test_pod_create_payload_shape_and_state(isolated, capsys, monkeypatch):
     assert body["cloudType"] == "SECURE" and body["interruptible"] is False
     assert body["gpuTypeIds"] == ["NVIDIA L40S"] and body["gpuCount"] == 2
     assert body["imageName"] == runpod.DEFAULT_IMAGE
-    assert "12.4" in body["allowedCudaVersions"] and "12.1" not in body["allowedCudaVersions"]
+    assert "12.8" in body["allowedCudaVersions"] and "12.4" not in body["allowedCudaVersions"]
     state = json.loads(runpod.STATE_FILE.read_text())["pods"]["pod123"]
     assert state["max_hours"] == 3 and state["cost_per_hr"] == 1.72 and state["datacenter"] == "EU-RO-1"
     assert_no_secrets(o, e, runpod.STATE_FILE.read_text())
@@ -447,9 +447,9 @@ def test_gpus_uses_host_ram_filter_and_falls_back_without_spot(isolated, capsys)
     isolated.on("POST", "graphql", graphql_key="PriceDetail", body={"data": {
         "dataCenters": [{"id": "EU-RO-1", "storageSupport": True}],
         "gpuTypes": [{"id": "NVIDIA L40S",
-                      "sec": {"stockStatus": "High", "uninterruptablePrice": 0.99, "minimumBidPrice": 0.5,
+                      "sec": {"stockStatus": "High", "uninterruptablePrice": 1.98, "minimumBidPrice": 1.0,
                               "minMemory": 62, "maxUnreservedGpuCount": 6},
-                      "com": {"stockStatus": "Low", "uninterruptablePrice": 0.71, "minimumBidPrice": 0.3,
+                      "com": {"stockStatus": "Low", "uninterruptablePrice": 1.42, "minimumBidPrice": 0.6,
                               "minMemory": 100, "maxUnreservedGpuCount": 2}}]}})
     isolated.on("GET", runpod.CATALOG_URL, body={"data": [
         {"id": "NVIDIA L40S", "price": {"secure": 0.86, "community": 0.79}, "availability": "MEDIUM"},
@@ -460,7 +460,7 @@ def test_gpus_uses_host_ram_filter_and_falls_back_without_spot(isolated, capsys)
     row = next(ln for ln in o.splitlines() if ln.startswith("L40S"))
     assert "0.71" in row and "0.99" in row and "Low/High" in row and " 62 " in row and "   6 " in row
     assert "network volumes here: yes" in o and "80 GB asked" in o
-    assert "MEDIUM" in row and "0.71" in row                 # host-matched price wins over the list price
+    assert "MEDIUM" in row and "0.71" in row   # host-matched pod price (1.42 for 2 GPUs) shown per GPU
     r4090 = next(ln for ln in o.splitlines() if ln.startswith("RTX 4090"))
     assert "0.31" in r4090 and "HIGH" in r4090               # documented catalog price beats the old list price
     cat = next(c[1] for c in isolated.calls if c[1].startswith(runpod.CATALOG_URL))

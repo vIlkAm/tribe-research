@@ -85,13 +85,23 @@ eval "$($R pod-wait <POD_ID>)"
   31 GB RAM as a risk for loading V-JEPA2 ViT-G, Llama-3.2-3B, Wav2Vec-BERT and
   whisper large-v3 together.
 - Image `runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04`, on hosts
-  with CUDA ≥ 12.4. `setup.sh` installs torch 2.6.0+cu124 into its own venv on
+  with a driver for CUDA ≥ 12.8 by default (`--min-cuda`): the whisperx uvx env
+  pins torch 2.8 (cu128 wheels). `--min-cuda 12.4` widens the pool but may break
+  transcription. `setup.sh` installs torch 2.6.0+cu124 into its own venv on
   `/workspace`. The venv links to the image's Python, so **keep the same image**
   for any pod that reuses that disk.
 - The name must start with `tribe-`, the only pods the watchdog touches.
   `--max-hours` is required and recorded in `results/runpod_state.json`.
 - Blackwell GPUs (B200, RTX 50xx, RTX PRO Blackwell) are refused: torch 2.6
   doesn't support them.
+- "No instances currently available" (HTTP 500) is common. Retry another GPU
+  or `--cloud SECURE`; loosening one filter at a time rarely helps.
+- Check a fresh pod before setup: `nvidia-smi` should show 0 % utilisation and
+  ~0 MiB used. A 2026-09-26 community 4090 showed 100 % / 5 GiB busy at start
+  and refused the pod's own key; terminate such a host rather than debug it.
+- Stock images lack rsync; `pod.sh` installs it on the pod before the first
+  push. Pod env vars (HF_TOKEN) reach only PID 1, so `pod/env.sh` reads them
+  from `/proc/1/environ` for SSH shells.
 - GPU names can be short (`4090`, `3090`, `A40`, `A6000`, `L40S`, `L4`).
 
 Phase 1 is one pod with one GPU. For Phase 2 use **one pod with N GPUs**
