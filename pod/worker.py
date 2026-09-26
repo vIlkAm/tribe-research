@@ -8,6 +8,8 @@ Reads manifest.jsonl (see tools/make_manifest.py) and processes every row whose
     <video_id>.npz   preds  float16 [n_segments, n_vertices]   raw cortical predictions
                      seg_start  float64 [n_segments]           segment start (s), may have gaps
                      seg_duration float64 [n_segments]         = TR
+    <video_id>.emb.npz  pooled extractor inputs of TRIBE's fusion model (pod/emb_export.py;
+                     best-effort, --no-emb-export to skip)
     <video_id>.json  metadata + timings; written LAST, so it is the completion marker
 
 A video with an existing .json is skipped, so a crashed/pre-empted worker can
@@ -28,11 +30,18 @@ large-v3 + the align model each time. Real runs instead route
 JSON), falling back to the stock function whenever the server is unavailable.
 ``--no-whisper-server`` (or ``TRIBE_WHISPER_SERVER=0``) restores the stock path.
 The whisperx version is pinned for both paths via ``UV_CONSTRAINT``.
+
+Video: ``--fast-video`` (or ``TRIBE_FAST_VIDEO=1``) swaps neuralset's V-JEPA2 frame
+loop for ``pod/fast_video.py`` (stock's exact frames, each unique frame preprocessed
+once, CPU work overlapped with the GPU, model kept loaded). In fp32 the model inputs are bitwise identical to stock, so the
+feature cache is shared. ``--video-precision tf32|bf16|fp16`` changes the features
+and is refused unless the cache folder name carries that tag (e.g. feature-cache-bf16).
 """
 
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import logging
 import math
@@ -53,6 +62,8 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import emb_export  # noqa: E402  (numpy only)
+import fast_video  # noqa: E402  (no torch/neuralset import until install())
 import whisper_server  # noqa: E402  (constants only; no whisperx import)
 
 log = logging.getLogger("tribe-worker")
@@ -93,11 +104,13 @@ class StubModel:
 
 
 class TribeAdapter:
-    def __init__(self, checkpoint: str, cache_folder: str):
+    def __init__(self, checkpoint: str, cache_folder: str, emb: bool = True):
         from tribev2 import TribeModel  # heavy import; only on the pod
 
         self.model = TribeModel.from_pretrained(checkpoint, cache_folder=cache_folder)
         self.tr = float(self.model.data.TR)
+        self.emb_enabled = emb
+        self._capture: emb_export.Capture | None = None
 
     def events(self, video_path: str):
         return self.model.get_events_dataframe(video_path=video_path)
@@ -124,12 +137,25 @@ class TribeAdapter:
         return out
 
     def predict(self, events):
-        preds, segments = self.model.predict(events=events, verbose=False)
+        self._capture = None
+        if self.emb_enabled:
+            try:  # best-effort tee of the fusion model's inputs, for emb()
+                self._capture = emb_export.Capture(self.model._model)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("emb capture unavailable: %r", exc)
+        with self._capture or contextlib.nullcontext():
+            preds, segments = self.model.predict(events=events, verbose=False)
         starts = np.array([_seg_start(s) for s in segments], dtype=np.float64)
         durs = np.array(
             [float(getattr(s, "duration", self.tr)) for s in segments], dtype=np.float64
         )
         return np.asarray(preds), starts, durs
+
+    def emb(self, events, duration_s: float):
+        """(arrays, meta) pooled from the last predict(); raises if unavailable."""
+        if self._capture is None:
+            raise RuntimeError("emb export disabled or capture unavailable")
+        return emb_export.build(self._capture, events, self.model.data, duration_s)
 
 
 def _seg_start(segment) -> float:
@@ -617,12 +643,36 @@ def runtime_info(dry_run: bool) -> dict:
     return info
 
 
+def _reset_peak_vram():
+    torch = sys.modules.get("torch")
+    if torch is None or not torch.cuda.is_available():
+        return None
+    torch.cuda.reset_peak_memory_stats()
+    return torch
+
+
+def _peak_vram_gb(torch) -> float | None:
+    return None if torch is None else round(torch.cuda.max_memory_allocated() / 2**30, 2)
+
+
+def _video_timing(before: dict) -> dict:
+    """Fast-video loop split for this clip (empty when the stock loop ran or the cache hit)."""
+    d = {k: fast_video.STATS[k] - before[k] for k in before}
+    if not d["steps"]:
+        return {}
+    return {"video_steps": int(d["steps"]), "video_gpu": round(d["gpu_s"], 3),
+            "video_feeder_wait": round(d["feeder_wait_s"], 3),
+            "video_frames_processed": int(d["frames_processed"])}
+
+
 # ── main loop ─────────────────────────────────────────────────────────────
 
 
 def process(model, row: dict, video_path: Path, out_dir: Path, common: dict,
             transcription: Transcription | None = None) -> dict:
     vid = row["video_id"]
+    video_stats0 = dict(fast_video.STATS)
+    cuda = _reset_peak_vram()
     t0 = time.perf_counter()
     events = model.events(str(video_path))
     t1 = time.perf_counter()
@@ -653,6 +703,14 @@ def process(model, row: dict, video_path: Path, out_dir: Path, common: dict,
             f, preds=preds.astype(np.float16), seg_start=starts, seg_duration=durs
         ),
     )
+    emb_meta = None
+    if hasattr(model, "emb") and getattr(model, "emb_enabled", False):
+        try:  # optional; never lose the preds over it
+            arrays, emb_meta = model.emb(events, row["duration_s"])
+            atomic_write_bytes(out_dir / f"{vid}.emb.npz", lambda f: np.savez_compressed(f, **arrays))
+        except Exception as exc:  # noqa: BLE001
+            log.warning("%s: emb export failed (%r); preds kept", row["path"], exc)
+            emb_meta = {"version": emb_export.VERSION, "error": repr(exc)}
     meta = {
         **{k: row[k] for k in ("video_id", "path", "source_name", "duration_s")},
         "n_segments": int(preds.shape[0]),
@@ -662,6 +720,7 @@ def process(model, row: dict, video_path: Path, out_dir: Path, common: dict,
         "words": words,
         "transcript": transcript,
         "quality_warnings": quality_warnings,
+        "emb": emb_meta,
         "preds_dtype_saved": "float16",
         "hemodynamic_offset_note": "TRIBE preds are shifted 5 s into the past to cancel hemodynamic lag (seg_start is stimulus time)",
         "timing_s": {
@@ -670,7 +729,9 @@ def process(model, row: dict, video_path: Path, out_dir: Path, common: dict,
             "transcription_server_start": rec.get("server_start_s") if rec else None,
             "predict": round(t2 - t1, 3),  # feature extraction (V-JEPA2 etc.) + TRIBE
             "total": round(t2 - t0, 3),
+            **_video_timing(video_stats0),
         },
+        "peak_vram_gb": _peak_vram_gb(cuda),
         "realtime_factor": round(row["duration_s"] / max(t2 - t0, 1e-9), 4),
         "finished_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         **common,
@@ -705,6 +766,21 @@ def main() -> int:
                     help="override the server command (shell-split); default: uvx --from whisperx==<pin> ...")
     ap.add_argument("--whisper-timeout", type=float, default=float(os.environ.get("TRIBE_WHISPER_TIMEOUT_S", 900)),
                     help="seconds per clip before the server is killed and the stock path used")
+    ap.add_argument(
+        "--fast-video", action=argparse.BooleanOptionalAction,
+        default=os.environ.get("TRIBE_FAST_VIDEO", "0") in ("1", "true", "yes"),
+        help="fast V-JEPA2 frame loop, same fp32 inputs (env TRIBE_FAST_VIDEO)",
+    )
+    ap.add_argument("--video-precision", choices=fast_video.PRECISIONS,
+                    default=os.environ.get("TRIBE_VIDEO_PRECISION", "fp32"),
+                    help="V-JEPA2 forward precision with --fast-video; non-fp32 needs a tagged cache folder")
+    ap.add_argument("--video-threads", type=int, default=int(os.environ.get("TRIBE_VIDEO_THREADS", 0)) or None,
+                    help="CPU threads for frame preprocessing (default min(8, cores))")
+    ap.add_argument(
+        "--emb-export", action=argparse.BooleanOptionalAction,
+        default=os.environ.get("TRIBE_EMB_EXPORT", "1") not in ("0", "false", "no"),
+        help="also write <vid>.emb.npz, pooled fusion-model inputs (env TRIBE_EMB_EXPORT)",
+    )
     ap.add_argument("--compare-transcription", type=Path, nargs="+", metavar="WAV",
                     help="pod check: transcribe these wavs via server and stock uvx, diff, exit")
     ap.add_argument("--compare-repeats", type=int, default=2,
@@ -721,6 +797,13 @@ def main() -> int:
     missing = [f"--{n.replace('_', '-')}" for n in ("manifest", "videos_root", "out_root") if getattr(args, n) is None]
     if missing:
         ap.error(f"required: {', '.join(missing)}")
+    if args.video_precision != "fp32":
+        # the feature cache key ignores precision: never mix modes in one cache
+        if not args.fast_video:
+            ap.error("--video-precision needs --fast-video")
+        if args.video_precision not in Path(args.cache_folder).name:
+            ap.error(f"--video-precision {args.video_precision} needs a cache folder named for it "
+                     f"(got {args.cache_folder!r}, e.g. feature-cache-{args.video_precision})")
 
     shard = load_shard(args.manifest, args.worker_id, args.num_workers)
     out_dir = args.out_root / f"worker-{args.worker_id}"
@@ -738,10 +821,15 @@ def main() -> int:
 
     t_load = time.perf_counter()
     transcription = None
+    video_config = {"fast_video": False, "video_precision": "fp32"}
     if args.dry_run:
         model = StubModel({str(args.videos_root / r["path"]): r["duration_s"] for r in shard})
     else:
-        model = TribeAdapter(args.checkpoint, args.cache_folder)
+        if args.fast_video:
+            # decode="exact" only: "replay" is not stock-exact on VFR files and would
+            # write different features into the shared fp32 cache
+            video_config = fast_video.install(args.video_precision, threads=args.video_threads)
+        model = TribeAdapter(args.checkpoint, args.cache_folder, emb=args.emb_export)
         ensure_whisperx_constraints()
         transcription = install_transcription(
             args.whisper_server,
@@ -757,6 +845,7 @@ def main() -> int:
         "tribe_commit": git_sha(args.tribe_repo),
         "model_load_s_this_run": load_s,
         "runtime": runtime_info(args.dry_run),
+        "video_config": video_config,
         "transcription_config": None if args.dry_run else {
             "whisperx_pins": list(whisper_server.WHISPERX_PINS),
             "uv_constraint": os.environ.get("UV_CONSTRAINT"),

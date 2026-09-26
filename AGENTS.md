@@ -58,6 +58,9 @@ the owner explicitly decides to connect it:
 | `pod/launch_all.sh` | Phase 2: one worker per GPU on a single N-GPU pod, under `nohup` |
 | `pod/downscale.sh` | Pod-side pre-scale to a 384 px short side (prefer `tools/prep_cpu.py` on the server) |
 | `pod/bench_vjepa.py` | V-JEPA2 GPU floor: one timed 64-frame forward |
+| `pod/fast_video.py` | Opt-in V-JEPA2 frame loop (`TRIBE_FAST_VIDEO=1`): stock's exact frames, each preprocessed once, CPU overlapped with GPU; fp32 inputs bitwise = stock |
+| `pod/bench_fast_video.py` | Pod check: s/step, feeder wait vs GPU, feature drift per precision (fp32/tf32/bf16/fp16) |
+| `pod/emb_export.py` | `<vid>.emb.npz`: pooled fusion-model inputs per extractor (emb_pool_v1, control arm E) |
 | `pod/whisper_server.py` | Persistent whisperx per worker (pinned 3.8.6, stock TRIBE output), stock fallback |
 | `tools/runpod.py` | RunPod API: prices, pod create/wait/stop, cost watchdog (`--max-usd`) |
 | `tools/export_metrics.sh` | Read-only DB export of the approved tables → `results/metrics/` |
