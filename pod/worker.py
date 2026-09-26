@@ -88,15 +88,23 @@ class TribeAdapter:
 
 
 def _seg_start(segment) -> float:
-    # neuralset segments expose absolute start; fall back to offset if absent.
-    for attr in ("start", "offset"):
-        v = getattr(segment, attr, None)
-        if v is not None:
-            try:
-                return float(v)
-            except (TypeError, ValueError):
-                pass
-    return float("nan")
+    # neuralset 0.0.2 Segment.copy(offset=t) sets start = parent.start + t, so
+    # `start` is absolute seconds on the video timeline.
+    v = getattr(segment, "start", None)
+    return float(v) if v is not None else float("nan")
+
+
+def order_segments(preds, starts, durs):
+    """Sort rows by start time; refuse NaN or duplicate starts rather than save bad timing."""
+    if preds.ndim != 2 or preds.shape[0] != len(starts) or len(starts) != len(durs):
+        raise ValueError(f"unexpected preds shape {preds.shape} for {len(starts)} segments")
+    if np.isnan(starts).any():
+        raise ValueError("segment start times missing (NaN); neuralset Segment API changed?")
+    order = np.argsort(starts, kind="stable")
+    starts = starts[order]
+    if len(starts) > 1 and not (np.diff(starts) > 0).all():
+        raise ValueError("duplicate segment start times; refusing to write ambiguous timing")
+    return preds[order], starts, durs[order]
 
 
 # ── helpers ───────────────────────────────────────────────────────────────
@@ -159,11 +167,8 @@ def process(model, row: dict, video_path: Path, out_dir: Path, common: dict) -> 
     t0 = time.perf_counter()
     events = model.events(str(video_path))
     t1 = time.perf_counter()
-    preds, starts, durs = model.predict(events)
+    preds, starts, durs = order_segments(*model.predict(events))
     t2 = time.perf_counter()
-
-    if preds.ndim != 2 or preds.shape[0] != len(starts):
-        raise ValueError(f"unexpected preds shape {preds.shape} for {len(starts)} segments")
 
     atomic_write_bytes(
         out_dir / f"{vid}.npz",

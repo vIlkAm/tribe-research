@@ -14,6 +14,9 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 from make_manifest import assign_workers, build, mvhd_duration  # noqa: E402
 
+sys.path.insert(0, str(ROOT / "pod"))
+import worker  # noqa: E402
+
 
 def fake_mp4(path: Path, seconds: float, salt: bytes = b"") -> None:
     """Minimal ftyp + moov/mvhd (v0) file that mvhd_duration can read."""
@@ -102,3 +105,32 @@ def test_worker_rejects_mismatched_worker_count(tmp_path):
     r = _run(ROOT / "pod/worker.py", "--manifest", manifest, "--videos-root", videos,
              "--out-root", tmp_path / "o", "--num-workers", 2, "--dry-run", check=False)
     assert r.returncode != 0 and "rebuild the manifest" in r.stderr
+
+
+def test_order_segments_sorts_and_rejects_bad_timing():
+    preds = np.arange(6, dtype=np.float32).reshape(3, 2)
+    p, st, _ = worker.order_segments(preds, np.array([2.0, 0.0, 1.0]), np.ones(3))
+    assert st.tolist() == [0.0, 1.0, 2.0] and p[:, 0].tolist() == [2.0, 4.0, 0.0]
+    for bad in ([0.0, 0.0, 1.0], [0.0, float("nan"), 1.0]):
+        try:
+            worker.order_segments(preds, np.array(bad), np.ones(3))
+        except ValueError:
+            continue
+        raise AssertionError(f"accepted {bad}")
+
+
+def test_bad_timing_writes_error_json(tmp_path):
+    class DupModel(worker.StubModel):
+        def predict(self, events):
+            preds, starts, durs = super().predict(events)
+            return preds, np.zeros_like(starts), durs
+
+    row = {"video_id": "v1", "path": "a.mp4", "source_name": "a", "duration_s": 5.0}
+    model = DupModel({"a.mp4": 5.0})
+    try:
+        worker.process(model, row, Path("a.mp4"), tmp_path, {})
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("duplicate starts accepted")
+    assert not list(tmp_path.glob("*.npz")) and not list(tmp_path.glob("*.json"))

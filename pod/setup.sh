@@ -57,6 +57,12 @@ assert torch.cuda.is_available(), "CUDA not available in this venv"
 print(f"torch {torch.__version__} cuda {torch.version.cuda} on {torch.cuda.get_device_name(0)}")
 EOF
 
+echo "== whisperx via uvx (pre-warm once here so pods don't race to build it in uv-cache)"
+# TRIBE calls the unpinned `uvx whisperx`; record what resolved for reproducibility.
+uvx whisperx --help >/dev/null
+uvx --from whisperx python -c 'import importlib.metadata as m; print("whisperx", m.version("whisperx"))' \
+  | tee "$JOB/logs/whisperx-version.txt"
+
 echo "== spacy model"
 python -m spacy download -q en_core_web_sm >/dev/null 2>&1 || python -m spacy download en_core_web_sm
 

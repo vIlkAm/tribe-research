@@ -99,7 +99,9 @@ Nothing below has been run yet. Each pod launch is a billed step.
 
 1. Rebuild the manifest with `--workers 4`. Assignment is greedy
    longest-first by duration, so shards finish together.
-2. Start 3 more pods on the **same** network volume. They share the venv and
+2. Start 3 more pods on the **same** network volume **and the same RunPod
+   template/image** (the venv symlinks to the image's Python, so a different
+   image breaks it). They share the venv and
    weights, so there is no reinstall. On each pod, run `apt-get install -y ffmpeg git`,
    then `WORKER_ID=k NUM_WORKERS=4 run_worker.sh`.
 3. Merge. `merge.py` exits non-zero and lists any missing or failed videos. Re-run
