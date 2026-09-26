@@ -87,7 +87,8 @@ def run(args) -> dict:
     sel = sel.set_index("video_id")
     members = pd.read_csv(args.members, dtype=str)
     posts = pd.read_parquet(args.outcomes, columns=CONTEXT_COLS).astype({"id": str}).set_index("id")
-    fz = build_features.load_featurizer(args.featurizer)
+    # predict.py reads the featurizer only to score (a GO model, or --allow-preliminary); none without a model
+    fz = build_features.load_featurizer(args.featurizer) if args.featurizer else None
     roots = [Path(r) for r in args.out_root]
     dest = args.dest
     if dest.exists() and any(dest.iterdir()):
@@ -127,8 +128,8 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--analyses", type=Path, required=True, help="source bundles (<video_id>/analysis.json)")
     ap.add_argument("--out-root", type=Path, required=True, action="append", help="worker outputs (repeatable)")
-    ap.add_argument("--featurizer", type=Path, required=True)
-    ap.add_argument("--model-dir", type=Path, required=True)
+    ap.add_argument("--featurizer", type=Path, default=None, help="needed whenever a model will score")
+    ap.add_argument("--model-dir", type=Path, default=None, help="absent: every block is not_trained")
     ap.add_argument("--dest", type=Path, required=True, help="new analyses dir (must be empty or absent)")
     ap.add_argument("--clip-meta", type=Path, default=None)
     ap.add_argument("--selection", type=Path, default=ROOT / "results/study/selection.csv")

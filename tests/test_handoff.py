@@ -165,3 +165,39 @@ def test_bundle_performance_uses_the_clips_own_post_and_no_label():
     with pytest.raises(SystemExit, match="not one of its posts"):
         bp.post_context("v1", "p-other", posts, members, sel)
     assert bp.lockbox_set(sel.reset_index(), None) == {"v1"}
+
+
+def test_order_puts_the_hero_first_and_must_match_the_bundle_set(tmp_path):
+    root = _bundles(tmp_path)
+    out = tmp_path / "h.tar.gz"
+    assert handoff.main(["--analyses", str(root), "--out", str(out), "--order", VIDS[1], VIDS[0]]) == 0
+    idx = json.load(tarfile.open(out).extractfile("h/index.json"))
+    assert [r["video_id"] for r in idx["bundles"]] == [VIDS[1], VIDS[0]]
+    assert handoff.main(["--analyses", str(root), "--out", str(tmp_path / "x.tar.gz"), "--order", VIDS[1]]) == 1
+    assert handoff.main(["--analyses", str(root), "--out", str(tmp_path / "y.tar.gz"), "--order", VIDS[0],
+                         VIDS[1], "cccc000000000003"]) == 1
+
+
+def test_release_manifest_hashes_every_member(tmp_path):
+    import hashlib
+
+    root = _bundles(tmp_path)
+    extra = tmp_path / "extra.json"
+    extra.write_text(json.dumps({"status": "not_trained", "validated": False}))
+    out = tmp_path / "rel.tar.gz"
+    assert handoff.main(["--analyses", str(root), "--out", str(out), "--release", "rel",
+                         "--release-manifest", str(extra)]) == 0
+    tar = tarfile.open(out)
+    man = json.load(tar.extractfile("rel/RELEASE_MANIFEST.json"))
+    assert man["status"] == "not_trained" and man["release"] == "rel" and man["count"] == 2
+    members = {n.removeprefix("rel/") for n in tar.getnames() if tar.getmember(n).isfile()}
+    assert set(man["files_sha256"]) == members - {"RELEASE_MANIFEST.json"} and "index.json" in members
+    for rel, digest in man["files_sha256"].items():
+        assert hashlib.sha256(tar.extractfile(f"rel/{rel}").read()).hexdigest() == digest
+    assert json.loads((tmp_path / "rel.RELEASE_MANIFEST.json").read_text()) == man
+
+
+def test_a_missing_asset_stops_the_handoff(tmp_path):
+    root = _bundles(tmp_path)
+    (root / VIDS[0] / "brain_proxy.jpg").unlink()
+    assert handoff.main(["--analyses", str(root), "--out", str(tmp_path / "h.tar.gz")]) == 1

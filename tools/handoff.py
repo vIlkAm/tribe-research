@@ -23,16 +23,19 @@ number. ``--clip-meta`` (a JSON list from tools/bundle_performance.py) adds ``pl
 from __future__ import annotations
 
 import argparse
+import hashlib
 import io
 import json
 import sys
 import tarfile
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SHIP = {"analysis.json", "performance.json", "brain_proxy.jpg", "brain_vertex.jpg", "summary.png"}
 PERF_SCHEMA = ROOT / "docs/performance.schema.draft.json"
 CLIP_META_KEYS = ("platform", "video_link", "is_lockbox")
+STATIC_EXT = {".png", ".jpg", ".json"}
 # keys that would carry an observed outcome (a label) into a bundle; predict.py never writes them
 # (predict.py's `engagement`/`reach` are predicted blocks and stay allowed)
 OUTCOME_KEYS = {"y", "obs_pct", "observed", "observed_percentile", "views", "views_final", "likes", "comments",
@@ -71,6 +74,33 @@ def outcome_keys(x, path="") -> list[str]:
     return out
 
 
+def asset_refs(x) -> list[str]:
+    """Every ``src`` / ``*_src`` string in an analysis (paths relative to its bundle directory)."""
+    out = []
+    if isinstance(x, dict):
+        for k, v in x.items():
+            if (k == "src" or k.endswith("_src")) and isinstance(v, str):
+                out.append(v)
+            else:
+                out += asset_refs(v)
+    elif isinstance(x, list):
+        for v in x:
+            out += asset_refs(v)
+    return out
+
+
+def unresolved_assets(a: dict, bundle_dir: Path, analyses: Path) -> list[str]:
+    """Referenced assets that are missing or would not be in the tarball (not on the ship lists)."""
+    bad = []
+    for ref in asset_refs(a):
+        f = (bundle_dir / ref).resolve()
+        ships = (f.parent == bundle_dir.resolve() and f.name in SHIP) or \
+            (f.parent == (analyses / "_static").resolve() and f.suffix in STATIC_EXT)
+        if not f.is_file() or not ships:
+            bad.append(ref)
+    return bad
+
+
 def load_clip_meta(path: Path | None) -> dict[str, dict] | None:
     if path is None:
         return None
@@ -100,6 +130,10 @@ def collect(analyses: Path, expect_real: bool, clip_meta: dict[str, dict] | None
             continue
         if expect_real and a["synthetic"]:
             errors.append(f"{p.parent.name}: synthetic bundle in a real handoff")
+            continue
+        bad_assets = unresolved_assets(a, p.parent, analyses)
+        if bad_assets:
+            errors.append(f"{p.parent.name}: assets that would not ship {bad_assets[:3]}")
             continue
         row = {
             "video_id": a["video_id"], "analysis_id": a["analysis_id"], "path": f"{p.parent.name}/analysis.json",
@@ -162,6 +196,11 @@ def main(argv=None) -> int:
     ap.add_argument("--require-performance", action="store_true", help="every bundle must have performance.json")
     ap.add_argument("--release", default=None, help="release tag recorded in index.json (e.g. data-frontend40-v2)")
     ap.add_argument("--model-release", default=None, help="model release tag recorded in index.json")
+    ap.add_argument("--order", nargs="+", default=None,
+                    help="index order (all bundle video_ids, e.g. hero first); default sorted by video_id")
+    ap.add_argument("--release-manifest", type=Path, default=None,
+                    help="JSON object merged into <top>/RELEASE_MANIFEST.json (sha256 of every file in the "
+                         "tarball; also written next to --out as <name>.RELEASE_MANIFEST.json)")
     args = ap.parse_args(argv)
 
     clip_meta = load_clip_meta(args.clip_meta)
@@ -171,6 +210,12 @@ def main(argv=None) -> int:
             print(f"INVALID {e}", file=sys.stderr)
         print(f"handoff stopped: {len(errors)} invalid, {len(index)} valid", file=sys.stderr)
         return 1
+    if args.order:
+        by_id = {r["video_id"]: r for r in index}
+        if sorted(args.order) != sorted(by_id):
+            print(f"handoff stopped: --order {args.order} is not exactly the bundles {sorted(by_id)}", file=sys.stderr)
+            return 1
+        index = [by_id[v] for v in args.order]
     schema_version = json.loads((args.analyses / index[0]["path"]).read_text())["schema_version"]
     doc = {"schema_version": schema_version, "count": len(index),
            "synthetic": any(r["synthetic"] for r in index), "bundles": index}
@@ -189,22 +234,38 @@ def main(argv=None) -> int:
     args.out.parent.mkdir(parents=True, exist_ok=True)
     tmp = args.out.with_name(args.out.name + ".part")
     top = args.out.name.removesuffix(".tar.gz")
+    data = json.dumps(doc, indent=1).encode()
+    members: list[tuple[str, Path | bytes]] = [(f"{top}/index.json", data)]
+    for r in index:
+        d = args.analyses / r["video_id"]
+        for f in sorted(d.iterdir()):
+            if f.name in SHIP:
+                members.append((f"{top}/{r['video_id']}/{f.name}", f))
+    static = args.analyses / "_static"
+    if static.exists():
+        for f in sorted(static.iterdir()):
+            if f.suffix in STATIC_EXT:
+                members.append((f"{top}/_static/{f.name}", f))
+    manifest = None
+    if args.release_manifest is not None:
+        extra = json.loads(args.release_manifest.read_text())
+        files = {name.removeprefix(f"{top}/"): hashlib.sha256(src if isinstance(src, bytes) else src.read_bytes())
+                 .hexdigest() for name, src in members}
+        manifest = {"release": args.release, "model_version": model_version, "model_release": args.model_release,
+                    "count": len(index), "created_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    **extra, "files_sha256": files}
+        members.append((f"{top}/RELEASE_MANIFEST.json", (json.dumps(manifest, indent=1) + "\n").encode()))
     with tarfile.open(tmp, "w:gz") as tar:
-        data = json.dumps(doc, indent=1).encode()
-        info = tarfile.TarInfo(f"{top}/index.json")
-        info.size = len(data)
-        tar.addfile(info, io.BytesIO(data))
-        for r in index:
-            d = args.analyses / r["video_id"]
-            for f in sorted(d.iterdir()):
-                if f.name in SHIP:
-                    tar.add(f, arcname=f"{top}/{r['video_id']}/{f.name}")
-        static = args.analyses / "_static"
-        if static.exists():
-            for f in sorted(static.iterdir()):
-                if f.suffix in {".png", ".jpg", ".json"}:
-                    tar.add(f, arcname=f"{top}/_static/{f.name}")
+        for name, src in members:
+            if isinstance(src, bytes):
+                info = tarfile.TarInfo(name)
+                info.size = len(src)
+                tar.addfile(info, io.BytesIO(src))
+            else:
+                tar.add(src, arcname=name)
     tmp.replace(args.out)
+    if manifest is not None:
+        args.out.with_name(f"{top}.RELEASE_MANIFEST.json").write_text(json.dumps(manifest, indent=1) + "\n")
     print(f"{len(index)} bundles ({'SYNTHETIC' if doc['synthetic'] else 'real'}), "
           f"{args.out.stat().st_size / 1e6:.1f} MB -> {args.out}"
           + (f", model {model_version}" if model_version else ""))
