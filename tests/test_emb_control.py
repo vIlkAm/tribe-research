@@ -75,7 +75,7 @@ def test_emb_pca_columns_lockbox_projected_and_broken_export_tolerated(outputs):
         assert meta["emb"]["per_modality"][f"{m}_sd"]["dim"] == 2 * DIMS[m]
         assert meta["emb"]["per_modality"][f"{m}_bins"]["dim"] == 4 * 2 * DIMS[m]
         assert f"emb_{m}_sd_pca_01" in df.columns and f"emb_{m}_bins_pca_01" in df.columns
-    assert meta["emb"]["version"] == "emb_pool_v2"
+    assert meta["emb"]["version"] == "emb_features_v1"
 
 
 def test_load_emb_bins_are_shape_around_the_mean_and_empty_quarters_carry_nothing(tmp_path):
@@ -142,3 +142,44 @@ def test_build_dataset_drops_confident_non_english_clips():
     assert list(df["video_id"]) == ["v2"] and info["clips_excluded_non_english"] == 1
     df, info, _ = fit_models.build_dataset(feats, members, outcomes, ["reach_rel_local"], exclude_non_english=False)
     assert len(df) == 2
+
+
+def _stack_data(n=600, n_noise=60, signal=0.0, seed=0):
+    rng = np.random.default_rng(seed)
+    content = np.arange(n)
+    a = rng.normal(0, 1, n)
+    brain_sig = rng.normal(0, 1, n)
+    y = 0.5 * a + signal * brain_sig + rng.normal(0, 1, n)
+    df = pd.DataFrame({"platform": rng.choice(["tiktok", "instagram"], n), "deal_id": "d", "_content": content,
+                       "social_account_id": rng.choice([f"acc{i}" for i in range(30)], n),
+                       "base_log_duration": a, "brain_sig": brain_sig})
+    for j in range(n_noise):
+        df[f"brain_noise_{j}"] = rng.normal(0, 1, n)
+    return df, y
+
+
+def _held_out_corr(kind, cols, df, y):
+    tr, te = np.arange(len(y)) < 400, np.arange(len(y)) >= 400
+    _, p = fit_models.fit_predict(kind, cols, df[tr], y[tr], None, df[te], 0)
+    return np.corrcoef(p, y[te])[0, 1], p
+
+
+def test_stack_compresses_each_block_so_pure_noise_costs_little():
+    df, y = _stack_data()
+    noise = [c for c in df if c.startswith("brain_noise_")]
+    a_cols = (["platform"], ["base_log_duration"])
+    b_cols = (["platform"], ["base_log_duration"] + noise)
+    r_a, p_a = _held_out_corr("stack", a_cols, df, y)
+    r_stack, p_b = _held_out_corr("stack", b_cols, df, y)
+    assert r_stack > r_a - 0.02 and np.corrcoef(p_a, p_b)[0, 1] > 0.95
+
+
+def test_stack_uses_a_real_block_signal_and_scores_one_column_per_block():
+    df, y = _stack_data(signal=0.6, n_noise=5)
+    cols = (["platform"], ["base_log_duration", "brain_sig"] + [c for c in df if c.startswith("brain_noise_")])
+    r_a, _ = _held_out_corr("stack", (["platform"], ["base_log_duration"]), df, y)
+    r_b, _ = _held_out_corr("stack", cols, df, y)
+    assert r_b > r_a + 0.1
+    est = fit_models.make_model("stack", *cols).fit(df[fit_models.input_columns(cols)], y,
+                                                   groups=df["_content"].to_numpy())
+    assert est.score_cols_ == ["stack_brain"] and est.a_num_ == ["base_log_duration"]

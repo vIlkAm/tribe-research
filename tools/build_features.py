@@ -21,9 +21,10 @@ Column prefixes decide how tools/fit_models.py uses a column:
              emb_<video|audio|text>_pca_NN       PCA of the clip's time-mean ``<vid>.emb.npz`` vector
              emb_<video|audio|text>_sd_pca_NN    PCA of its per-feature sd over time
              emb_<video|audio|text>_bins_pca_NN  PCA of its four quarter means minus the time mean
-             (``emb_pool_v2``: per layer group, flattened), each fit like brain_pca; absent when no clip has
-             one. The sd/bins blocks give the control the same coarse temporal access the brain features have,
-             so BE − E credits the brain mapping, not merely time-resolved pooling
+             (``emb_features_v1``, read from the pod's ``emb_pool_v1`` files: per layer group, flattened), each
+             fit like brain_pca; absent when no clip has one. The sd/bins blocks give the control the same
+             coarse temporal access the brain features have, so BE − E credits the brain mapping, not merely
+             time-resolved pooling
     qc_*     quality/diagnostics; used by neither model
     status   ok | failed (worker .error.json) | error (could not featurize) | missing (manifest only)
 
@@ -81,7 +82,7 @@ PCA_THREADS = 8  # BLAS threads for the PCA (the host is shared; more threads mo
 MOMENT_KINDS = ("attention_drop", "broad_response", "proxy_rise", "proxy_fall")
 EARLY_S = 2.0  # "first 2 s vs rest" trajectory window (= proxies.ONSET_S)
 EMB_MODALITIES = ("video", "audio", "text")
-EMB_VERSION = "emb_pool_v2"
+EMB_VERSION = "emb_features_v1"  # how the features are derived; the pod file format is pod/emb_export.py VERSION
 EMB_STATS = ("", "_sd", "_bins")  # block key suffix per modality: time mean, sd over time, quarter shape
 NON_ENGLISH_MIN_PROB = 0.5  # whisperx language probability above which a non-"en" detection is trusted
 

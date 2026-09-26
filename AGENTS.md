@@ -71,7 +71,7 @@ the owner explicitly decides to connect it:
 | `tools/make_batches.py` | Study set → ordered disjoint pod batches (pilot, frontend wiring set, 200s, deep-dive) |
 | `tools/prep_cpu.py` | Pre-scale batch clips on this server (niced, load-gated, pinned ffmpeg) before `push-batch` |
 | `tools/build_features.py` | Per-clip brain, extractor-embedding (control) and baseline feature table from pulled outputs |
-| `tools/fit_models.py` | Baseline vs brain vs extractor-embedding control (A/B/E/BE): grouped CV, leave-one-deal-out, niche tuning, sealed lockbox |
+| `tools/fit_models.py` | Baseline vs brain vs extractor-embedding control (A/B/E/BE; block-stacked ridge primary): grouped CV, leave-one-deal-out, niche tuning, sealed lockbox |
 | `tools/power_check.py` | CPU power simulation (no TRIBE outputs, never reads lockbox labels) → `results/power/` |
 | `tools/profile_account.py` | One deal's or account's brain profile vs the general model |
 | `tools/handoff.py` | Validate bundles against the contract, index, tarball for the frontend (no footage) |

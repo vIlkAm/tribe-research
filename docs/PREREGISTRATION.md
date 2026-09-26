@@ -41,8 +41,18 @@ only from time-resolved pooling.
   ICC ≈ 0.59, against ≈ 0.29 for reach.
 - **Metric:** within deal × platform Spearman ρ, averaged across strata and
   weighted by 1 / `incl_prob`.
-- **Contrast:** BE − E, `ridge` (`GroupedRidgeCV`, alphas 10⁻²…10⁵, inner
-  content-grouped CV).
+- **Contrast:** BE − E, model `stack` (`BlockStackRegressor` in
+  `tools/fit_models.py`):
+  - Each wide block (`brain_*`, `emb_*`) is compressed to one score by its
+    own `GroupedRidgeCV` (alphas 10⁻²…10⁵, inner content-grouped CV) fitted
+    on y.
+  - Training rows get their score from inner content-grouped folds that
+    never saw them.
+  - The final ridge sees A plus those scores, so BE is E plus exactly one
+    column.
+  - Why: one ridge with a shared penalty over 100–280 clip columns costs
+    −0.08 to −0.14 within-stratum ρ on pure noise, and it loses most of a
+    real signal (see Sample size).
 - **Uncertainty:** paired cluster bootstrap over contents, 1,000 draws, 95 %
   percentile CI.
 - **Claim rule:** "the brain mapping adds predictive signal beyond its inputs"
@@ -58,16 +68,24 @@ only from time-resolved pooling.
   `--score-lockbox`.
 - **Why CV and not the lockbox:** the 225-clip lockbox can't resolve a
   realistic gain (table below). Opening it here would burn it for nothing.
-- **Go/no-go on scaling:** BE − A (ridge, primary target, within-stratum ρ)
-  point ≥ +0.02 **and** CI lower bound > −0.01 → recommend funding the full
-  eligible set. Otherwise recommend not scaling. The owner makes the spending
-  call either way.
-- **BE − E at stage 1 is directional only.** Report it with its CI. Don't
-  claim it confirmed even if the CI excludes 0, because stage 2 is the
-  confirmatory test.
-- **Stop early without scaling** if BE − E has a CI upper bound < +0.02 **and**
-  E − A > 0. The value is then in generic extractor features. Report that
-  plainly; the brain story doesn't hold.
+Stage 1 answers two questions, and each has its own rule.
+
+- **Scaling (BE − A decides).** Use `stack`, the primary target and
+  within-stratum ρ.
+  - If the point is ≥ +0.02 **and** the CI lower bound is > −0.03, recommend
+    funding the full eligible set. Otherwise, recommend not scaling.
+  - The owner makes the spending call either way.
+  - The −0.03 floor matches the real CV precision. With the 1 / `incl_prob`
+    weights (n_eff 528), a point of +0.02 carries a CI of about ±0.05.
+- **Neural claim (BE − E decides).** At stage 1, BE − E is **directional
+  only**.
+  - Report it with its CI. Don't claim it confirmed even if the CI excludes
+    0; stage 2 is the confirmatory test.
+  - If its CI upper bound is < 0, stop describing the result as a brain
+    effect. That drops the claim; it doesn't veto scaling.
+  - If stage 2 goes ahead anyway, BE − E stays its confirmatory primary, and
+    E − A becomes a declared secondary. The GPU cost is the extractors, so the
+    full run is worth the same money whether the signal is in E or in B.
 
 ### Stage 2: the full eligible set (~7.9k contents), only after stage 1 GO and an owner budget decision
 
@@ -75,8 +93,16 @@ only from time-resolved pooling.
   clip is sent to a pod, draw 15 % of each deal's new eligible contents with
   seed `20260926`, remove anything linked to them by `content_group` from
   train, and record the list in `results/study/`. The existing lockbox is
-  never redrawn.
-- **Confirmatory primary:** BE − E, ridge, `log_interactions_rate`,
+  never redrawn. Eligibility depends on the inputs, so the draw is pinned to
+  the inputs as of this document (sha256):
+  - `results/outcomes.parquet` `bc679801467603ea5b3bb9608ff057e6a9702685b72be65ccc9337b4e1d5a02c`
+  - `results/run_full/manifest.jsonl` `9f778476862eea2a95584fb212492da74052a6ab82ca8ceccf9d73df86a91397`
+  - `results/run_full/members.csv` `85c1d1eb8752e682d07667252ac1608bdc0aebd952261efda4f7f6ad66a7cae1`
+  - `results/study/selection.csv` `dc47ba561d64e48a725d252afd489a65e0d26493c4cf21a4ddf3753ceed599cb`
+
+  If any of these is re-exported first, log it as a deviation and draw from
+  the pinned files.
+- **Confirmatory primary:** BE − E, `stack`, `log_interactions_rate`,
   within-stratum ρ on that lockbox, scored **once** with `--score-lockbox`
   after the whole pipeline is frozen. The claim rule above applies.
 - **Supporting evidence:** 5-fold content CV on the stage-2 train must have
@@ -91,7 +117,7 @@ q = 0.10 applies within each family.
 1. **Arms, primary target:** B − A, E − A, B − E.
 2. **Other target:** `reach_rel_local`, all contrasts. Its ceiling is lower,
    because reach is mostly account, platform and luck.
-3. **Robustness:** `hgb` for every contrast; `account` and `lodo` (leave one
+3. **Robustness:** `ridge` and `hgb` for every contrast; `account` and `lodo` (leave one
    deal out) schemes; `--fit-weighted`.
 4. **Subgroups:** per platform and per deal with ≥ 100 scored clips; niche
    (per-deal and per-account) tuning. Accounts contribute 6–12 clips each, so
@@ -107,7 +133,9 @@ q = 0.10 applies within each family.
 | TRIBE | v2, `configs/tribev2-config.yaml` as used in `results/logs/pilot-l40s` |
 | input scaling | 384 px short side (`tools/prep_cpu.py`). Parity with stock: spatial r ≥ 0.998 per timepoint, median per-vertex temporal r 0.998–0.999, mean relative abs difference ≈ 5 % |
 | brain features | `clip_features_v1`, `n_pca` 20, PCA fit without lockbox clips (projected only) |
-| emb features | `emb_pool_v2` (mean, sd, quarter shape per extractor), `n_pca` 20 per block, same lockbox rule |
+| emb features | `emb_features_v1`, read from the pod's `emb_pool_v1` files (time mean, sd, quarter shape per extractor), `n_pca` 20 per block, same lockbox rule |
+| model | `stack` (primary); `ridge`, `hgb` secondary |
+| pod code | the fast frame loop (`pod/fast_video.py`) and the emb export only count once the patched path reproduces the stock-s384 predictions on e87b4ed8ee19cbde and f1231478a06f2b30 at the parity thresholds above, **and** the first real export shows sensible shapes, `_n` ≈ 2 × duration and all four quarters non-empty on clips ≥ 20 s. Record the pod code commit in the deviations log |
 | exclusions | failed/`status != ok` clips; outcome flags per `fit_models` defaults; **confident non-English** (whisperx language ≠ en with p ≥ 0.5; TRIBE transcribes as English) |
 | missing emb export | kept, median-imputed inside each fit, so every arm scores the same rows. If > 5 % of scored clips lack an export, re-export before scoring |
 | weights | bootstrap and metrics weighted by 1 / `incl_prob`; model fitting unweighted |
@@ -138,20 +166,69 @@ How to read it:
   about as precise as the full-set lockbox, so CV is the stage-1 scorer.
 - A confirmatory claim needs stage 2's larger lockbox.
 
-The simulation is **optimistic**. It uses one clean feature, whereas the real
-B and BE have 100+ features that will overfit. The feature carries label noise
-of the posts it's scored on. The CV bootstrap treats the fitted models as
-fixed. The sampling is random, not the curated study design. Expect real
-power to be lower.
+The table above is **optimistic**:
+- It uses one clean feature.
+- The feature carries label noise of the posts it's scored on.
+- The sampling is random, not the curated study design.
+
+Three corrections were measured before this was frozen.
+
+**Block width.** The real blocks are wide: about 100 brain columns and 180
+emb columns (9 PCA blocks × 20). The simulation re-ran CV at 1,275 with
+`--n-noise` / `--n-noise-both` for 20 designs each, on `log_interactions_rate`.
+"Factor" means a correlated 5-factor block with the signal on one factor,
+which is the realistic shape of ROI/PCA features. "Sparse" means one signal
+column plus pure noise. Results are `results/power/power_check_cv_*.json`.
+
+| contrast simulated | brain block | model | ρ 0 | ρ 0.2 | ρ 0.3 |
+|---|---|---|---|---|---|
+| B − A | 1 column | ridge | −0.001 ±0.007 | +0.042 ±0.032, 0.75 | +0.084 ±0.039, 1.00 |
+| B − A | 1 column | stack | −0.001 ±0.006 | +0.042 ±0.030, 0.85 | +0.082 ±0.038, 1.00 |
+| B − A | 100, factor | ridge | **−0.078** ±0.040 | −0.026 ±0.044, 0.00 | +0.022 ±0.047, 0.20 |
+| B − A | 100, factor | stack | −0.002 ±0.008 | +0.030 ±0.027, 0.45 | +0.069 ±0.036, 1.00 |
+| BE − E (E = 180 noise) | 100, factor | stack | −0.000 ±0.007 | +0.030 ±0.028, 0.45 | +0.070 ±0.037, 1.00 |
+| B − A | 100, sparse | ridge | **−0.087** ±0.041 | −0.037 ±0.045, 0.00 | +0.010 ±0.047, 0.10 |
+| B − A | 100, sparse | stack | −0.003 ±0.007 | +0.003 ±0.013, 0.00 | +0.022 ±0.023, 0.45 |
+| BE − A | 280, sparse | ridge | **−0.135** ±0.052 | −0.094 ±0.052, 0.00 | −0.053 ±0.053, 0.00 |
+| BE − A | 280, sparse | stack | −0.001 ±0.008 | +0.002 ±0.010, 0.00 | +0.012 ±0.016, 0.20 |
+
+Reading the table:
+- A shared-penalty ridge can't be the primary model: it overfits pure noise
+  by −0.08 to −0.14.
+- `stack` holds the null near 0 in every case.
+- `stack` keeps most of a signal that lives in a few shared directions of the
+  block.
+- A signal hidden in one column among 100, or spread evenly over 100
+  independent columns, is not learnable at about 1,000 contents by any
+  estimator. The dense/isotropic `stack` run gives ρ 0.3 → +0.015 ±0.021.
+
+**Weighting.** The study set's 1 / `incl_prob` weights give Kish
+n_eff = 528 of 1,275 train contents. Real CV half-widths should be about
+√(1275/528) ≈ **1.55×** the simulated, unweighted ones: about ±0.05 at
+Δ ≈ +0.04, not ±0.03. The stage-1 GO floor of −0.03 accounts for this.
+
+**Calibration.** Compare the across-design SD of Δ with the bootstrap SE
+(half-width / 1.96):
+- For engagement they agree (for example 0.014 against 0.016 at ρ 0.2), so
+  the content bootstrap is calibrated.
+- For `reach_rel_local` CV, the bootstrap is about **1.4× anti-conservative**
+  (0.030 against 0.021 at ρ 0.1). Read reach CIs as too narrow.
+
+Net result: at 1,500, stage 1 can detect a brain gain of about +0.05 or more
+that is carried by the block's shared structure. A smaller or sparse gain
+needs stage 2.
 
 ## Already seen before this was written
 
 - The outcomes table and its ICCs, and the study-set selection. Selection
   used reach/engagement strata; that is handled by the `incl_prob` weights.
 - A-only out-of-fold performance on non-lockbox contents, from the power
-  check.
+  check. That includes the labels of the future stage-2 extension contents
+  (A-only, no brain or emb features).
 - TRIBE outputs for 9 pilot clips (all train, none linked to the lockbox),
   used for parity and speed only. Nothing was fit on them against labels.
+  They have no emb export; that's harmless at 9 of 1,500 (median-imputed), or
+  they can be rerun.
 - No lockbox label has been read by any analysis.
 
 ## Known limits (decided now, not after the result)
@@ -171,3 +248,6 @@ power to be lower.
 | date | change | why | made before seeing |
 |---|---|---|---|
 | 2026-09-26 | Brain and emb PCA are fit once on all non-lockbox clips, so they span CV folds | unsupervised (no labels), cheap; refitting PCA per fold changes little | any real fit |
+| 2026-09-26 | Primary model `ridge` → `stack` (`BlockStackRegressor`); `ridge` becomes secondary | power_check block-width runs: shared-penalty ridge loses 0.08–0.14 ρ on pure noise and most of a factor-structured signal; `stack` holds the null at ≈ 0 and keeps it (Sample size) | any real fit (committed text: 0539df5) |
+| 2026-09-26 | Stage-1 rules split: BE − A decides scaling (floor −0.01 → −0.03); BE − E decides only the neural claim, and a null BE − E no longer vetoes scaling | the committed "GO" and "stop early" rules could both fire; n_eff 528 widens real CIs ≈ 1.55× | any real fit |
+| 2026-09-26 | Added: weighting (n_eff), bootstrap calibration and block-width results; stage-2 input hashes; pod-code parity/emb-timing gate; `emb_pool_v2` renamed `emb_features_v1` (reads pod files `emb_pool_v1`) | review before any fit; the name clashed with the pod file format | any real fit |

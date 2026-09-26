@@ -15,6 +15,10 @@ compares, at POST level:
        (control arm; only when the features table has them). B > A alone shows that SOME content
        representation beats metadata; the brain mapping earns credit only through BE − E (BE = A + brain + emb)
        and B − E. docs/PREREGISTRATION.md names the primary comparison.
+
+Models: ``stack`` (the pre-registered primary: each ``brain_*``/``emb_*`` block compressed to one inner-OOF
+ridge score, then ridge on A + scores; see BlockStackRegressor), ``ridge`` (one shared penalty over every
+column; overfits wide blocks) and ``hgb``.
     C  niche-tuned: a general B model fit without the niche, plus a partially pooled
        (ridge-shrunk, penalty by grouped inner CV) residual adjustment fit on the
        niche's own training clips (deal; accounts with enough posts on top)
@@ -101,7 +105,8 @@ SELECTION_BASE = {"audio_mean_db": "base_audio_mean_db"}  # + base_aspect from h
 SCHEMES = ("content", "account", "lodo")
 # (new, reference) feature-set pairs whose paired delta every bootstrap reports, when both sets were fit
 PAIRS = (("B", "A"), ("E", "A"), ("BE", "E"), ("B", "E"), ("BE", "A"))  # docs/PREREGISTRATION.md: BE − E primary, BE − A go/no-go
-MODELS = ("ridge", "hgb")
+MODELS = ("stack", "ridge", "hgb")  # stack: pre-registered primary (docs/PREREGISTRATION.md)
+BLOCK_PREFIXES = (("brain", "brain_"), ("emb", "emb_"))  # wide clip-feature blocks the stack compresses to one score
 MIN_STRATUM_N = 10
 MIN_ICC_GROUPS = 20
 MIN_CLUSTERS = 5  # accounts needed for an account-clustered p-value
@@ -405,6 +410,78 @@ class GroupedRidgeCV(RegressorMixin, BaseEstimator):
         return X @ self.coef_ + self.intercept_
 
 
+class BlockStackRegressor(RegressorMixin, BaseEstimator):
+    """Ridge on A plus one score per wide clip-feature block (``brain_*``, ``emb_*``), each with its own penalty.
+
+    One shared ridge penalty lets 100-280 weak clip columns ride on the small penalty A's strong columns need:
+    in ``tools/power_check.py`` 100 pure-noise columns cost about −0.09 within-stratum ρ. Here every block is
+    first compressed to a single score by its own ``GroupedRidgeCV`` on y. The score a training row gets comes
+    from inner content-grouped folds that never saw that row, so the final ridge can't over-trust it; at predict
+    time the block models fit on all training rows score the new rows. BE − E is then exactly one extra column.
+    """
+
+    def __init__(self, cat=(), num=(), n_splits: int = 5, seed: int = 0):
+        self.cat = cat
+        self.num = num
+        self.n_splits = n_splits
+        self.seed = seed
+
+    def _block_model(self):
+        from sklearn.impute import SimpleImputer
+        from sklearn.pipeline import Pipeline
+        from sklearn.preprocessing import StandardScaler
+
+        return Pipeline([("imp", SimpleImputer(strategy="median")), ("sc", StandardScaler()),
+                         ("model", GroupedRidgeCV(random_state=self.seed))])
+
+    def fit(self, X, y, sample_weight=None, groups=None):
+        from sklearn.model_selection import GroupKFold
+
+        X = X.reset_index(drop=True)
+        y = np.asarray(y, float)
+        if groups is None:
+            groups = X["_content"].to_numpy() if "_content" in X else np.arange(len(y))
+        groups = np.asarray(groups)
+        w = None if sample_weight is None else np.asarray(sample_weight, float)
+        self.blocks_ = {b: [c for c in self.num if c.startswith(pre)] for b, pre in BLOCK_PREFIXES}
+        self.blocks_ = {b: c for b, c in self.blocks_.items() if c}
+        in_block = {c for cols in self.blocks_.values() for c in cols}
+        self.a_num_ = [c for c in self.num if c not in in_block]
+
+        def kw(ix):
+            out = {"model__groups": groups[ix]}
+            if w is not None:
+                out["model__sample_weight"] = w[ix]
+            return out
+
+        scores = {}
+        self.block_models_ = {}
+        k = min(self.n_splits, len(np.unique(groups)))
+        every = np.arange(len(y))
+        for b, cols in self.blocks_.items():
+            oof = np.full(len(y), np.nan)
+            if k >= 2:
+                for tr, te in GroupKFold(n_splits=k, shuffle=True, random_state=self.seed).split(X, groups=groups):
+                    oof[te] = self._block_model().fit(X.iloc[tr][cols], y[tr], **kw(tr)).predict(X.iloc[te][cols])
+            self.block_models_[b] = self._block_model().fit(X[cols], y, **kw(every))
+            scores[f"stack_{b}"] = np.where(np.isfinite(oof), oof, self.block_models_[b].predict(X[cols]))
+        self.score_cols_ = list(scores)
+        self.final_cols_ = (list(self.cat), self.a_num_ + self.score_cols_)
+        self.final_ = make_model("ridge", *self.final_cols_, seed=self.seed)
+        fkw = {"model__groups": groups}
+        if w is not None:
+            fkw["model__sample_weight"] = w
+        Xf = pd.concat([X, pd.DataFrame(scores, index=X.index)], axis=1)
+        self.final_.fit(Xf[input_columns(self.final_cols_)], y, **fkw)
+        return self
+
+    def predict(self, X):
+        X = X.reset_index(drop=True)
+        S = pd.DataFrame({f"stack_{b}": m.predict(X[self.blocks_[b]]) for b, m in self.block_models_.items()},
+                         index=X.index)
+        return self.final_.predict(pd.concat([X, S], axis=1)[input_columns(self.final_cols_)])
+
+
 class AccountTargetEncoder(TransformerMixin, BaseEstimator):
     """Adds ``te_account_mean``: the posting account's mean target, smoothed toward its deal×platform mean.
 
@@ -497,6 +574,8 @@ def make_model(kind: str, cat: list[str], num: list[str], seed: int = 0):
     from sklearn.pipeline import Pipeline, make_pipeline
     from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder, StandardScaler
 
+    if kind == "stack":
+        return BlockStackRegressor(cat=tuple(cat), num=tuple(num), seed=seed)
     te = [("te", AccountTargetEncoder(random_state=seed))] if ACCOUNT_TE in num else []
     if kind == "ridge":
         pre = ColumnTransformer([
@@ -522,9 +601,10 @@ def fit_predict(kind, cols, train: pd.DataFrame, y, w, test: pd.DataFrame, seed=
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         est = make_model(kind, cat, num, seed)
-        kw = {"model__sample_weight": w} if fit_weighted and w is not None else {}
-        if kind == "ridge" and "_content" in train:
-            kw["model__groups"] = train["_content"].to_numpy()
+        pre = "" if kind == "stack" else "model__"  # the stack routes groups/weights to its own sub-models
+        kw = {f"{pre}sample_weight": w} if fit_weighted and w is not None else {}
+        if kind in ("ridge", "stack") and "_content" in train:
+            kw[f"{pre}groups"] = train["_content"].to_numpy()
         use = input_columns(cols)
         est.fit(train[use], y, **kw)  # the account encoding is refit here, on this fit's training rows only
         return est, est.predict(test[use])
