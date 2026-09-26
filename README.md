@@ -60,6 +60,67 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 - Accepted containers: `.mp4 .avi .mkv .mov .webm`.
 - Licence: **CC-BY-NC-4.0**.
 
+## Transcription (one whisperx process per worker)
+
+Stock TRIBE runs a fresh `uvx whisperx <wav> --model large-v3 …` for every clip,
+reloading large-v3 and the align model each time (~20–40 s per clip). Real
+worker runs instead patch `ExtractWordsFromAudio._get_transcript_from_audio` to
+send each wav to one long-lived `pod/whisper_server.py` per worker. The server:
+
+- runs in whisperx's own uv env (`uvx --from whisperx==3.8.6 python …`), never TRIBE's venv;
+- builds its arguments with whisperx's own CLI parser from TRIBE's exact flags;
+- calls whisperx's own `transcribe_task` per clip, with only the two model loaders memoised.
+
+The JSON, and therefore the word DataFrame and `.tsv`, should be the stock CLI's.
+
+- **Paths.** neuralset writes `<video>.wav` next to the video, and TRIBE caches the
+  words as `<video>.tsv` beside it. A clip with a `.tsv` is never re-transcribed,
+  by either path.
+- **Pins.** `whisper_server.WHISPERX_PINS` is the single pin list. The worker
+  exports it as `UV_CONSTRAINT`, so TRIBE's unmodified `uvx whisperx` fallback
+  resolves the same versions. `setup.sh` writes `$JOB/logs/whisperx-constraints.txt`,
+  pre-warms both envs and the models, and checks both resolve with `uvx --offline`.
+- **Fallback.** Any server problem (start failure, crash, timeout, error reply)
+  sends that clip through the stock per-clip call, with one warning, so no clip is
+  lost. The server is restarted after a crash (3 restarts max) or after 3 consecutive
+  error replies (separate budget of 20), but disabled for the run if it never came up. `--no-whisper-server` / `TRIBE_WHISPER_SERVER=0`
+  uses the stock path throughout.
+- **Per-clip `.json`.**
+  - `transcript.source`: `server`, `stock_cli`, `tsv_cache` (TRIBE reused `<video>.tsv`), `none` (no audio track) or `dry_run`.
+  - `timing_s.transcription`: part of `events_dataframe`; plus `transcription_server_start` on the clip that started the server.
+  - `quality_warnings`:
+    - `transcript_empty`
+    - `transcript_non_english:<lang>`: whisper's language guess on the first 30 s, p ≥ 0.5; server only
+    - `transcript_non_ascii_words`: more than 20 % of words contain non-ASCII letters
+
+  TRIBE still transcribes as English, so filter on these flags in analysis.
+- **VRAM.** The server keeps large-v3 and wav2vec2 resident, about 5 GB, next
+  to TRIBE's extractors. Upstream freed them before feature extraction. Check
+  peak memory in `gpu-worker-N.csv`.
+
+**Verify on the first pod before a full run.** Use three real clips with speech,
+after a TRIBE run has extracted their `.wav`.
+
+`--compare-transcription` calls both paths directly, so the `.tsv` cache is bypassed:
+
+```bash
+source pod/env.sh && export HF_HUB_OFFLINE=1 CUDA_VISIBLE_DEVICES=0
+python pod/worker.py --compare-transcription $JOB/videos/a.wav $JOB/videos/b.wav $JOB/videos/c.wav \
+  --compare-repeats 2 | tee $JOB/logs/whisper-compare.jsonl
+```
+
+It prints one JSON line per wav per stock run:
+
+- `identical_frame`: exact `assert_frame_equal` of the DataFrames, and the `.tsv` bytes match (`identical_tsv`)
+- `identical_words`
+- `max_abs_start_diff`
+- `server_s` / `stock_s`
+- the detected language
+
+It exits 0 only if every frame is identical. Before judging a server diff, check
+whether the two stock repeats agree with each other; that is the GPU noise floor.
+Expect `server_s` of a few seconds against 20–40 s for `stock_s`.
+
 ## Pod volume layout
 
 ```text
@@ -88,13 +149,17 @@ Per video, the worker writes:
 The `.json` is written last and is the completion marker, so re-running a
 worker resumes where it stopped.
 
-## Phase 1: one L40S, get it working, measure
+## Phase 1: one cheap GPU, get it working, measure
 
 Nothing below has been run yet. Each pod launch is a billed step. The full
 spin-up, connect and teardown procedure is in [`docs/RUNPOD.md`](docs/RUNPOD.md).
 
-1. Launch a **1× L40S** pod with the network volume at `/workspace`, TCP 22
-   exposed (full SSH), and `HF_TOKEN={{ RUNPOD_SECRET_HF_TOKEN }}`.
+1. With the watchdog running (`--max-usd 10`), launch one on-demand
+   **Community Cloud** pod with `tools/runpod.py pod-create`. Pick the GPU from
+   `tools/runpod.py gpus`: ≥ 24 GB VRAM, host RAM ≥ 48 GB, e.g. 4090 or L40S.
+   It gets a 120 GB pod volume at `/workspace`, TCP 22 on a public IP, and
+   `HF_TOKEN` from `.env`. `pod-wait` prints the `POD`/`POD_PORT` below. The
+   pod volume is **deleted on terminate**, so pull results first.
 2. From this server, push code and 3–5 representative clips (varied length,
    some with speech):
    ```bash

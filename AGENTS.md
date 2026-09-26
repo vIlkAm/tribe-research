@@ -56,12 +56,20 @@ the owner explicitly decides to connect it:
 | `pod/worker.py` | Load model once, process this worker's shard, resumable, atomic outputs |
 | `pod/run_worker.sh` | Worker + `nvidia-smi` sampler, logs to `$JOB/logs/` |
 | `pod/launch_all.sh` | Phase 2: one worker per GPU on a single N-GPU pod, under `nohup` |
+| `pod/whisper_server.py` | Persistent whisperx per worker (pinned 3.8.6, stock TRIBE output), stock fallback |
+| `tools/runpod.py` | RunPod API: prices, pod create/wait/stop, cost watchdog (`--max-usd`) |
+| `tools/export_metrics.sh` | Read-only DB export of the approved tables → `results/metrics/` |
+| `tools/build_outcomes.py` | Fair performance labels → `results/outcomes.parquet` (`docs/OUTCOMES.md`) |
+| `tools/build_run_manifest.py` | Unique contents across posts/platforms + full-run plan |
+| `tools/qc_files.py` | Decode/audio/resolution check per planned file |
+| `tools/select_study_set.py` | Curated ~1,500 study set, lockbox, pilot, account deep-dive (`docs/STUDY_SET.md`) |
 | `tools/pod.sh` | Full-SSH push/pull/shell between this server and a pod |
 | `tools/make_manifest.py` | Content-hash IDs, durations, duration-balanced worker assignment |
 | `tools/merge.py` | `index.jsonl` + `benchmark.json`, reports missing/failed by category |
 | `tools/build_roi_map.py` | HCP-MMP1 → fsaverage5 ROI map artifact (build on the pod; figshare blocks this host) |
 | `tools/brain_report.py` | ROI features, summary PNG, demo MP4 from pulled outputs (CPU) |
 | `tribe_research/brain/` | ROI groups, feature extraction, headless surface renderer |
+| `tribe_research/outcomes/` | Reach at fixed ages, baselines, shrunk engagement, rankings, cross-platform |
 | `docs/RUNPOD.md` | Spin up, connect, run, tear down |
 | `tests/` | Offline tests (no GPU): sharding, manifest, dry-run + resume + merge, brain layer |
 

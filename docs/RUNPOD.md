@@ -3,49 +3,199 @@
 Every pod launch is billed. Nothing here has been run yet; replace the
 estimates in the README with measured numbers after the first run.
 
-## One-time account setup
+## Setup on this server (once)
 
-1. **SSH key.** Add this server's public key (`~/.ssh/id_ed25519.pub`, the
-   whole `ssh-ed25519 …` line, not the fingerprint) in the RunPod
-   console's SSH public keys settings (Settings / Credentials). RunPod injects account keys into new pods.
-2. **HF token.** On huggingface.co, accept Meta's licence for
-   `meta-llama/Llama-3.2-3B` with the account that owns the token. Then add the
-   token in RunPod **Secrets** with the name `HF_TOKEN`.
-3. **Network volume.** Create one (~150 GB is comfortable: venv, weights,
-   feature cache, clips) in a datacenter that has L40S stock. The pod must be
-   in the same datacenter. It bills monthly ($0.07/GB/month under 1 TB) until
-   you delete it, whether or not a pod is running.
+Put the project's own tokens in `.env` in the repo root (gitignored, never a
+Cartel credential):
 
-## Launch a pod
+```
+RUNPOD_API_KEY=...
+HF_TOKEN=...
+```
 
-- GPU: **1× L40S** for Phase 1. For Phase 2 use **one pod with N GPUs**, not N
-  pods on one volume. `launch_all.sh` runs one worker per GPU in that pod.
-- Template: an official `runpod/pytorch` image with Python 3.11 and CUDA 12.4.
-  `setup.sh` installs torch 2.6.0+cu124 into its own venv on the volume, so the
-  image's torch version doesn't matter. The venv links to the image's Python,
-  though: reuse the **same template** every time you launch against this volume.
-  Blackwell GPUs (B200, RTX 50xx) are not supported by torch 2.6; `setup.sh`
-  stops if it sees one.
-- Attach the network volume at `/workspace`.
-- Expose **TCP port 22** and enable the public IP. This is "full SSH". The
-  default proxied `ssh.runpod.io` login cannot carry rsync or scp.
-- Environment variable: `HF_TOKEN` = `{{ RUNPOD_SECRET_HF_TOKEN }}`.
+The HF account must have accepted Meta's licence for `meta-llama/Llama-3.2-3B`.
+`tools/runpod.py` reads both, never prints them, and masks the `env` block in
+any pod JSON it shows. The pod gets this server's `~/.ssh/id_ed25519.pub` as
+`PUBLIC_KEY`, so no console SSH-key setup is needed.
 
-## Connect
+## Launch with `tools/runpod.py` (cheap path: one community pod)
 
-The pod's **Connect** tab shows "SSH over exposed TCP", for example
-`ssh root@213.173.108.12 -p 17445`. From this server:
+The budget is about **$10 in total**. The default path is the cheapest one:
+
+- one on-demand **Community Cloud** pod;
+- a **pod volume** (120 GB) mounted at `/workspace`, so `pod/env.sh` and
+  `setup.sh` paths work unchanged;
+- no network volume.
 
 ```bash
 cd ~/projects/tribe-research
-export POD=root@213.173.108.12 POD_PORT=17445
+R=tools/runpod.py
+
+# 1. Pick a GPU. Cheapest first, community vs secure $/h (on-demand and spot),
+#    stock, VRAM and host RAM. Hides types under 24 GB VRAM (TRIBE needs >= 24 GB)
+#    and filters stock to hosts with >= 48 GB RAM per GPU (--min-ram-gb).
+#    RTX 4090, 3090, A40, A6000, L40S and L4 are always listed.
+$R gpus
+$R gpus --min-ram-gb 64 --dc EU-RO-1      # stricter RAM, one datacenter
+
+# 2. Watchdog FIRST (see below). pod-create refuses to run without a fresh heartbeat.
+mkdir -p results
+nohup $R watchdog --max-usd 10 --max-hours 6 >> results/watchdog.log 2>&1 &
+
+# 3. Pod: community, on-demand, 120 GB pod volume at /workspace, 30 GB container disk,
+#    TCP 22 on a public IP (mapped port), host RAM >= 48 GB per GPU.
+$R pod-create --name tribe-p1 --gpu-type 4090 --max-hours 3 --dry-run   # print request, send nothing
+$R pod-create --name tribe-p1 --gpu-type 4090 --max-hours 3
+
+# 4. Wait for SSH; this sets POD / POD_PORT for tools/pod.sh.
+eval "$($R pod-wait <POD_ID>)"
+```
+
+> **WARNING: `pod-terminate` DELETES THE POD VOLUME.** Everything under
+> `/workspace` (venv, weights, feature cache, clips, **outputs**) is gone the
+> moment the pod is terminated. There is no undo. **Pull results first**
+> (`tools/pod.sh pull <run>`, see "Pull results and tear down"). For that reason
+> `pod-terminate` on a pod-volume pod refuses to act without `--yes`, and the
+> watchdog **stops** such pods rather than terminating them.
+
+`pod-create` defaults and options:
+
+- `--cloud COMMUNITY` (default) or `SECURE`. Community hosts expose TCP 22
+  through a **mapped** public port (e.g. `213.173.109.39:13007 -> :22`);
+  `pod-wait` reads the mapping. It falls back to GraphQL runtime ports when
+  REST shows none. A community pod's IP can change after a stop/start, so run
+  `pod-wait` again after each start.
+- On-demand by default. `--interruptible` asks for a **spot** pod: cheaper, but
+  RunPod may stop it at any time. A stopped spot pod keeps its pod volume, but
+  a worker mid-clip loses that clip (workers resume on restart). Only use spot
+  with an explicit decision.
+- `--volume-gb 120` (pod volume size) and `--container-disk-gb 30`. `setup.sh`
+  puts the venv, weights, feature cache and clips on `/workspace`; size the
+  volume up for a large clip set (sizes not yet measured).
+- `--min-ram-gb 48` is sent as `minRAMPerGPU`. Our README flags 4090 hosts with
+  31 GB RAM as a risk for loading V-JEPA2 ViT-G, Llama-3.2-3B, Wav2Vec-BERT and
+  whisper large-v3 together.
+- Image `runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04`, on hosts
+  with CUDA ≥ 12.4. `setup.sh` installs torch 2.6.0+cu124 into its own venv on
+  `/workspace`. The venv links to the image's Python, so **keep the same image**
+  for any pod that reuses that disk.
+- The name must start with `tribe-`, the only pods the watchdog touches.
+  `--max-hours` is required and recorded in `results/runpod_state.json`.
+- Blackwell GPUs (B200, RTX 50xx, RTX PRO Blackwell) are refused: torch 2.6
+  doesn't support them.
+- GPU names can be short (`4090`, `3090`, `A40`, `A6000`, `L40S`, `L4`).
+
+Phase 1 is one pod with one GPU. For Phase 2 use **one pod with N GPUs**
+(`--gpu-count N`, and `gpus --gpu-count N` to find hosts with that many free);
+`launch_all.sh` runs one worker per GPU in that pod.
+
+### Optional: network volume (Secure Cloud only)
+
+A network volume outlives every pod, so weights and outputs survive a terminate
+and a later pod skips the ~20–40 min `setup.sh`. It costs more:
+
+- Secure Cloud prices;
+- the volume bills monthly (about $0.07/GB/month) until deleted, pod or no pod;
+- the pod must run in the volume's datacenter.
+
+Only worth it if you'll run several separate sessions.
+
+```bash
+$R gpus --dc EU-RO-1                       # "network volumes here: yes/no" in the header
+$R volume-create --name tribe-vol --size-gb 150 --dc EU-RO-1
+$R volume-list
+$R pod-create --name tribe-p1 --gpu-type L40S --cloud SECURE --volume-id <VOLUME_ID> --max-hours 3
+```
+
+`--volume-id` without `--cloud SECURE` is refused. The datacenter is taken
+from the volume. The watchdog **terminates** network-volume pods, since
+`/workspace` survives. Delete the volume in the console when the project is
+done.
+
+## Watchdog (required during any pod run)
+
+Run the watchdog on this server, under `nohup`, with explicit caps, for as
+long as any pod exists. Each interval (60 s) it lists `tribe-*` pods and logs
+one line: estimated spend, burn rate, per-pod age, $/h and GPU utilisation.
+
+It acts on a pod when:
+
+- the pod is older than its own `--max-hours` or the watchdog's `--max-hours`,
+  whichever is lower;
+- estimated total spend reaches `--max-usd`. Every `tribe-` pod is acted on.
+  The total includes pods that ended while this watchdog ran, so any new pod is
+  also acted on;
+- the pod has been at 0% GPU for `--idle-minutes` (default 20; 0 turns it off).
+  This applies only once the pod has used the GPU, so setup isn't killed.
+  Utilisation comes from RunPod's GraphQL runtime data; when that's
+  unavailable, the idle rule waits and the caps still apply.
+
+The action depends on the volume:
+
+- **Pod-volume pods (the default) are STOPPED, not terminated.** GPU billing
+  ends and `/workspace` is kept. A stopped pod's volume disk is still billed at
+  a small per-GB rate, and it counts no further toward `--max-usd`. To pull
+  after a stop:
+
+  ```bash
+  $R pod-start <POD_ID> --grace-min 30     # watchdog leaves it alone for 30 min
+  eval "$($R pod-wait <POD_ID>)"
+  tools/pod.sh pull run1
+  $R pod-terminate <POD_ID> --yes          # deletes the pod volume
+  ```
+
+  A stopped community pod can only restart on **its own host**, and only if a
+  GPU there is free. If none is, the data may be unreachable for a while. So
+  pull during the run, not only at the end (see "Pull results and tear down").
+- **Network-volume pods are terminated**; `/workspace` survives on the volume.
+
+Idle stops also hit hands-on pauses. After the `--limit 1` test clip the pod
+counts as used, so checking that output for more than 20 minutes stops it. At
+the end of a run the pod is stopped 20 minutes after the workers finish. Use a
+larger `--idle-minutes` for hands-on phases.
+
+The spend estimate is $/h × running time since creation. A failed pod list
+takes no action and is logged as an error. A failed stop or terminate is
+retried on the next tick.
+
+```bash
+tail -f results/watchdog.log
+$R balance                                # credit, account-wide $/h, runway
+$R pod-list
+$R watchdog --max-usd 10 --max-hours 6 --once   # one check, then exit
+```
+
+## Connect
+
+`pod-wait` prints `export POD=root@IP POD_PORT=PORT`, and the `eval` above
+applies it. Then, from this server:
+
+```bash
 tools/pod.sh ssh                # shell on the pod
 tools/pod.sh push-code          # pod/ tools/ tribe_research/ -> /workspace/tribe-job/code/
 tools/pod.sh push-videos ./videos
 ```
 
-The IP and port change every time a pod is created, so re-export them after
-each launch.
+The IP and port change with every new pod and may change after a stop/start.
+Run `pod-wait` again each time.
+
+## Manual fallback (console)
+
+If the script can't be used:
+
+1. Add `~/.ssh/id_ed25519.pub` under Settings → SSH public keys, and add
+   `HF_TOKEN` as a RunPod Secret.
+2. Deploy an on-demand **Community Cloud** pod with:
+   - the image above;
+   - a 120 GB **volume disk** mounted at `/workspace`;
+   - a 30 GB container disk;
+   - TCP 22 exposed with a public IP;
+   - env `HF_TOKEN={{ RUNPOD_SECRET_HF_TOKEN }}`.
+3. Name it `tribe-…` so the watchdog still covers it.
+4. Use the "SSH over exposed TCP" address from the Connect tab as
+   `POD`/`POD_PORT`.
+
+The same warning applies: terminating deletes the volume disk.
 
 ## Run (on the pod)
 
@@ -82,16 +232,37 @@ Inference does not depend on it; only `brain_report.py` does.
 
 ## Pull results and tear down
 
+> **Pull before you terminate.** On the default path, the outputs exist only
+> on the pod volume. `pod-terminate` deletes that volume.
+
+Pull repeatedly during a long run as well. `pod.sh pull` is an incremental
+rsync, so a loop on this server is cheap. It also covers a watchdog stop on a
+host that later has no free GPU:
+
+```bash
+while sleep 900; do tools/pod.sh pull run1; done    # Ctrl-C when the run is done
+```
+
+At the end:
+
 ```bash
 tools/pod.sh pull run1          # -> results/run1/{outputs,logs,manifest.jsonl}, plus the ROI map
+ls results/run1/outputs | head  # check the pull landed before terminating
 .venv/bin/python tools/brain_report.py --out-root results/run1/outputs \
     --report-dir results/run1/report --roi-map tribe_research/assets/roi_map_roi_groups_v0.npz \
     --analysis --png --video --videos-root videos
 ```
 
-Then **terminate** the pod in the console. Compute billing stops when the pod
-stops. Everything under `/workspace` is on the network volume and survives
-termination. Delete the volume only when you're finished with the project.
+Then terminate:
+
+- pod volume: `tools/runpod.py pod-terminate <POD_ID> --yes`. It refuses
+  without `--yes` and prints the warning. **This deletes `/workspace`.**
+- network volume: `tools/runpod.py pod-terminate <POD_ID>`; `/workspace`
+  survives on the volume.
+
+`pod-stop` ends GPU billing but keeps billing the disk. A stopped community
+pod may find no free GPU on its host when resumed, so pull, then terminate.
+Stop the watchdog once `pod-list` shows no `tribe-` pods.
 
 ## Which videos to send
 

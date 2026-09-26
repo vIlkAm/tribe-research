@@ -6,7 +6,7 @@
 #   repo/            facebookresearch/tribev2 pinned to $TRIBE_COMMIT
 #   venv/            ISOLATED venv: torch 2.6.0+cu124 regardless of the image's torch
 #   hf-cache/        HF weights (TRIBE ckpt, V-JEPA2, Wav2Vec-BERT, Llama-3.2-3B, whisper large-v3)
-#   uv-cache/        uvx env for whisperx (TRIBE shells out to `uvx whisperx`)
+#   uv-cache/        uvx env for whisperx (stock `uvx whisperx` + pod/whisper_server.py, pinned)
 #   feature-cache/   TRIBE's per-modality extracted features (the expensive part)
 #   code/            this repo (rsync'd by tools/pod.sh push)
 #   videos/ outputs/ logs/ manifest.jsonl
@@ -78,18 +78,37 @@ EOF
 echo "== spacy model"
 python -m spacy download en_core_web_sm >/dev/null
 
-echo "== whisperx GPU smoke (exactly the flags TRIBE uses; also caches large-v3)"
-# TRIBE calls the unpinned `uvx whisperx`; its env resolves its own torch. A tone
-# clip exercises CUDA model load without needing speech.
+echo "== whisperx: pinned uv env, stock CLI smoke + persistent-server pre-warm"
+# whisperx stays in its own uv env (installing it into venv/ breaks TRIBE's torch pin).
+# One constraints file pins BOTH TRIBE's stock `uvx whisperx` call and the server
+# (pod/worker.py sets the same pins via UV_CONSTRAINT); versions live in whisper_server.py.
+WX_CONSTRAINTS="$JOB/logs/whisperx-constraints.txt"
+python "$HERE/whisper_server.py" --print-constraints >"$WX_CONSTRAINTS"
+export UV_CONSTRAINT="$WX_CONSTRAINTS"
+WX_VERSION="$(sed -n 's/^whisperx==//p' "$WX_CONSTRAINTS")"
+# TRIBE's exact flags (minus wav/--output_dir), from the same function the worker uses.
+read -r -a WX_FLAGS <<<"$(cd "$HERE" && python -c 'import worker; print(" ".join(worker.upstream_whisperx_flags("english", "cuda")))')"
 WX_TMP="$(mktemp -d)"
+WX_LOG="$JOB/logs/whisperx-smoke.log"
+: >"$WX_LOG"
+# A tone clip exercises CUDA model load without needing speech.
 ffmpeg -v error -f lavfi -i "sine=frequency=440:duration=3" -ar 16000 "$WX_TMP/tone.wav"
-if ! uvx whisperx "$WX_TMP/tone.wav" --model large-v3 --language en --device cuda \
-      --compute_type float16 --batch_size 16 --align_model WAV2VEC2_ASR_LARGE_LV60K_960H \
-      --output_dir "$WX_TMP" --output_format json >"$JOB/logs/whisperx-smoke.log" 2>&1; then
-  echo "whisperx on CUDA failed; see $JOB/logs/whisperx-smoke.log (driver/CUDA mismatch in its env?)" >&2
+# 1) the stock per-clip path exactly as TRIBE runs it (the worker's fallback)
+if ! uvx whisperx "$WX_TMP/tone.wav" "${WX_FLAGS[@]}" --output_dir "$WX_TMP" >>"$WX_LOG" 2>&1; then
+  echo "whisperx on CUDA failed; see $WX_LOG (driver/CUDA mismatch in its env?)" >&2
   exit 1
 fi
-uvx --from whisperx python -c 'import importlib.metadata as m; print("whisperx", m.version("whisperx"))' \
+# 2) the persistent server: loads large-v3 + align model once, fetches nltk punkt_tab
+#    (container disk, so re-run after a pod restart), transcribes the tone, exits.
+if ! uvx --from "whisperx==$WX_VERSION" python "$HERE/whisper_server.py" --noise-to-stderr \
+      --self-test "$WX_TMP/tone.wav" -- "${WX_FLAGS[@]}" >>"$WX_LOG" 2>&1; then
+  echo "whisper server self-test failed; see $WX_LOG. Workers will fall back to per-clip uvx whisperx." >&2
+fi
+# 3) both envs must now resolve from the uv cache alone (no per-worker resolve at launch)
+uvx --offline whisperx --version >>"$WX_LOG" 2>&1 \
+  || { echo "stock uvx whisperx env not fully cached; see $WX_LOG" >&2; exit 1; }
+uvx --offline --from "whisperx==$WX_VERSION" python -c \
+  'import importlib.metadata as m; print("whisperx", m.version("whisperx"), "faster-whisper", m.version("faster-whisper"), "ctranslate2", m.version("ctranslate2"), "torch", m.version("torch"))' \
   | tee "$JOB/logs/whisperx-version.txt"
 rm -rf "$WX_TMP"
 

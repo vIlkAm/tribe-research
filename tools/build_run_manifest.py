@@ -10,7 +10,12 @@ Unique content:
   * identical files (same sha256) are one content;
   * the same clip posted on several platforms (``media_cross_platform_links``)
     is one content. Suspicious links (more than 3 members, or two members on
-    one platform) are not merged; their members stay separate.
+    one platform) are not merged; their members stay separate;
+  * the backfill's frame fingerprints (3 dHashes + duration) also merge
+    near-identical clips inside one deal on any platform and any date (the same
+    clip re-posted by another clipper or weeks later). Thresholds are strict
+    (avg Hamming <= 8, duration within 1 s) and no group may exceed 10 files,
+    which stops unrelated clips chaining through a shared intro.
 The representative file is the largest one (best bitrate); TRIBE runs on it
 once and the outcome of every member joins back through ``members.csv``.
 
@@ -62,18 +67,57 @@ def slug(s: str) -> str:
 class DSU:
     def __init__(self):
         self.p: dict[str, str] = {}
+        self.n: dict[str, int] = {}
 
     def find(self, x: str) -> str:
-        self.p.setdefault(x, x)
+        if x not in self.p:
+            self.p[x], self.n[x] = x, 1
         while self.p[x] != x:
             self.p[x] = self.p[self.p[x]]
             x = self.p[x]
         return x
 
-    def union(self, a: str, b: str) -> None:
+    def union(self, a: str, b: str, max_size: int | None = None) -> bool:
         ra, rb = self.find(a), self.find(b)
-        if ra != rb:
-            self.p[max(ra, rb)] = min(ra, rb)
+        if ra == rb:
+            return True
+        if max_size is not None and self.n[ra] + self.n[rb] > max_size:
+            return False
+        lo, hi = min(ra, rb), max(ra, rb)
+        self.p[hi] = lo
+        self.n[lo] += self.n.pop(hi)
+        return True
+
+
+def fingerprint_pairs(fp_path: Path, files: dict[str, dict], max_dur: float, max_ham: float):
+    """Near-identical pairs inside a deal from the backfill's dHash fingerprints, closest first."""
+    import numpy as np
+    fps = {}
+    if not fp_path.is_file():
+        return []
+    for line in fp_path.open():
+        r = json.loads(line)
+        if r.get("hashes") and all(r["hashes"]) and r["vp_id"] in files and r.get("duration"):
+            fps[r["vp_id"]] = r
+    popcount = np.array([bin(i).count("1") for i in range(256)], dtype=np.uint8)
+    by_deal: dict[str, list[str]] = defaultdict(list)
+    for v in fps:
+        by_deal[files[v]["deal_id"]].append(v)
+    pairs = []
+    for vs in by_deal.values():
+        vs.sort(key=lambda v: fps[v]["duration"])
+        dur = np.array([fps[v]["duration"] for v in vs])
+        h = np.array([[int(x, 16) for x in fps[v]["hashes"]] for v in vs], dtype=np.uint64)
+        h = h.view(np.uint8).reshape(len(vs), 3, 8)
+        for i in range(len(vs)):
+            j = int(np.searchsorted(dur, dur[i] + max_dur, "right"))
+            if j <= i + 1:
+                continue
+            ham = popcount[np.bitwise_xor(h[i + 1:j], h[i])].sum(axis=2).mean(axis=1)
+            for k in np.nonzero(ham <= max_ham)[0]:
+                pairs.append((float(ham[k]), vs[i], vs[i + 1 + int(k)]))
+    pairs.sort()
+    return pairs
 
 
 def collect_files(metrics: Path, archive_root: Path) -> dict[str, dict]:
@@ -140,6 +184,11 @@ def main() -> int:
     ap.add_argument("--chunks", type=int, default=6)
     ap.add_argument("--min-duration", type=float, default=2.0)
     ap.add_argument("--max-duration", type=float, default=600.0)
+    ap.add_argument("--fingerprints", type=Path,
+                    default=HOME / "projects/media-backfill-20260926/fingerprints.jsonl")
+    ap.add_argument("--fp-max-ham", type=float, default=8.0)
+    ap.add_argument("--fp-max-dur", type=float, default=1.0)
+    ap.add_argument("--max-group", type=int, default=10)
     ap.add_argument("--no-stage", action="store_true", help="plan only, don't create staging links")
     args = ap.parse_args()
 
@@ -165,6 +214,15 @@ def main() -> int:
             dsu.union(vp, link_first[m["link_id"]])
         else:
             link_first[m["link_id"]] = vp
+
+    fp_merged = fp_refused = 0
+    for _, a, b in fingerprint_pairs(args.fingerprints, files, args.fp_max_dur, args.fp_max_ham):
+        if dsu.find(a) == dsu.find(b):
+            continue
+        if dsu.union(a, b, args.max_group):
+            fp_merged += 1
+        else:
+            fp_refused += 1
 
     groups: dict[str, list[str]] = defaultdict(list)
     for vp in files:
@@ -239,7 +297,8 @@ def main() -> int:
     total_min = sum(r["duration_s"] for r in rows) / 60
     print(f"{len(files)} clip files -> {len(groups)} unique contents; {len(rows)} planned "
           f"({total_min:.0f} min of source, {sum(r['size_bytes'] for r in rows) / 1e9:.1f} GB), "
-          f"{len(bad)} suspicious links not merged, skipped {dict(skipped)}", file=sys.stderr)
+          f"{len(bad)} suspicious links not merged, {fp_merged} fingerprint merges "
+          f"({fp_refused} refused by the group cap), skipped {dict(skipped)}", file=sys.stderr)
     for c in range(args.chunks):
         cr = [r for r in rows if r["chunk"] == c]
         print(f"  chunk {c}: {len(cr)} clips, {sum(r['duration_s'] for r in cr) / 60:.0f} min", file=sys.stderr)
