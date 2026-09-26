@@ -36,3 +36,12 @@ def test_gates(tmp_path):
     assert compare_preds.main([r, str(tmp_path / "far"), "--gate", "bf16"]) == 1
     assert compare_preds.main([r, str(tmp_path / "short"), "--gate", "bf16"]) == 1  # lost a segment
     assert compare_preds.main([r, str(tmp_path / "missing"), "--gate", "bf16"]) == 1  # nothing shared
+
+
+def test_spatial_r_reported(tmp_path):
+    rng = np.random.default_rng(1)
+    base = rng.standard_normal((10, 300))
+    write(tmp_path / "r", "a", base)
+    write(tmp_path / "t", "a", base + 0.01 * rng.standard_normal(base.shape))
+    row = compare_preds.compare(tmp_path / "r/worker-0/a.npz", tmp_path / "t/worker-0/a.npz")
+    assert 0.999 < row["r_space_med"] <= 1.0

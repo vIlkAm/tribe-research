@@ -6,6 +6,7 @@
 Per clip, over the shared segments (matched by seg_start):
   r_all        Pearson r over every (segment, vertex) value
   r_vertex_med median over vertices of the temporal Pearson r (vertices with any variance)
+  r_space_med  median over segments of the spatial Pearson r (across vertices, per TR)
   rel_rms      RMS(test - ref) / SD(ref)
 
 Gates, fixed before the fast-video GPU test (2026-09-26):
@@ -59,6 +60,9 @@ def compare(ref_npz: Path, test_npz: Path) -> dict:
     den = np.sqrt((xc**2).sum(0) * (yc**2).sum(0))
     ok = den > 0
     r_vertex = (xc * yc).sum(0)[ok] / den[ok]
+    xs, ys = x - x.mean(1, keepdims=True), y - y.mean(1, keepdims=True)
+    den_s = np.sqrt((xs**2).sum(1) * (ys**2).sum(1))
+    r_space = (xs * ys).sum(1)[den_s > 0] / den_s[den_s > 0]
     return {
         "segments": int(len(common)),
         "segments_ref": int(len(sa)),
@@ -66,6 +70,7 @@ def compare(ref_npz: Path, test_npz: Path) -> dict:
         "r_all": round(r_all, 6),
         "r_vertex_med": round(float(np.median(r_vertex)), 6) if r_vertex.size else None,
         "r_vertex_p05": round(float(np.percentile(r_vertex, 5)), 6) if r_vertex.size else None,
+        "r_space_med": round(float(np.median(r_space)), 6) if r_space.size else None,
         "rel_rms": round(float(np.sqrt(((y - x) ** 2).mean()) / max(x.std(), 1e-12)), 6),
     }
 

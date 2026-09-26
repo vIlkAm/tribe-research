@@ -78,6 +78,7 @@ the owner explicitly decides to connect it:
 | `tools/pod.sh` | Full-SSH push/pull/shell between this server and a pod (`push-batch`) |
 | `tools/make_manifest.py` | Content-hash IDs, durations, duration-balanced worker assignment |
 | `tools/compare_preds.py` | Preds agreement between two out-roots, with pre-set fp32/bf16 gates (fast-video checks) |
+| `tools/check_emb.py` | `.emb.npz` gate: steps ≈ 2 × duration, no empty quarter on clips ≥ 20 s, quarters not identical |
 | `tools/merge.py` | `index.jsonl` + `benchmark.json`, reports missing/failed by category |
 | `tools/build_roi_map.py` | HCP-MMP1 → fsaverage5 ROI map artifact (build on the pod; figshare blocks this host) |
 | `tools/brain_report.py` | ROI features, summary PNG, demo MP4 from pulled outputs (CPU) |
