@@ -5,7 +5,7 @@ from a person or an agent. The newest update is at the top. Details live in the
 linked docs; this page only says where things stand. Agents on either side: when
 you change the state of something below, update this file in the same commit.
 
-_Last updated: 2026-09-26 ~21:10 UTC (research/backend side). All times UTC._
+_Last updated: 2026-09-26 ~21:30 UTC (research/backend side). All times UTC._
 
 ## One-paragraph summary
 
@@ -24,7 +24,7 @@ gone through the GPU.
 | Step | Runs on | State |
 |---|---|---|
 | 1. Pick clips, pre-scale to 384 px | CPU (this server) | ✅ Study set (1,500 + 373 deep-dive) ready. The other ~6,000 are being pre-scaled now (`r00–r15`) |
-| 2. TRIBE + extractors → brain response + embeddings per clip | GPU (RunPod) | ✅ Fast bf16 path passed every accuracy gate. ⏳ One L40S (2 workers) runs study batches b02→b09 in order tonight; the budget reaches about b07/b08 |
+| 2. TRIBE + extractors → brain response + embeddings per clip | GPU (RunPod) | ✅ Fast bf16 path passed every accuracy gate (L40S and A100). ⏳ Four pods share study batches b02–b09 through claim files: L40S (b02→), A100 (b09→b06), two RTX 4090s (b05, b06→). All of b02–b09 are expected by about 01:00 UTC |
 | 3. Features per clip (`tools/build_features.py`) | CPU | ✅ Code done and tested |
 | 4. Training + honest evaluation (`tools/fit_models.py`) | CPU, minutes | ✅ Code done, rules pre-registered ([`PREREGISTRATION.md`](PREREGISTRATION.md)). ⏳ Waiting for step 2 output |
 | 5. Save the model, score one new clip (`tools/predict.py`) | CPU, milliseconds | ✅ Code done and tested offline (`fit_models.py --save-model`, featurizer state, `predict.py`). ⏳ Waiting for step 4 |
@@ -38,8 +38,9 @@ gone through the GPU.
 - **Data:** 7,942 eligible contents, 56.7 h of footage. The study set is 1,500
   clips (225 sealed lockbox). The stage-2 extension adds a second sealed lockbox
   of 909 clips.
-- **Budget:** RunPod balance is about $8, which covers the study set (~12 GPU-h).
-  The full ~7.9k set needs about $50 more (owner decision).
+- **Budget:** watchdog cap $17 (owner top-up), about $14 projected for the
+  study set, keeping ≥ $1 for the demo. The full ~7.9k set needs about $50 more
+  (owner decision).
 
 ## What "trained" will mean
 
@@ -93,6 +94,8 @@ gone through the GPU.
 - Licence before anything commercial.
 
 ## Log
+
+- **2026-09-26 21:30 UTC:** Four pods on the study set (about 470 clips/h combined). Prereg adds exploratory "good vs bad clip" contrast (M4) and an editing-covariates arm (X); moment detection parameters frozen before any outcome is read (900001b, 7aa63ee, d164f3c). The `preliminary` model status is in `predict.py` (6f02b13).
 
 - **2026-09-26 21:05 UTC:** Performance-card fixtures from the real `predict.py` (`sample_analysis/performance/`, `tools/make_performance_samples.py`), draft schema `performance.schema.draft.json`, PRODUCT_PIPELINE §3 aligned to the tool output.
 - **2026-09-26 21:00 UTC:** Real bundles for 40 clips published (`data-frontend40` release). The second pod (A100, `tribe-study2`) runs the back half of the study set (b09→b06); the L40S runs b02→b05. The two share b06–b08 through claim files. `tools/predict.py` and `fit_models --save-model` added (981ebca). `tools/fleet.py` added for the rest batches after a top-up (1bc99e3).
