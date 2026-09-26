@@ -406,6 +406,11 @@ def install(precision: str = "fp32", threads: int | None = None, keep_model: boo
     imethod = HuggingFaceVideo.__dict__["_get_data"].fget
     if not _STATE["installed"]:
         _STATE["orig"] = imethod.method
+        # exca derives the cache uid from the method's module + qualname and looks it up by
+        # __name__ on the class, so the replacement must carry the stock method's identity
+        # (also keeps the feature-cache key equal to stock's; precision is tagged separately)
+        for attr in ("__module__", "__name__", "__qualname__"):
+            setattr(fast_get_data, attr, getattr(_STATE["orig"], attr))
         imethod.method = fast_get_data
         _STATE["installed"] = True
     _STATE["precision"] = precision

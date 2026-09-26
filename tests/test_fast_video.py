@@ -172,3 +172,24 @@ def test_stock_vs_fast_inputs_bitwise(tmp_path, fps, seconds, decode):
         fast_video.uninstall()
     assert seen and seen == stock_hashes
     assert np.array_equal(a[0].data, b[0].data) and a[0].duration == b[0].duration
+
+
+def test_install_keeps_exca_cache_identity(tmp_path):
+    """The worker calls the method through exca; its uid needs the stock name/qualname/module."""
+    pytest.importorskip("neuralset")
+    import neuralset.extractors.video as nsv
+
+    def make():
+        return nsv.HuggingFaceVideo(
+            image={"name": "HuggingFaceImage", "model_name": "facebook/vjepa2-vitg-fpc64-256",
+                   "infra": {"keep_in_ram": False}, "layers": [0.5, 0.75, 1.0], "cache_n_layers": 20,
+                   "layer_aggregation": "group_mean", "token_aggregation": "mean", "device": "cpu"},
+            frequency=2.0, clip_duration=4.0, aggregation="sum", event_types="Video", allow_missing=True,
+            infra={"folder": str(tmp_path), "keep_in_ram": False})
+
+    stock_uid = make().infra.uid_folder(create=False)
+    fast_video.install("fp32", threads=2)
+    try:
+        assert make().infra.uid_folder(create=False) == stock_uid
+    finally:
+        fast_video.uninstall()
