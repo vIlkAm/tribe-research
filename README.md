@@ -39,9 +39,9 @@ Isolation rules and layout: [`AGENTS.md`](AGENTS.md).
 
 ```text
 /workspace/tribe-job/
-├── code/            this repo's pod/ + tools/ (rsync from the server)
+├── code/            this repo's pod/ tools/ tribe_research/ (tools/pod.sh push-code)
 ├── repo/            tribev2 pinned commit
-├── venv/  hf-cache/  uv-cache/  feature-cache/
+├── venv/  hf-cache/  uv-cache/  torch-cache/  feature-cache/
 ├── videos/          input clips (any sub-folders)
 ├── manifest.jsonl   one row per video, with assigned worker
 ├── outputs/worker-N/<video_id>.npz|.json
@@ -65,49 +65,62 @@ worker resumes where it stopped.
 
 ## Phase 1: one L40S, get it working, measure
 
-Nothing below has been run yet. Each pod launch is a billed step.
+Nothing below has been run yet. Each pod launch is a billed step. The full
+spin-up, connect and teardown procedure is in [`docs/RUNPOD.md`](docs/RUNPOD.md).
 
-1. Create a RunPod **network volume** and a **1× L40S** pod (torch 2.5/2.6
-   image) with the volume at `/workspace` and `HF_TOKEN` set as a secret.
-2. From this server, push code and a handful of representative clips (3–5,
-   varied length, some with speech):
+1. Launch a **1× L40S** pod with the network volume at `/workspace`, TCP 22
+   exposed (full SSH), and `HF_TOKEN={{ RUNPOD_SECRET_HF_TOKEN }}`.
+2. From this server, push code and 3–5 representative clips (varied length,
+   some with speech):
    ```bash
-   rsync -av pod tools root@<pod>:/workspace/tribe-job/code/ -e "ssh -p <port>"
-   rsync -av ./videos/ root@<pod>:/workspace/tribe-job/videos/ -e "ssh -p <port>"
+   export POD=root@<ip> POD_PORT=<port>
+   tools/pod.sh push-code && tools/pod.sh push-videos ./videos
    ```
-3. On the pod:
-   ```bash
-   bash /workspace/tribe-job/code/pod/setup.sh
-   source /workspace/tribe-job/code/pod/env.sh
-   python $JOB/code/tools/make_manifest.py --videos-root $JOB/videos --workers 1 --out $JOB/manifest.jsonl
-   WORKER_ID=0 NUM_WORKERS=1 $JOB/code/pod/run_worker.sh --limit 1   # first real video
-   WORKER_ID=0 NUM_WORKERS=1 $JOB/code/pod/run_worker.sh             # rest of the sample
-   python $JOB/code/tools/merge.py --manifest $JOB/manifest.jsonl --out-root $JOB/outputs
-   ```
+3. On the pod: `setup.sh`, build the manifest, run `--limit 1`, run the rest,
+   merge (commands in `docs/RUNPOD.md`).
 4. Record the measured numbers:
    - source seconds per compute second
    - events-vs-predict split
    - peak VRAM and GPU utilisation from `gpu-worker-0.csv`
    - model load time
+   - `failures_by_category` from `benchmark.json`
 
    Run one clip twice. The second pass hits `feature-cache/`, which isolates
    TRIBE-only time from V-JEPA time.
-5. Pull results back: `rsync -av root@<pod>:/workspace/tribe-job/outputs/ ./results/<run>/`.
-   Stop the pod.
+5. `tools/pod.sh pull run1`, then terminate the pod.
 
-## Phase 2: fan out to N workers
+## Phase 2: fan out across GPUs
 
-1. Rebuild the manifest with `--workers 4`. Assignment is greedy
+Use **one pod with N GPUs**, not N pods sharing a volume.
+
+1. Rebuild the manifest with `--workers N`. Assignment is greedy
    longest-first by duration, so shards finish together.
-2. Start 3 more pods on the **same** network volume **and the same RunPod
-   template/image** (the venv symlinks to the image's Python, so a different
-   image breaks it). They share the venv and
-   weights, so there is no reinstall. On each pod, run `apt-get install -y ffmpeg git`,
-   then `WORKER_ID=k NUM_WORKERS=4 run_worker.sh`.
-3. Merge. `merge.py` exits non-zero and lists any missing or failed videos. Re-run
-   those workers; finished videos are skipped.
+2. `pod/launch_all.sh` starts one worker per GPU under `nohup`. It refuses to
+   start if the manifest was built for a different N.
+3. Merge. `merge.py` exits non-zero and lists missing or failed videos, with a
+   failure category. Re-run the launcher; finished videos are skipped.
 
-Network volumes are tied to a datacenter, so all pods must be in the volume's region.
+Reuse the same RunPod template for every pod on this volume: the venv links to
+the image's Python.
+
+## Brain layer (ROI features and demo visuals)
+
+`tribe_research/brain/` turns the raw `[segments × 20484]` predictions into
+something that can be read and shown:
+
+- `roi_groups_v0.yaml`: named groups of HCP-MMP1 parcels, e.g. visual,
+  auditory, language.
+- `tools/build_roi_map.py`: builds the versioned fsaverage5 ROI map. It runs on
+  the pod because figshare blocks this server.
+- `features.py`: per-ROI curves on the real segment timeline, plus within-video
+  z-scored summaries. Don't compare absolute activation across videos.
+- `render.py` / `tools/brain_report.py`: a surface-view PNG per clip, and a demo
+  MP4 with source video, brain views and ROI timelines plus a playhead. It runs
+  on CPU on this server after `pod.sh pull`.
+
+Every visual is captioned as a model prediction for an average subject, not
+measured brain activity. The only demo rendered so far used dry-run data and a
+synthetic ROI map, and is labelled that way.
 
 ## Planning estimates (from the planning discussion; not measured)
 
@@ -134,14 +147,13 @@ measured $/1000 videos, not paper specs. Benchmark L40S / 4090 / H100 on the
   - What activity precedes retention drop-off?
   - Are there response signatures during hooks, cuts, and surprising lines?
   - Is the trajectory more predictive than the mean level?
-- The March prototype's fsaverage5 → region mapping
-  (`video_brain_analysis/src/tribe/brain_regions.py`) is a starting point for
-  region-level summaries. Verify it against a real atlas before trusting it.
+- Region-level summaries come from the brain layer above, on the HCP-MMP1
+  atlas; the March prototype's hand-made region map is superseded.
 
 ## Local development
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
-.venv/bin/python -m pytest -q       # offline: sharding, manifest, dry-run/resume/merge
+.venv/bin/python -m pytest -q       # offline: sharding, manifest, dry-run/resume/merge, brain layer
 .venv/bin/python pod/worker.py --dry-run ...   # stub model, no GPU
 ```

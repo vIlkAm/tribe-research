@@ -1,3 +1,12 @@
 # Local (server-side) tooling + tests. The pod installs TRIBE itself via pod/setup.sh.
 numpy==2.2.6
-pytest
+pytest==9.1.1
+# brain layer: ROI features, surface rendering (nilearn ships fsaverage5), demo video
+nilearn==0.14.1
+nibabel==5.4.2
+matplotlib==3.11.2
+PyYAML==6.0.3
+scipy==1.18.1
+pandas==3.0.6
+imageio==2.37.4
+imageio-ffmpeg==0.6.0

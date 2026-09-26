@@ -1,0 +1,50 @@
+# ROI groups v0 — HYPOTHESIS, PROXY ONLY.
+#
+# Each group is a set of HCP-MMP1 (Glasser 2016) parcel names, bilateral, on
+# the fsaverage5 cortical surface TRIBE v2 predicts. Groups follow the backend
+# guide (§05) and are candidate explanatory features, not validated measures:
+# the direction and usefulness of every group must be learned against held-out
+# platform outcomes.
+#
+# The public TRIBE checkpoint is cortical-only. There is deliberately no
+# striatum / NAcc / amygdala / hippocampus group, and none may be added from
+# these predictions.
+#
+# tools/build_roi_map.py refuses to build if any name below is not a real
+# parcel in the downloaded annotation, so typos fail loudly.
+version: roi_groups_v0
+atlas: HCPMMP1
+groups:
+  visual_early:
+    label: Early visual
+    parcels: [V1, V2, V3, V4]
+  visual_motion:
+    label: Visual motion
+    parcels: [MT, MST, FST, V4t, LO3]
+  auditory:
+    label: Auditory
+    parcels: [A1, LBelt, MBelt, PBelt, RI]
+  attention_dorsal:
+    label: Dorsal attention
+    parcels: [FEF, PEF, LIPv, LIPd, VIP, IP0, IP1, IP2, 7AL, 7PC, AIP, MIP]
+  attention_ventral:
+    label: Ventral attention / salience
+    parcels: [FOP4, FOP5, AVI, MI, PFcm, PF]
+  language:
+    label: Language / semantic
+    parcels: ["44", "45", IFJa, IFJp, 47l, 55b, STGa, A4, A5, STSdp, STSda, PSL, SFL]
+  social_tpj_sts:
+    label: Social (TPJ / STS)
+    parcels: [TPOJ1, TPOJ2, TPOJ3, PGi, PGs, STV, STSva, STSvp]
+  social_dmpfc:
+    label: Social (dmPFC)
+    parcels: [8BM, 9m, 8BL, d32, 9p]
+  self_mpfc_pcc:
+    label: Self-relevance (mPFC / PCC / precuneus)
+    parcels: [10d, 10r, 7m, PCV, 23d, v23ab, d23ab, 31pv, 31pd, 31a, RSC]
+  value_vmpfc:
+    label: Value (vmPFC / mOFC) — cortical proxy only
+    parcels: [10v, OFC, pOFC, "25", s32, p32, a24, 10pp, 13l]
+  control_dacc_dlpfc:
+    label: Cognitive control (dACC / dlPFC)
+    parcels: [a24pr, p24pr, a32pr, p32pr, 24dd, 24dv, "46", 9-46d, a9-46v, p9-46v, 8C, 8Av]

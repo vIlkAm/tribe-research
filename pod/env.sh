@@ -2,6 +2,7 @@
 export JOB="${JOB:-/workspace/tribe-job}"
 export HF_HOME="$JOB/hf-cache"
 export UV_CACHE_DIR="$JOB/uv-cache"
+export TORCH_HOME="$JOB/torch-cache"   # whisperx align model (torchaudio) lands here
 export TRIBE_CACHE="$JOB/feature-cache"
 export TRIBE_REPO="$JOB/repo"
 export PYTHONUNBUFFERED=1

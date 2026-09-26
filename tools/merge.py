@@ -46,7 +46,11 @@ def main() -> int:
 
     src = sum(w["source_s"] for w in per_worker.values())
     wall = max((w["compute_s"] for w in per_worker.values()), default=0.0)
+    categories: dict[str, int] = {}
+    for e in failed.values():
+        categories[e.get("category", "other")] = categories.get(e.get("category", "other"), 0) + 1
     benchmark = {
+        "failures_by_category": categories,
         "videos_done": len(done),
         "videos_in_manifest": len(manifest),
         "source_minutes": round(src / 60, 2),
@@ -63,7 +67,8 @@ def main() -> int:
 
     print(json.dumps(benchmark, indent=2))
     for r in missing:
-        status = "FAILED " + failed[r["video_id"]]["error"] if r["video_id"] in failed else "missing"
+        err = failed.get(r["video_id"])
+        status = f"FAILED [{err.get('category', '?')}] {err['error']}" if err else "missing"
         print(f"{status}: worker-{r['worker']} {r['path']}", file=sys.stderr)
     return 1 if missing else 0
 

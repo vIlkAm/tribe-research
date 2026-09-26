@@ -16,6 +16,11 @@ the owner explicitly decides to connect it:
   served videos unauthenticated on the public IP — don't repeat that).
 - Performance metrics are imported as an exported file (CSV/JSONL) into
   `results/`, not queried live.
+- The Cartel media archive (e.g. `/archive/backfill-20260926/`) is client
+  media. Pushing any of it to a pod is a third-party transfer that needs an
+  explicit owner decision; it is not a default input.
+- Demo visuals are model predictions for an average subject. Keep the caption,
+  and label anything built from dry-run data or a synthetic ROI map as such.
 - RunPod pods are billed. Don't launch, resume, or submit to one without the
   owner's go-ahead for that run.
 - TRIBE v2 is **CC-BY-NC-4.0**. Research use only; wiring it into a paid product
@@ -29,9 +34,15 @@ the owner explicitly decides to connect it:
 | `pod/env.sh` | Cache/env vars; source on every pod shell |
 | `pod/worker.py` | Load model once, process this worker's shard, resumable, atomic outputs |
 | `pod/run_worker.sh` | Worker + `nvidia-smi` sampler, logs to `$JOB/logs/` |
+| `pod/launch_all.sh` | Phase 2: one worker per GPU on a single N-GPU pod, under `nohup` |
+| `tools/pod.sh` | Full-SSH push/pull/shell between this server and a pod |
 | `tools/make_manifest.py` | Content-hash IDs, durations, duration-balanced worker assignment |
-| `tools/merge.py` | `index.jsonl` + `benchmark.json`, reports missing/failed |
-| `tests/` | Offline tests (no GPU): sharding, manifest, dry-run + resume + merge |
+| `tools/merge.py` | `index.jsonl` + `benchmark.json`, reports missing/failed by category |
+| `tools/build_roi_map.py` | HCP-MMP1 → fsaverage5 ROI map artifact (build on the pod; figshare blocks this host) |
+| `tools/brain_report.py` | ROI features, summary PNG, demo MP4 from pulled outputs (CPU) |
+| `tribe_research/brain/` | ROI groups, feature extraction, headless surface renderer |
+| `docs/RUNPOD.md` | Spin up, connect, run, tear down |
+| `tests/` | Offline tests (no GPU): sharding, manifest, dry-run + resume + merge, brain layer |
 
 ## Validate
 

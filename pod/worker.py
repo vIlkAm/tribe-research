@@ -59,6 +59,10 @@ class StubModel:
     def events(self, video_path: str):
         return {"video_path": video_path}
 
+    @staticmethod
+    def modalities(events) -> dict:
+        return {"event_counts": {"Video": 1, "Audio": 1}, "has_words": False}
+
     def predict(self, events):
         duration = self._durations[events["video_path"]]
         n = max(1, math.ceil(duration / self.tr))
@@ -77,6 +81,12 @@ class TribeAdapter:
 
     def events(self, video_path: str):
         return self.model.get_events_dataframe(video_path=video_path)
+
+    @staticmethod
+    def modalities(events) -> dict:
+        counts = events["type"].value_counts().to_dict() if "type" in events else {}
+        return {"event_counts": {str(k): int(v) for k, v in counts.items()},
+                "has_words": bool(counts.get("Word", 0))}
 
     def predict(self, events):
         preds, segments = self.model.predict(events=events, verbose=False)
@@ -136,6 +146,22 @@ def atomic_write_json(path: Path, obj: dict) -> None:
     atomic_write_bytes(path, lambda f: f.write((json.dumps(obj, indent=2) + "\n").encode()))
 
 
+def failure_category(exc: BaseException) -> str:
+    """Coarse bucket so Phase 1 can count how often each failure mode happens."""
+    msg = f"{type(exc).__name__}: {exc}"
+    if "whisperx failed" in msg:
+        return "transcription_failed"
+    if "Language" in msg and "not supported" in msg:
+        return "unsupported_language"
+    if "OutOfMemory" in msg or "out of memory" in msg:
+        return "gpu_oom"
+    if "segment" in msg and ("duplicate" in msg or "NaN" in msg):
+        return "bad_segment_timing"
+    if isinstance(exc, FileNotFoundError):
+        return "missing_file"
+    return "other"
+
+
 def git_sha(repo: str | None) -> str | None:
     if not repo:
         return None
@@ -167,6 +193,7 @@ def process(model, row: dict, video_path: Path, out_dir: Path, common: dict) -> 
     t0 = time.perf_counter()
     events = model.events(str(video_path))
     t1 = time.perf_counter()
+    modalities = model.modalities(events)
     preds, starts, durs = order_segments(*model.predict(events))
     t2 = time.perf_counter()
 
@@ -181,6 +208,7 @@ def process(model, row: dict, video_path: Path, out_dir: Path, common: dict) -> 
         "n_segments": int(preds.shape[0]),
         "n_vertices": int(preds.shape[1]),
         "tr_s": float(model.tr),
+        "modalities": modalities,
         "preds_dtype_saved": "float16",
         "hemodynamic_offset_note": "TRIBE preds are shifted 5 s into the past to cancel hemodynamic lag",
         "timing_s": {
@@ -267,6 +295,7 @@ def main() -> int:
             failed += 1
             atomic_write_json(err_path, {
                 "video_id": vid, "path": row["path"], "error": repr(exc),
+                "category": failure_category(exc),
                 "traceback": traceback.format_exc(),
                 "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             })
