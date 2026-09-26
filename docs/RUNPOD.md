@@ -103,3 +103,16 @@ keeps the `video_performances` id as `source_name` for the later metrics join.
 Performance metrics still arrive as an exported file, never as a live
 database query. TRIBE v2 is CC-BY-NC-4.0: revisit the licence before any of
 this feeds a product or client deliverable.
+
+```bash
+.venv/bin/python tools/select_sample.py --n 60 --out videos --dry-run   # plan only
+.venv/bin/python tools/select_sample.py --n 60 --out videos             # copy + sha256 check
+tools/pod.sh push-videos videos
+```
+
+It reads only the backfill's `*.results.jsonl` logs and only files under
+`archive/backfill-20260926/`. Strata are deal × platform × duration bucket
+(<15 s, 15–30 s, 30–60 s, >60 s), clips over `--max-duration` (90 s) are
+skipped, and identical content is sent once. `videos/_sample.jsonl` records
+vp_id, deal_id, platform, duration and sha256 for each clip. A 60-clip draw
+(seed 0) is about 28 min of source across 14 deals.

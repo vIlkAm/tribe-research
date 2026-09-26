@@ -136,3 +136,39 @@ def test_bad_timing_writes_error_json(tmp_path):
     else:
         raise AssertionError("duplicate starts accepted")
     assert not list(tmp_path.glob("*.npz")) and not list(tmp_path.glob("*.json"))
+
+
+def test_select_sample_copies_verifies_and_stays_in_backfill(tmp_path):
+    import hashlib
+
+    arch = tmp_path / "archive"
+    rows = []
+
+    def clip(rel, vp, deal, platform, secs, salt, sha=None):
+        p = arch / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        fake_mp4(p, secs, salt)
+        rows.append({"vp_id": vp, "deal_id": deal, "platform": platform, "status": "uploaded",
+                     "local_path": "/archive/" + rel, "sha256": sha or hashlib.sha256(p.read_bytes()).hexdigest()})
+
+    clip("backfill-20260926/D1/tiktok/a.mp4", "a", "d1", "tiktok", 10, b"a")
+    clip("backfill-20260926/D1/tiktok/b.mp4", "b", "d1", "tiktok", 40, b"b")
+    clip("backfill-20260926/D2/youtube/c.mp4", "c", "d2", "youtube", 10, b"a")  # same bytes as a
+    clip("backfill-20260926/D2/youtube/bad.mp4", "bad", "d2", "youtube", 70, b"x", sha="0" * 64)
+    clip("CC Archive - X/other.mp4", "outside", "d3", "tiktok", 12, b"o")  # not the backfill folder
+    clip("backfill-20260926/D2/youtube/long.mp4", "long", "d2", "youtube", 300, b"l")
+    rows.append({"vp_id": "f", "deal_id": "d1", "platform": "tiktok", "status": "failed"})
+    (tmp_path / "x.results.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+
+    out = tmp_path / "videos"
+    r = _run(ROOT / "tools/select_sample.py", "--n", 10, "--out", out, "--results",
+             str(tmp_path / "*.results.jsonl"), "--archive-root", arch, check=False)
+    assert r.returncode == 1 and "bad" in r.stderr  # sha mismatch reported, file removed
+    sample = [json.loads(l) for l in (out / "_sample.jsonl").read_text().splitlines()]
+    got = {s["vp_id"] for s in sample}
+    assert got in ({"a", "b"}, {"c", "b"})  # a and c share content: sent once
+    files = sorted(p.relative_to(out).as_posix() for p in out.rglob("*.mp4"))
+    assert all(not (out / f).is_symlink() for f in files)
+    assert len(files) == 2 and not (out / "youtube/bad.mp4").exists()
+    rows_m, _ = build(out, 1)
+    assert {m["source_name"] for m in rows_m} == got
