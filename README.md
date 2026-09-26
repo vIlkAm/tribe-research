@@ -103,24 +103,46 @@ Use **one pod with N GPUs**, not N pods sharing a volume.
 Reuse the same RunPod template for every pod on this volume: the venv links to
 the image's Python.
 
-## Brain layer (ROI features and demo visuals)
+## Brain layer (ROI features, neural proxies, frontend bundle)
 
 `tribe_research/brain/` turns the raw `[segments × 20484]` predictions into
 something that can be read and shown:
 
 - `roi_groups_v0.yaml`: named groups of HCP-MMP1 parcels, e.g. visual,
   auditory, language.
-- `tools/build_roi_map.py`: builds the versioned fsaverage5 ROI map. It runs on
-  the pod because figshare blocks this server.
+- `tools/build_roi_map.py`: builds the versioned fsaverage5 ROI map. The local
+  copy was built from the [tannerjared/HCP-MMP1](https://github.com/tannerjared/HCP-MMP1)
+  mirror of the [figshare original](https://figshare.com/articles/HCP-MMP1_0_projected_on_fsaverage/3498446),
+  MD5-recorded in its provenance. `push-code` sends it to the pod, where
+  `setup.sh` cross-checks it against tribev2's own labels.
 - `features.py`: per-ROI curves on the real segment timeline, plus within-video
   z-scored summaries. Don't compare absolute activation across videos.
-- `render.py` / `tools/brain_report.py`: a surface-view PNG per clip, and a demo
-  MP4 with source video, brain views and ROI timelines plus a playhead. It runs
-  on CPU on this server after `pod.sh pull`.
+- `proxies_v0.yaml` / `proxies.py`: seven disjoint proxy channels (attention,
+  social, value, control, self, language, sensory). Each has an explicit
+  `direction` (cognitive control is `no_monotonic`: neither way is better) and
+  its UI copy. Values are within-clip z-scores whose scale excludes the 2 s
+  onset window, on a 2 Hz sample-and-hold display grid. Segments TRIBE dropped
+  stay `null`.
+- `events.py`: shot changes (ffmpeg scene score) and TRIBE's transcribed words
+  / speech spans. Other lanes are reported as unavailable.
+- `moments.py`: rule-based candidate moments (hysteresis, min 1.5 s). They are
+  observations or *untested* edit hypotheses, always relative to this clip.
+- `analysis.py` / `bundle.py`: the frontend object `nvi.analysis.v0.2`
+  (`docs/analysis.schema.json`). `predictions` stay `not_available` until a
+  behavior model exists. Scrubbable brain sprites (proxy + research per-vertex),
+  a region hover map and a legend are included.
+- `tools/brain_report.py --analysis [--png] [--video]`: writes
+  `<report>/analyses/<video_id>/analysis.json` plus assets, and a demo MP4
+  (source | proxy brain | readout over a timeline of channels, moments and
+  shots). It runs on CPU on this server after `pod.sh pull`.
+
+`docs/sample_analysis/` is a **synthetic** example bundle (dry-run predictions,
+real ROI map) for frontend work.
 
 Every visual is captioned as a model prediction for an average subject, not
-measured brain activity. The only demo rendered so far used dry-run data and a
-synthetic ROI map, and is labelled that way.
+measured brain activity. UI wording is "strong predicted response", never
+"brain firing". Label anything built from dry-run data or a synthetic ROI map
+as synthetic.
 
 ## Planning estimates (from the planning discussion; not measured)
 

@@ -179,3 +179,57 @@ def test_analysis_contract_validates_against_schema():
     s = json.dumps(a)
     assert not FORBIDDEN.search(" ".join(m["title"] + " " + m["description"] + " " + (m["hypothesis"] or "")
                                          for m in a["moments"])), s
+
+
+def test_sprite_sheet_geometry():
+    from tribe_research.brain.render import sprite_sheet
+
+    frames = np.arange(13 * 2 * 3 * 3, dtype=np.uint8).reshape(13, 2, 3, 3)
+    sheet, cols, rows = sprite_sheet(frames, max_cols=5)
+    assert (cols, rows) == (5, 3) and sheet.shape == (6, 15, 3)
+    assert (sheet[2:4, 3:6] == frames[6]).all()  # tile 6 -> row 1, col 1
+    assert (sheet[4:6, 9:] == 0).all()  # unused cells stay black
+
+
+def test_paint_channels():
+    from tribe_research.brain.render import paint_channels
+
+    masks = np.zeros((2, 6), bool)
+    masks[0, :2] = masks[1, 3:5] = True
+    out = paint_channels(np.array([[1.0, 2.0], [-1.0, 0.5]]), masks)
+    assert out.tolist() == [[1, 1, 0, -1, -1, 0], [2, 2, 0, 0.5, 0.5, 0]]
+
+
+def test_bundle_end_to_end(tmp_path):
+    jsonschema = pytest.importorskip("jsonschema")
+    import imageio.v2 as iio
+
+    from tribe_research.brain import bundle
+
+    T = 7
+    preds = preds_with({"attention": np.linspace(-1, 1, T), "value": np.linspace(1, -1, T)}, T)
+    t = np.array([0, 1, 2, 3, 5, 6, 7], float)  # gap at 4 s
+    npz = tmp_path / "v.npz"
+    np.savez(npz, preds=preds.astype(np.float16), seg_start=t, seg_duration=np.ones(T))
+    meta = {"video_id": "v1", "source_name": "vp-9", "duration_s": 8.0, "tr_s": 1.0, "tribe_commit": "x",
+            "words": [{"start": 0.5, "duration": 0.4, "text": "hey"}]}
+    roi, ana = synth_roi(), tmp_path / "analyses"
+    region = bundle.write_static(ana, roi, SPEC)
+    a = bundle.write_bundle(ana, meta, npz, roi, SPEC, region, synthetic=True, research_vertex=True)
+    jsonschema.validate(a, json.loads((ROOT / "docs/analysis.schema.json").read_text()))
+    assert json.loads((ana / "v1/analysis.json").read_text()) == a
+    assert a["events"]["words"] == [{"start_ms": 500, "end_ms": 900, "text": "hey"}]
+    assert a["events"]["shots_ms"] is None and a["timing"]["gaps_ms"] == [[4000, 5000]]
+    for key in ("brain_map", "research_vertex_map"):
+        s = a["assets"][key]
+        img = iio.imread(ana / "v1" / s["src"])
+        assert img.shape[:2] == (s["rows"] * s["tile_h"], s["cols"] * s["tile_w"])
+        assert len(s["frame_start_ms"]) == len(s["frame_end_ms"]) == T
+        assert s["frame_start_ms"][4] == 5000 and s["frame_end_ms"][3] == 4000
+    assert a["assets"]["brain_map"]["mode"] == "proxy"
+    idmap = iio.imread(ana / "v1" / region["idmap_src"])[..., :3]
+    assert idmap.shape[:2] == (a["assets"]["brain_map"]["tile_h"], a["assets"]["brain_map"]["tile_w"])
+    seen = {"#%02x%02x%02x" % tuple(c) for c in np.unique(idmap.reshape(-1, 3), axis=0)}
+    assert seen <= set(region["ids"]) | {"#000000"}
+    assert set(region["ids"].values()) == {c.key for c in SPEC.channels}
+    assert (ana / "v1" / region["legend_src"]).exists()

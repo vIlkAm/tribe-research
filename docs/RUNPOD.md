@@ -67,11 +67,12 @@ so run it again after any pod restart. It is idempotent.
 
 ## ROI map (for the brain visuals)
 
-`setup.sh` builds `tribe_research/assets/roi_map_roi_groups_v0.npz` from the
-HCP-MMP1 annotation and cross-checks the vertex order against tribev2's own
-labels. Figshare blocks this server, which is why the build runs on the pod.
-If figshare also blocks the pod, copy `lh.HCPMMP1.annot` and `rh.HCPMMP1.annot`
-from anywhere and run:
+`tribe_research/assets/roi_map_roi_groups_v0.npz` is built locally from the
+GitHub mirror of the HCP-MMP1 annotation (MD5s in its provenance) and pushed by
+`pod.sh push-code`. `setup.sh` then rebuilds it and cross-checks the vertex
+order against tribev2's own labels. If figshare blocks the pod, the rebuild
+fails without touching the pushed file. To run the cross-check anyway, copy
+`lh.HCPMMP1.annot` / `rh.HCPMMP1.annot` to the pod and run:
 
 ```bash
 python $JOB/code/tools/build_roi_map.py --annot-dir <dir> --check-against-tribe
@@ -85,7 +86,7 @@ Inference does not depend on it; only `brain_report.py` does.
 tools/pod.sh pull run1          # -> results/run1/{outputs,logs,manifest.jsonl}, plus the ROI map
 .venv/bin/python tools/brain_report.py --out-root results/run1/outputs \
     --report-dir results/run1/report --roi-map tribe_research/assets/roi_map_roi_groups_v0.npz \
-    --png --video --videos-root videos
+    --analysis --png --video --videos-root videos
 ```
 
 Then **terminate** the pod in the console. Compute billing stops when the pod
