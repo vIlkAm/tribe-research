@@ -125,8 +125,9 @@ def build(args) -> dict:
 
     prim = man["targets"][predict.PRIMARY]
     metrics = {t: tm["metrics"] for t, tm in man["targets"].items()}
-    label = ("PRELIMINARY - n={} training clips, the pre-registered stage-1 GO rule did NOT pass. Noisy, not a "
-             "result, not the stage-1 decision; do not quote.".format(prim["n_train_contents"])
+    label = ("PRELIMINARY - n={} training clips. Not the pre-registered stage-1 analysis (that runs on the full "
+             "study set) and implies nothing about its decision; noisy, not a result, do not quote."
+             .format(prim["n_train_contents"])
              if status == "preliminary" else f"{status}: see docs/PREREGISTRATION.md before quoting")
     lock_in_table = len(lock_ids & set(pd.read_parquet(Path(man["inputs"]["features"]["path"]),
                                                        columns=["video_id"])["video_id"].astype(str))) \
@@ -134,7 +135,8 @@ def build(args) -> dict:
         else None
     rel = {
         "release_tag": tag, "model_version": man["model_version"], "status": status,
-        "status_reason": "stage-1 GO rule not passed (see model/manifest.json metrics)" if why else None,
+        "status_reason": ("the GO gate in predict.py is not met by this fit, so it may only be served with "
+                          "--allow-preliminary; this is not the stage-1 analysis") if why else None,
         "predict_flag": "--allow-preliminary" if status == "preliminary" else None,
         "licence": LICENCE, "created_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "model_git": man["git"], "packaged_from_git": _git_head(),
@@ -177,8 +179,8 @@ def build(args) -> dict:
 
 def notes(rel: dict, tag: str) -> str:
     n = rel["training"][predict.PRIMARY]["n_train_contents"]
-    head = ("**Preliminary, not validated.** Trained on {} clips; it did not pass the pre-registered stage-1 GO "
-            "rule and says nothing about it. Its numbers only show the format.".format(n)
+    head = ("**Preliminary, not validated.** Trained on {} clips. It is not the pre-registered stage-1 analysis "
+            "and implies nothing about its outcome; its numbers only show the format.".format(n)
             if rel["status"] == "preliminary" else f"Status: {rel['status']}.")
     batches = ", ".join(f"`{b['out_root']}` ({b['clips']})" for b in rel["batches"])
     return "\n".join([
