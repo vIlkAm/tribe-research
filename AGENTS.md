@@ -57,6 +57,7 @@ the owner explicitly decides to connect it:
 | `pod/env.sh` | Cache/env vars; source on every pod shell |
 | `pod/worker.py` | Load model once, process this worker's shard, resumable, atomic outputs |
 | `pod/run_worker.sh` | Worker + `nvidia-smi` sampler, logs to `$JOB/logs/` |
+| `pod/run_queue.sh` | One GPU, batches in order: N concurrent bf16 fast-video workers per batch (thread caps, expandable segments), one retry pass, `done-<b>` markers |
 | `pod/launch_all.sh` | Phase 2: one worker per GPU on a single N-GPU pod, under `nohup` |
 | `pod/downscale.sh` | Pod-side pre-scale to a 384 px short side (prefer `tools/prep_cpu.py` on the server) |
 | `pod/bench_vjepa.py` | V-JEPA2 GPU floor: one timed 64-frame forward |
