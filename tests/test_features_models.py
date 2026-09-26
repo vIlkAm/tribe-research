@@ -561,3 +561,20 @@ def test_build_features_several_out_roots_equal_one_and_refuse_mixed_precision(s
                         "--out", tmp_path / "g.parquet", "--roi-map", synth["roi"], "--n-jobs", "1"],
                        capture_output=True, text=True, timeout=300)
     assert r.returncode != 0 and "mixed video runtimes" in r.stderr and not (tmp_path / "g.parquet").exists()
+
+
+def test_hgb_survives_an_all_missing_column_and_equals_dropping_it():
+    """Real data: follower_count is unknown for every post of a small sample -> HGB's binner used to crash."""
+    rng = np.random.default_rng(0)
+    n = 120
+    X = pd.DataFrame({"a": rng.normal(size=n), "b": rng.normal(size=n), "empty": np.nan,
+                      "c": rng.choice(["x", "y"], n)})
+    X.loc[:10, "b"] = np.nan  # partly missing stays as it was
+    y = X["a"] * 2 + rng.normal(size=n) * 0.1
+    _, p = fit_models.fit_predict("hgb", (["c"], ["a", "b", "empty"]), X, y.to_numpy(), None, X.iloc[:20])
+    _, q = fit_models.fit_predict("hgb", (["c"], ["a", "b"]), X, y.to_numpy(), None, X.iloc[:20])
+    assert np.array_equal(p, q)
+    t = fit_models.AllMissingToZero().fit(X[["a", "b", "empty"]])
+    out = t.transform(X[["a", "b", "empty"]])
+    assert list(t.empty_) == [False, False, True] and (out[:, 2] == 0).all()
+    assert np.array_equal(out[:, :2], X[["a", "b"]].to_numpy(), equal_nan=True)

@@ -504,6 +504,24 @@ class BlockStackRegressor(RegressorMixin, BaseEstimator):
         return self.final_.predict(pd.concat([X, S], axis=1)[input_columns(self.final_cols_)])
 
 
+class AllMissingToZero(TransformerMixin, BaseEstimator):
+    """Numeric passthrough for HGB that sets columns with no finite training value to 0.
+
+    sklearn's HGB binner crashes on a column that is entirely missing in a fit (e.g. ``follower_count`` unknown
+    for every post of a small sample). A column constant on the training rows gets no split, so this equals
+    leaving the column out; any column with at least one finite value passes through unchanged."""
+
+    def fit(self, X, y=None):
+        a = np.asarray(X, dtype=float)
+        self.empty_ = ~np.isfinite(a).any(axis=0) if a.size else np.zeros(a.shape[1], bool)
+        return self
+
+    def transform(self, X):
+        a = np.array(X, dtype=float, copy=True)
+        a[:, self.empty_] = 0.0
+        return a
+
+
 class AccountTargetEncoder(TransformerMixin, BaseEstimator):
     """Adds ``te_account_mean``: the posting account's mean target, smoothed toward its deal×platform mean.
 
@@ -608,7 +626,7 @@ def make_model(kind: str, cat: list[str], num: list[str], seed: int = 0):
     if kind == "hgb":
         pre = ColumnTransformer([
             ("cat", OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=np.nan), cat),
-            ("num", "passthrough", num),
+            ("num", AllMissingToZero(), num),
         ])
         hgb = HistGradientBoostingRegressor(
             **HGB_PARAMS, early_stopping=False, random_state=seed,
