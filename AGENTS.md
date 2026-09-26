@@ -69,6 +69,7 @@ the owner explicitly decides to connect it:
 | `tools/qc_files.py` | Decode/audio/resolution check per planned file |
 | `tools/select_study_set.py` | Curated ~1,500 study set, lockbox, pilot, account deep-dive (`docs/STUDY_SET.md`) |
 | `tools/make_batches.py` | Study set → ordered disjoint pod batches (pilot, frontend wiring set, 200s, deep-dive) |
+| `tools/select_rest.py` | Stage 2: pinned lockbox extension + the remaining eligible contents as batches `rNN` |
 | `tools/prep_cpu.py` | Pre-scale batch clips on this server (niced, load-gated, pinned ffmpeg) before `push-batch` |
 | `tools/build_features.py` | Per-clip brain, extractor-embedding (control) and baseline feature table from pulled outputs |
 | `tools/fit_models.py` | Baseline vs brain vs extractor-embedding control (A/B/E/BE; block-stacked ridge primary): grouped CV, leave-one-deal-out, niche tuning, sealed lockbox |
