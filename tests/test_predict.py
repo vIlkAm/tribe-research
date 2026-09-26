@@ -270,7 +270,9 @@ def test_build_dataset_identical_to_pre_refactor(study, tmp_path):
               perm_repeats=0, niche=False, threads=1, **QUIET)
     ra = ref.run(feats, members, out, out_dir=tmp_path / "a", **kw)
     rb = fit_models.run(feats, members, out, out_dir=tmp_path / "b", moment_cols=True, **kw)  # the pre-refactor brain block kept UI moments
-    assert (tmp_path / "a" / "oof_predictions.csv").read_bytes() == (tmp_path / "b" / "oof_predictions.csv").read_bytes()
+    oa, ob = (pd.read_csv(tmp_path / d / "oof_predictions.csv", dtype=str) for d in ("a", "b"))
+    assert list(ob.columns) == [*oa.columns[:6], "stratum", *oa.columns[6:]]  # 900001b added the stratum only
+    pd.testing.assert_frame_equal(oa, ob.drop(columns="stratum"), check_exact=True)
     for r in (ra, rb):
         r.pop("runtime_s")
     assert rb["config"].pop("moment_cols") is True  # the only config key added since
