@@ -81,6 +81,7 @@ the owner explicitly decides to connect it:
 | `tools/power_check.py` | CPU power simulation (no TRIBE outputs, never reads lockbox labels) → `results/power/` |
 | `tools/profile_account.py` | One deal's or account's brain profile vs the general model |
 | `tools/handoff.py` | Validate bundles against the contract, index, tarball for the frontend (no footage) |
+| `tools/drive_pod.sh` | Drive one pod through study batches shared via `claim-<b>` files (noclobber): optional setup, push, `run_queue.sh`, pull; 1-worker manifest rewrite for 24 GB cards |
 | `tools/pod.sh` | Full-SSH push/pull/shell between this server and a pod (`push-batch`) |
 | `tools/make_manifest.py` | Content-hash IDs, durations, duration-balanced worker assignment |
 | `tools/compare_preds.py` | Preds agreement between two out-roots, with pre-set fp32/bf16 gates (fast-video checks) |
