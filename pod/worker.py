@@ -98,8 +98,14 @@ class TribeAdapter:
         if "type" not in events:
             return []
         w = events[events["type"] == "Word"].sort_values("start")
-        return [{"start": round(float(r.start), 3), "duration": round(float(r.duration), 3),
-                 "text": str(getattr(r, "text", ""))} for r in w.itertuples()]
+        out = []
+        for r in w.itertuples():
+            start, dur, text = float(r.start), float(getattr(r, "duration", 0.0)), getattr(r, "text", "")
+            if not math.isfinite(start):
+                continue
+            out.append({"start": round(start, 3), "duration": round(dur if math.isfinite(dur) else 0.0, 3),
+                        "text": "" if not isinstance(text, str) else text})
+        return out
 
     def predict(self, events):
         preds, segments = self.model.predict(events=events, verbose=False)
@@ -207,7 +213,11 @@ def process(model, row: dict, video_path: Path, out_dir: Path, common: dict) -> 
     events = model.events(str(video_path))
     t1 = time.perf_counter()
     modalities = model.modalities(events)
-    words = model.words(events)
+    try:  # the speech lane is optional; never lose a clip's (billed) predictions over it
+        words = model.words(events)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("%s: word export failed (%r); continuing without words", row["path"], exc)
+        words = []
     preds, starts, durs = order_segments(*model.predict(events))
     t2 = time.perf_counter()
 

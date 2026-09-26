@@ -172,3 +172,33 @@ def test_select_sample_copies_verifies_and_stays_in_backfill(tmp_path):
     assert len(files) == 2 and not (out / "youtube/bad.mp4").exists()
     rows_m, _ = build(out, 1)
     assert {m["source_name"] for m in rows_m} == got
+
+
+def test_tribe_adapter_words_from_events_frame():
+    import pandas as pd
+
+    # Word rows as tribev2.eventstransforms.ExtractWordsFromAudio builds them.
+    ev = pd.DataFrame([
+        {"type": "Video", "start": 0.0, "duration": 10.0},
+        {"type": "Word", "start": 1.5, "duration": 0.25, "text": "later"},
+        {"type": "Word", "start": 0.2, "duration": 0.3, "text": "first"},
+        {"type": "Word", "start": 2.0, "duration": float("nan"), "text": float("nan")},
+        {"type": "Word", "start": float("nan"), "duration": 0.1, "text": "x"},
+    ])
+    assert worker.TribeAdapter.words(ev) == [
+        {"start": 0.2, "duration": 0.3, "text": "first"},
+        {"start": 1.5, "duration": 0.25, "text": "later"},
+        {"start": 2.0, "duration": 0.0, "text": ""},
+    ]
+    assert worker.TribeAdapter.words(pd.DataFrame({"start": [0.0]})) == []
+
+
+def test_word_export_failure_keeps_the_clip(tmp_path, monkeypatch):
+    videos = tmp_path / "videos"
+    videos.mkdir()
+    fake_mp4(videos / "c.mp4", 5)
+    row = {"video_id": "v", "path": "c.mp4", "source_name": "c", "duration_s": 5.0}
+    model = worker.StubModel({str(videos / "c.mp4"): 5.0})
+    monkeypatch.setattr(model, "words", lambda events: (_ for _ in ()).throw(KeyError("text")))
+    meta = worker.process(model, row, videos / "c.mp4", tmp_path, {})
+    assert meta["words"] == [] and (tmp_path / "v.npz").exists()
