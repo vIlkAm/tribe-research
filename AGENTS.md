@@ -22,6 +22,17 @@ the owner explicitly decides to connect it:
   served videos unauthenticated on the public IP — don't repeat that).
 - Performance metrics are imported as an exported file (CSV/JSONL) into
   `results/`, not queried live.
+- **Owner decision, 2026-09-26 (later, supersedes the file-only rule below
+  for these tables):** "I approve full access to the whole database of videos
+  and their snapshots, that is public data". `tools/export_metrics.sh` may READ
+  (read-only transaction, CSV into `results/metrics/`) deals, social_accounts,
+  social_account_stat_snapshots, video_performances, video_snapshots, the
+  cross-platform links and the media archive/backfill tables. Every clip file
+  on this server (backfill **and** the regular archive under
+  `media_archive_worker/archive/`) may go to RunPod; `tools/build_run_manifest.py`
+  plans that run. Still no writes, no other tables, no live queries from pods.
+  The owner also cleared a full-scale run ("hammer it with all the clips");
+  pods still run only under `tools/runpod.py watchdog` with an explicit cap.
 - **Owner decision, 2026-09-26:** the backfilled clips are company-owned
   ("those clips are in fact ours, we are owners of it … we are not
   commercialising a product"). They may be copied to RunPod pods for this
