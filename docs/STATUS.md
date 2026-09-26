@@ -5,7 +5,7 @@ from a person or an agent. The newest update is at the top. Details live in the
 linked docs; this page only says where things stand. Agents on either side: when
 you change the state of something below, update this file in the same commit.
 
-_Last updated: 2026-09-26 ~22:45 UTC (research/backend side)._
+_Last updated: 2026-09-26 ~22:55 UTC (research/backend side)._
 
 ## One-paragraph summary
 
@@ -24,7 +24,7 @@ gone through the GPU.
 | Step | Runs on | State |
 |---|---|---|
 | 1. Pick clips, pre-scale to 384 px | CPU (this server) | ✅ Study set (1,500 + 373 deep-dive) ready. The other ~6,000 are being pre-scaled now (`r00–r15`) |
-| 2. TRIBE + extractors → brain response + embeddings per clip | GPU (RunPod) | ✅ Fast bf16 path passed every accuracy gate. ⏳ Study-set batches start tonight |
+| 2. TRIBE + extractors → brain response + embeddings per clip | GPU (RunPod) | ✅ Fast bf16 path passed every accuracy gate. ⏳ One L40S (2 workers) runs study batches b02→b09 in order tonight; the budget reaches about b07/b08 |
 | 3. Features per clip (`tools/build_features.py`) | CPU | ✅ Code done and tested |
 | 4. Training + honest evaluation (`tools/fit_models.py`) | CPU, minutes | ✅ Code done, rules pre-registered ([`PREREGISTRATION.md`](PREREGISTRATION.md)). ⏳ Waiting for step 2 output |
 | 5. Save the model, score one new clip (`tools/predict.py`) | CPU, milliseconds | 🔨 Being built tonight |
@@ -91,6 +91,7 @@ gone through the GPU.
 
 ## Log
 
+- **2026-09-26 22:55:** Study set queued on the L40S (`pod/run_queue.sh`, d8b921b), about 6.5 h, capped at $8 total. Outputs are pulled per batch to `results/runs/study-bf16/`. b09, and maybe b08, need the top-up.
 - **2026-09-26 22:45:** bf16 fast frame loop passed all gates (pod code
   7163f18, prereg 9f3a4e0). Faster pod setup with parallel weight download and
   done markers (9c923be). Product handoff doc published (5c5857b). Stage-2
