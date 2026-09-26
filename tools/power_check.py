@@ -124,6 +124,8 @@ def run(args) -> dict:
         fz = rngf.standard_normal((n_c, 4))[df["_content"].to_numpy()]
         load = rngf.standard_normal((5, len(extra_b)))
         load /= np.linalg.norm(load, axis=0, keepdims=True)
+        acc_codes = df["social_account_id"].astype("category").cat.codes.to_numpy()
+        acc_vec = rngf.standard_normal((acc_codes.max() + 1, len(extra_b)))[acc_codes]
         tres = {"n_posts": int(len(df)), "n_contents": int(df["_content"].nunique()),
                 "n_noise_both": args.n_noise_both, "n_noise_b_only": args.n_noise, "designs": {}}
         print(f"[{t}] posts={len(df)} contents={tres['n_contents']} A={fsA[1][:8]}… ({len(fsA[1])} cols) "
@@ -140,6 +142,9 @@ def run(args) -> dict:
                     a = rho / math.sqrt(k * (1 - rho ** 2))
                     df["brain_synth"] = a * z + noise
                     df[extra_b] = a * z[:, None] + nz[extra_b].to_numpy()
+                elif args.structure == "account" and extra_b:  # no content signal, only who posted it:
+                    # an account "style" vector carries half of every column's variance (fingerprinting check)
+                    df[extra_b] = math.sqrt(0.5) * acc_vec + math.sqrt(0.5) * nz[extra_b].to_numpy()
                 elif args.structure == "factor" and extra_b:  # correlated low-rank block (like ROI/PCA features):
                     # 5 shared content factors carry half of every column's variance; factor 1 is brain_synth
                     fac = np.column_stack([df["brain_synth"].to_numpy(), fz])
@@ -196,9 +201,10 @@ def main() -> None:
     ap.add_argument("--n-noise", type=int, default=0, help="pure-noise clip columns added to B only")
     ap.add_argument("--n-noise-both", type=int, default=0, help="pure-noise clip columns added to A and B")
     ap.add_argument("--model", default="ridge", choices=fm.MODELS)
-    ap.add_argument("--structure", default="sparse", choices=("sparse", "dense", "factor"),
+    ap.add_argument("--structure", default="sparse", choices=("sparse", "dense", "factor", "account"),
                     help="brain block with --n-noise: sparse = one signal column + pure noise; dense = signal "
-                         "spread evenly over independent columns; factor = correlated 5-factor block, signal on one")
+                         "spread evenly over independent columns; factor = correlated 5-factor block, signal on one; "
+                         "account = per-account style vector, no content signal (fingerprinting check)")
     ap.add_argument("--reps", type=int, default=12)
     ap.add_argument("--n-boot", type=int, default=300)
     ap.add_argument("--threads", type=int, default=8)

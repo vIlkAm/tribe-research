@@ -74,6 +74,8 @@ Stage 1 answers two questions, and each has its own rule.
   within-stratum ρ.
   - If the point is ≥ +0.02 **and** the CI lower bound is > −0.03, recommend
     funding the full eligible set. Otherwise, recommend not scaling.
+  - Guard: the `account`-scheme BE − A point must also be ≥ 0. In that
+    scheme, account fingerprinting can't help.
   - The owner makes the spending call either way.
   - The −0.03 floor matches the real CV precision. With the 1 / `incl_prob`
     weights (n_eff 528), a point of +0.02 carries a CI of about ±0.05.
@@ -173,8 +175,9 @@ The table above is **optimistic**:
 
 Three corrections were measured before this was frozen.
 
-**Block width.** The real blocks are wide: about 100 brain columns and 180
-emb columns (9 PCA blocks × 20). The simulation re-ran CV at 1,275 with
+**Block width.** The real blocks are wide: an estimated ≈ 100 brain columns
+(the exact count is logged at the first real build; no real ROI map is on this
+server yet) and 180 emb columns (9 PCA blocks × 20). The simulation re-ran CV at 1,275 with
 `--n-noise` / `--n-noise-both` for 20 designs each, on `log_interactions_rate`.
 "Factor" means a correlated 5-factor block with the signal on one factor,
 which is the realistic shape of ROI/PCA features. "Sparse" means one signal
@@ -191,6 +194,13 @@ column plus pure noise. Results are `results/power/power_check_cv_*.json`.
 | B − A | 100, sparse | stack | −0.003 ±0.007 | +0.003 ±0.013, 0.00 | +0.022 ±0.023, 0.45 |
 | BE − A | 280, sparse | ridge | **−0.135** ±0.052 | −0.094 ±0.052, 0.00 | −0.053 ±0.053, 0.00 |
 | BE − A | 280, sparse | stack | −0.001 ±0.008 | +0.002 ±0.010, 0.00 | +0.012 ±0.016, 0.20 |
+
+**Account fingerprinting.** Block models fit y directly, not A's residuals,
+so a block could in principle learn an account's style as a proxy for its
+level. The simulation checked this with `--structure account`: a 100-column
+block carrying a per-account style vector and no content signal, at ρ 0.
+`stack` gives −0.004 ±0.015 and `ridge` −0.058 ±0.039. No leak was detected;
+the account-scheme guard in stage 1 backs this up on real data.
 
 Reading the table:
 - A shared-penalty ridge can't be the primary model: it overfits pure noise
@@ -251,3 +261,4 @@ needs stage 2.
 | 2026-09-26 | Primary model `ridge` → `stack` (`BlockStackRegressor`); `ridge` becomes secondary | power_check block-width runs: shared-penalty ridge loses 0.08–0.14 ρ on pure noise and most of a factor-structured signal; `stack` holds the null at ≈ 0 and keeps it (Sample size) | any real fit (committed text: 0539df5) |
 | 2026-09-26 | Stage-1 rules split: BE − A decides scaling (floor −0.01 → −0.03); BE − E decides only the neural claim, and a null BE − E no longer vetoes scaling | the committed "GO" and "stop early" rules could both fire; n_eff 528 widens real CIs ≈ 1.55× | any real fit |
 | 2026-09-26 | Added: weighting (n_eff), bootstrap calibration and block-width results; stage-2 input hashes; pod-code parity/emb-timing gate; `emb_pool_v2` renamed `emb_features_v1` (reads pod files `emb_pool_v1`) | review before any fit; the name clashed with the pod file format | any real fit |
+| 2026-09-26 | Stage-1 GO gains the guard that the `account`-scheme BE − A point is ≥ 0; recorded that `stack` block models fit y, not A residuals, plus the `--structure account` check (no leak); brain width marked as an estimate | block scores fit y without the account term; checked, and guarded on real data | any real fit (committed text: 1207848) |
