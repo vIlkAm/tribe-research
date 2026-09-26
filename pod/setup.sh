@@ -121,6 +121,18 @@ m = TribeModel.from_pretrained("facebook/tribev2", cache_folder=os.environ["TRIB
 print(f"TRIBE loaded in {time.time() - t:.0f}s, TR={m.data.TR}")
 EOF
 
+echo "== extractor weights named in the TRIBE config (workers run with HF_HUB_OFFLINE=1)"
+python - <<'EOF'
+import glob, os, re
+from huggingface_hub import snapshot_download
+cfg = glob.glob(os.path.join(os.environ["HF_HOME"], "hub/models--facebook--tribev2/snapshots/*/config.yaml"))[0]
+names = sorted(set(re.findall(r"^\s*model_name:\s*([\w.-]+/[\w.-]+)\s*$", open(cfg).read(), re.M)))
+for name in names:
+    # original/ is Llama's duplicate consolidated checkpoint; transformers never reads it
+    path = snapshot_download(name, ignore_patterns=["original/*", "*.msgpack", "*.h5", "*.onnx", "*.ot"])
+    print(f"cached {name} -> {path}")
+EOF
+
 echo "== ROI map (HCP-MMP1 -> fsaverage5), cross-checked against tribev2's own labels"
 if [ -f "$JOB/code/tools/build_roi_map.py" ]; then
   python "$JOB/code/tools/build_roi_map.py" --check-against-tribe \
