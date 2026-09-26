@@ -17,6 +17,13 @@ Column prefixes decide how tools/fit_models.py uses a column:
              brain_moments_*     rule-based candidate moments (tribe_research/brain/moments.py)
              brain_xch_*         cross-channel trajectory features
              brain_pca_NN        raw-cortex time-mean map projected on the top PCA components
+    emb_*    the extractor features TRIBE's brain mapping consumes, without the mapping (the control arm):
+             emb_<video|audio|text>_pca_NN       PCA of the clip's time-mean ``<vid>.emb.npz`` vector
+             emb_<video|audio|text>_sd_pca_NN    PCA of its per-feature sd over time
+             emb_<video|audio|text>_bins_pca_NN  PCA of its four quarter means minus the time mean
+             (``emb_pool_v2``: per layer group, flattened), each fit like brain_pca; absent when no clip has
+             one. The sd/bins blocks give the control the same coarse temporal access the brain features have,
+             so BE − E credits the brain mapping, not merely time-resolved pooling
     qc_*     quality/diagnostics; used by neither model
     status   ok | failed (worker .error.json) | error (could not featurize) | missing (manifest only)
 
@@ -73,6 +80,10 @@ PCA_MAX_INMEM_BYTES = 8 * 1024 ** 3  # above this, fall back to IncrementalPCA b
 PCA_THREADS = 8  # BLAS threads for the PCA (the host is shared; more threads mostly spin)
 MOMENT_KINDS = ("attention_drop", "broad_response", "proxy_rise", "proxy_fall")
 EARLY_S = 2.0  # "first 2 s vs rest" trajectory window (= proxies.ONSET_S)
+EMB_MODALITIES = ("video", "audio", "text")
+EMB_VERSION = "emb_pool_v2"
+EMB_STATS = ("", "_sd", "_bins")  # block key suffix per modality: time mean, sd over time, quarter shape
+NON_ENGLISH_MIN_PROB = 0.5  # whisperx language probability above which a non-"en" detection is trusted
 
 # per-process state (set by _init)
 _STATE: dict = {}
@@ -209,8 +220,51 @@ def brain_features(t: np.ndarray, dur: np.ndarray, raw: np.ndarray, duration: fl
     return f
 
 
-def featurize(item: tuple[str, str, str]) -> tuple[str, dict, np.ndarray | None]:
-    """(video_id, meta.json path, npz path) -> (video_id, row, time-mean vertex map or None)."""
+def load_emb(npz_path: str) -> dict[str, np.ndarray]:
+    """``<vid>.emb.npz`` next to the preds -> {block: flattened float32 vector}; {} if absent/unusable.
+
+    Blocks per modality m: ``m`` time mean [G*D], ``m_sd`` sd over time [G*D], ``m_bins`` the four quarter means
+    minus the time mean [4*G*D] (an empty quarter counts as the mean: no shape information). The export is
+    best-effort on the pod, so a missing or broken file only drops this clip's emb_* values."""
+    p = Path(npz_path[: -len(".npz")] + ".emb.npz")
+    if not p.exists():
+        return {}
+    out = {}
+    try:
+        with np.load(p) as zf:
+            for m in EMB_MODALITIES:
+                if f"{m}_mean" not in zf.files:
+                    continue
+                mean = zf[f"{m}_mean"].astype(np.float32)
+                if not mean.size or not np.isfinite(mean).all():
+                    continue
+                out[m] = mean.ravel()
+                if f"{m}_sd" in zf.files:
+                    sd = zf[f"{m}_sd"].astype(np.float32)
+                    if sd.shape == mean.shape and np.isfinite(sd).all():
+                        out[f"{m}_sd"] = sd.ravel()
+                if f"{m}_bins" in zf.files:
+                    bins = zf[f"{m}_bins"].astype(np.float32)
+                    if bins.shape[1:] == mean.shape:
+                        shape = np.where(np.isfinite(bins), bins - mean[None], 0.0)
+                        out[f"{m}_bins"] = shape.ravel()
+    except Exception:  # noqa: BLE001
+        return {}
+    return out
+
+
+def language_qc(meta: dict) -> dict:
+    """whisperx's language call for the clip. TRIBE transcribes as English, so a confident non-English
+    detection means the text features describe a mistranscription."""
+    tr = meta.get("transcript") or {}
+    lang, prob = tr.get("detected_language"), tr.get("language_probability")
+    non_en = bool(lang) and lang != "en" and prob is not None and float(prob) >= NON_ENGLISH_MIN_PROB
+    return {"qc_language_prob": float(prob) if prob is not None else float("nan"),
+            "qc_non_english": float(non_en)}
+
+
+def featurize(item: tuple[str, str, str]) -> tuple[str, dict, np.ndarray | None, dict]:
+    """(video_id, meta.json path, npz path) -> (video_id, row, time-mean vertex map or None, emb vectors)."""
     vid, meta_path, npz_path = item
     try:
         meta = json.loads(Path(meta_path).read_text())
@@ -240,12 +294,15 @@ def featurize(item: tuple[str, str, str]) -> tuple[str, dict, np.ndarray | None]
             "qc_tr_s": float(meta.get("tr_s") or np.median(dur)),
             "qc_segment_coverage": float(min(1.0, np.minimum(dur, np.diff(np.append(t, t[-1] + dur[-1]))).sum()
                                          / max(duration, 1e-6))),
+            **language_qc(meta),
             **base_features(meta, duration, shots),
             **brain_features(t, dur, raw, duration, _STATE["spec"], shots, speech_spans(words)),
         }
-        return vid, row, p32.mean(axis=0)
+        emb = load_emb(npz_path)
+        row["qc_emb_modalities"] = float(sum(m in emb for m in EMB_MODALITIES))
+        return vid, row, p32.mean(axis=0), emb
     except Exception as exc:  # noqa: BLE001  one bad clip never stops the table
-        return vid, {"status": "error", "error": f"{type(exc).__name__}: {exc}"[:500]}, None
+        return vid, {"status": "error", "error": f"{type(exc).__name__}: {exc}"[:500]}, None, {}
 
 
 # ── discovery ────────────────────────────────────────────────────────────
@@ -327,6 +384,7 @@ def build(out_root: Path, roi_map: Path, *, n_jobs: int, manifest: Path | None =
     log(f"{len(items)} completed clips, {len(failed)} failed/incomplete under {out_root}")
     rows: dict[str, dict] = {}
     vecs: dict[str, np.ndarray] = {}
+    embs: dict[str, dict[str, np.ndarray]] = {m + k: {} for m in EMB_MODALITIES for k in EMB_STATS}
     init_args = (str(roi_map), str(analyses_dir) if analyses_dir else None)
     _init(*init_args)  # here first: a failing pool initializer would make the pool respawn workers forever
     if n_jobs <= 1 or len(items) < 2:
@@ -337,10 +395,12 @@ def build(out_root: Path, roi_map: Path, *, n_jobs: int, manifest: Path | None =
         pool = ctx.Pool(n_jobs, initializer=_init, initargs=init_args)
         results = pool.imap_unordered(featurize, items, chunksize=max(1, min(32, len(items) // (n_jobs * 8) or 1)))
     try:
-        for i, (vid, row, vec) in enumerate(results, 1):
+        for i, (vid, row, vec, emb) in enumerate(results, 1):
             rows[vid] = row
             if vec is not None:
                 vecs[vid] = vec
+            for m, v in emb.items():
+                embs[m][vid] = v
             if i % 2000 == 0:
                 log(f"  {i}/{len(items)} clips ({time.perf_counter() - t0:.0f}s)")
     finally:
@@ -389,7 +449,27 @@ def build(out_root: Path, roi_map: Path, *, n_jobs: int, manifest: Path | None =
                         "note": ("unsupervised (no outcome labels); fit without the excluded (lockbox) clips, "
                                  "which are only projected" if held else
                                  "unsupervised (no outcome labels), fit on all clips")}
-    for c in [c for c in df.columns if c.startswith(("base_", "brain_", "qc_"))]:
+    emb_info: dict = {}
+    for m, ev in embs.items():
+        dims = pd.Series([v.size for v in ev.values()]).value_counts()
+        if dims.empty:
+            continue
+        d = int(dims.index[0])  # one extractor, one width; a different width is a broken export
+        ev = {v: x for v, x in ev.items() if x.size == d}
+        held_m = sorted(v for v in ev if v in (pca_exclude or set()))
+        ids_m = sorted(v for v in ev if v not in (pca_exclude or set())) + held_m
+        epca, Z = fit_pca(np.stack([ev[v] for v in ids_m]).astype(np.float32), n_pca,
+                          threads=max(1, min(n_jobs, PCA_THREADS)), n_fit=len(ids_m) - len(held_m))
+        if epca is None:
+            continue
+        pcs = pd.DataFrame(Z, columns=[f"emb_{m}_pca_{j + 1:02d}" for j in range(Z.shape[1])])
+        pcs.insert(0, "video_id", ids_m)
+        df = df.merge(pcs, on="video_id", how="left")
+        emb_info[m] = {"n_clips": len(ids_m), "dim": d, "n_components": int(Z.shape[1]),
+                       "n_fit": len(ids_m) - len(held_m), "n_wrong_dim_dropped": int(dims.sum() - len(ids_m)),
+                       "explained_variance_ratio": [round(float(x), 5) for x in epca.explained_variance_ratio_]}
+    embs.clear()
+    for c in [c for c in df.columns if c.startswith(("base_", "brain_", "emb_", "qc_"))]:
         df[c] = pd.to_numeric(df[c], errors="coerce").astype("float32")
 
     counts = df["status"].value_counts().to_dict()
@@ -404,9 +484,14 @@ def build(out_root: Path, roi_map: Path, *, n_jobs: int, manifest: Path | None =
         "columns": {
             "base": [c for c in df.columns if c.startswith("base_")],
             "brain": [c for c in df.columns if c.startswith("brain_")],
+            "emb": [c for c in df.columns if c.startswith("emb_")],
             "qc": [c for c in df.columns if c.startswith("qc_")],
         },
         "pca": pca_info,
+        "emb": {"version": EMB_VERSION, "input": "per-clip time mean, sd over time and quarter shape (quarter "
+                "means minus the time mean) of the layer-group-averaged extractor features TRIBE feeds its brain "
+                "mapping (<vid>.emb.npz), PCA per extractor and statistic like brain_pca",
+                "per_modality": emb_info},
         "timing_s": {"featurize": round(t_feat, 2), "total": round(time.perf_counter() - t0, 2)},
         "n_jobs": n_jobs,
         "notes": [
@@ -451,7 +536,8 @@ def main() -> int:
                             components=ipca.components_.astype(np.float32),
                             explained_variance_ratio=ipca.explained_variance_ratio_)
     print(json.dumps({"out": str(args.out), "rows": len(df), **{k: meta[k] for k in ("status_counts", "timing_s")},
-                      "n_base": len(meta["columns"]["base"]), "n_brain": len(meta["columns"]["brain"])}, indent=2))
+                      "n_base": len(meta["columns"]["base"]), "n_brain": len(meta["columns"]["brain"]),
+                      "n_emb": len(meta["columns"]["emb"])}, indent=2))
     return 0 if meta["status_counts"].get("ok", 0) else 1
 
 

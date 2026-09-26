@@ -11,6 +11,10 @@ compares, at POST level:
        (when available), speech/shot features (``base_*``), selection audio level/aspect,
        and an out-of-fold account-mean target encoding (``te_account_mean``, refit in every fit)
     B  A + every ``brain_*`` feature
+    E  A + every ``emb_*`` feature: the extractor features TRIBE's brain mapping consumes, without the mapping
+       (control arm; only when the features table has them). B > A alone shows that SOME content
+       representation beats metadata; the brain mapping earns credit only through BE − E (BE = A + brain + emb)
+       and B − E. docs/PREREGISTRATION.md names the primary comparison.
     C  niche-tuned: a general B model fit without the niche, plus a partially pooled
        (ridge-shrunk, penalty by grouped inner CV) residual adjustment fit on the
        niche's own training clips (deal; accounts with enough posts on top)
@@ -95,6 +99,8 @@ SELECTION_BASE = {"audio_mean_db": "base_audio_mean_db"}  # + base_aspect from h
 # ──────────────────────────────────────────────────────────────────────────
 
 SCHEMES = ("content", "account", "lodo")
+# (new, reference) feature-set pairs whose paired delta every bootstrap reports, when both sets were fit
+PAIRS = (("B", "A"), ("E", "A"), ("BE", "E"), ("B", "E"), ("BE", "A"))  # docs/PREREGISTRATION.md: BE − E primary, BE − A go/no-go
 MODELS = ("ridge", "hgb")
 MIN_STRATUM_N = 10
 MIN_ICC_GROUPS = 20
@@ -214,7 +220,8 @@ def load_posts(members: pd.DataFrame, outcomes: pd.DataFrame, targets: list[str]
 
 def build_dataset(features: pd.DataFrame, members: pd.DataFrame, outcomes: pd.DataFrame,
                   targets: list[str], selection: pd.DataFrame | None = None,
-                  exclude_cols: list[str] | None = None) -> tuple[pd.DataFrame, dict, pd.DataFrame]:
+                  exclude_cols: list[str] | None = None,
+                  exclude_non_english: bool = True) -> tuple[pd.DataFrame, dict, pd.DataFrame]:
     """-> (post rows with features + design columns, info, all quality-filtered posts for ICCs)."""
     posts, info = load_posts(members, outcomes, targets, exclude_cols)
     info["n_features_rows"] = int(len(features))
@@ -240,7 +247,12 @@ def build_dataset(features: pd.DataFrame, members: pd.DataFrame, outcomes: pd.Da
     df["_w"] = 1.0 / pd.to_numeric(df["incl_prob"], errors="coerce").clip(lower=1e-6).fillna(1.0)
 
     f = features[features["status"] == "ok"] if "status" in features else features
-    fcols = ["video_id"] + [c for c in f.columns if c.startswith(("base_", "brain_"))]
+    if exclude_non_english and "qc_non_english" in f:
+        # TRIBE transcribes as English: a confident non-English detection makes the text features garbage
+        non_en = pd.to_numeric(f["qc_non_english"], errors="coerce").fillna(0) > 0
+        info["clips_excluded_non_english"] = int(non_en.sum())
+        f = f[~non_en]
+    fcols = ["video_id"] + [c for c in f.columns if c.startswith(("base_", "brain_", "emb_"))]
     info["synthetic_clips"] = int(f["synthetic"].fillna(False).astype(bool).sum()) if "synthetic" in f else 0
     df = df.merge(f[fcols], on="video_id", how="inner").copy()
     info["n_posts_with_features"] = int(len(df))
@@ -528,7 +540,11 @@ def feature_sets(df: pd.DataFrame) -> dict[str, tuple[list[str], list[str]]]:
     if "social_account_id" in df and df["social_account_id"].nunique() > 1:
         base = base + [ACCOUNT_TE]  # computed inside each fit from its training outcomes, never from df
     brain = [c for c in df.columns if c.startswith("brain_") and usable(c)]
-    return {"A": (cat, base), "B": (cat, base + brain)}
+    emb = [c for c in df.columns if c.startswith("emb_") and usable(c)]
+    sets = {"A": (cat, base), "B": (cat, base + brain)}
+    if emb:  # the control arm: the brain mapping's inputs without the mapping
+        sets.update({"E": (cat, base + emb), "BE": (cat, base + brain + emb)})
+    return sets
 
 
 def profile_columns(cols: list[str]) -> list[str]:
@@ -677,7 +693,8 @@ def bootstrap(y: np.ndarray, preds: dict[str, np.ndarray], units: np.ndarray, st
     U = int(ucode.max()) + 1 if len(ucode) else 0
     keys = list(preds)
     if pairs is None:
-        pairs = [(f"B_{m}", f"A_{m}") for m in MODELS if f"A_{m}" in preds and f"B_{m}" in preds]
+        pairs = [(f"{a}_{m}", f"{b}_{m}") for a, b in PAIRS for m in MODELS
+                 if f"{a}_{m}" in preds and f"{b}_{m}" in preds]
     point = {k: all_metrics(y, preds[k], scode, w) for k in keys}
     boots = {k: {m: [] for m in point[k]} for k in keys}
     for _ in range(n_boot if U > 1 else 0):
@@ -1227,6 +1244,23 @@ def _ab_table(L, pooled, models, title_cols=True):
     L.append("")
 
 
+def _control_table(L, pooled, models):
+    """The brain mapping against its own inputs (only when the E arm was fit)."""
+    rows = [(m, a, b) for m in models for a, b in PAIRS[1:] if f"{a}_{m}-{b}_{m}" in pooled["deltas"]]
+    if not rows:
+        return
+    L.append("Control arm: E = A + the extractor features TRIBE's brain mapping reads; BE = A + brain + those "
+             "features. **BE − E** is what the brain mapping adds beyond its own inputs (the pre-registered primary); "
+             "BE − A is what all content features add (the scale-up go/no-go).\n")
+    L.append("| model | comparison | Δ within-stratum ρ | Δ pooled ρ | Δ R² | verdict (within-stratum ρ) |")
+    L.append("|---|---|---|---|---|---|")
+    for m, a, b in rows:
+        dl = pooled["deltas"][f"{a}_{m}-{b}_{m}"]
+        L.append(f"| {m} | {a} − {b} | {_fmt(dl.get('within_stratum_spearman'))} | {_fmt(dl.get('spearman'))} | "
+                 f"{_fmt(dl.get('r2'))} | {_verdict(dl.get('within_stratum_spearman'), a, b)} |")
+    L.append("")
+
+
 def _ceiling(icc: dict | None, platform: str | None = None) -> str:
     if not icc:
         return "n/a"
@@ -1280,6 +1314,7 @@ def write_report(path: Path, res: dict) -> str:
                  "the table, which also counts platform differences. Clip features are not expected to exceed "
                  "the same-platform ICC.\n" if icc else "")
         _ab_table(L, lb["pooled"], models)
+        _control_table(L, lb["pooled"], models)
         if lb.get("niche"):
             nd = lb["niche"]["deltas"]
             L.append(f"General vs niche-tuned on the lockbox: tuned C − general B "
@@ -1299,7 +1334,8 @@ def write_report(path: Path, res: dict) -> str:
     L.append("| item | value |\n|---|---|")
     for k in ("n_outcomes", "excluded_by_quality_flags", "n_posts_with_outcomes", "n_posts_in_selection",
               "n_posts_with_features", "lockbox_posts_linked_to_train_dropped", "account_groups_train",
-              "largest_account_group_share", "follower_known_share", "synthetic_clips"):
+              "largest_account_group_share", "follower_known_share", "synthetic_clips",
+              "clips_excluded_non_english"):
         if k in info:
             L.append(f"| {k} | {info[k]} |")
     for s in ("train", "lockbox"):
@@ -1313,8 +1349,12 @@ def write_report(path: Path, res: dict) -> str:
     L.append("")
     for t, fs in res["features"].items():
         L.append(f"`{t}`: feature set A ({len(fs['A'])} columns): `{', '.join(fs['A'])}`. Feature set B = A + "
-                 f"{len(fs['B']) - len(fs['A'])} brain columns. Niche adjustments and profiles use "
-                 f"{len(res['profile_columns'].get(t, []))} compact brain columns.\n")
+                 f"{len(fs['B']) - len(fs['A'])} brain columns"
+                 + (f"; E = A + {len(fs['E']) - len(fs['A'])} extractor-embedding columns; BE = A + both"
+                    if "E" in fs else "; no extractor embeddings in the features table, so the E control arm "
+                    "was not fit and B − A cannot separate the brain mapping from its inputs")
+                 + f". Niche adjustments and profiles use {len(res['profile_columns'].get(t, []))} compact brain "
+                 "columns.\n")
     L.append(f"`{ACCOUNT_TE}` is the account term in A (and so in B and the niche models' general part): the "
              "posting account's mean target, smoothed toward its "
              "deal×platform mean, recomputed inside every fit (each CV fold, leave-one-deal-out split, niche model and "
@@ -1338,6 +1378,7 @@ def write_report(path: Path, res: dict) -> str:
             L.append(f"### Scheme `{sch}` ({sres['n_splits']} splits, bootstrap unit: "
                      f"{sres.get('bootstrap_unit', sch)})\n")
             _ab_table(L, sres["pooled"], models)
+            _control_table(L, sres["pooled"], models)
             if sres.get("r2_platform_centred"):
                 L.append(f"Platform-centred R² (same basis as the ICC ceilings): "
                          f"{_centred(sres['r2_platform_centred'], models)}.\n")
@@ -1538,7 +1579,7 @@ def resolve_niche_base(niche_base: str | None, models: list[str]) -> str:
 def run(features, members, outcomes, *, targets=DEFAULT_TARGETS, out_dir: Path, selection=None,
         schemes=SCHEMES, models=MODELS, n_splits=5, n_boot=1000, seed=0, min_deal_n=30, perm_repeats=3,
         perm_model="hgb", perm_per_feature=True, exclude_cols=None, fit_weighted=False, niche_base=None,
-        niche=True, min_account_n=40, score_lockbox=False, threads=8, log=print) -> dict:
+        niche=True, min_account_n=40, score_lockbox=False, threads=8, exclude_non_english=True, log=print) -> dict:
     from threadpoolctl import threadpool_limits
 
     t0 = time.perf_counter()
@@ -1548,7 +1589,7 @@ def run(features, members, outcomes, *, targets=DEFAULT_TARGETS, out_dir: Path, 
     with threadpool_limits(threads):
         res = _run(features, members, outcomes, targets, out_dir, selection, schemes, models,
                    n_splits, n_boot, seed, min_deal_n, perm_repeats, perm_model, perm_per_feature, exclude_cols,
-                   fit_weighted, niche_base, niche, min_account_n, score_lockbox, log)
+                   fit_weighted, niche_base, niche, min_account_n, score_lockbox, exclude_non_english, log)
     res["runtime_s"] = round(time.perf_counter() - t0, 1)
     (out_dir / "metrics.json").write_text(json.dumps(res, indent=2, default=_json_default) + "\n")
     text = write_report(out_dir / "report.md", res)
@@ -1562,8 +1603,9 @@ def run(features, members, outcomes, *, targets=DEFAULT_TARGETS, out_dir: Path, 
 
 def _run(features, members, outcomes, targets, out_dir, selection, schemes, models, n_splits, n_boot, seed,
          min_deal_n, perm_repeats, perm_model, perm_per_feature, exclude_cols, fit_weighted, niche_base, niche,
-         min_account_n, score_lockbox, log):
-    df_all, info, posts = build_dataset(features, members, outcomes, targets, selection, exclude_cols)
+         min_account_n, score_lockbox, exclude_non_english, log):
+    df_all, info, posts = build_dataset(features, members, outcomes, targets, selection, exclude_cols,
+                                        exclude_non_english=exclude_non_english)
     res: dict = {"data": info, "models": models, "targets": {}, "features": {}, "profile_columns": {},
                  "config": {"n_splits": n_splits, "n_boot": n_boot, "seed": seed, "min_deal_n": min_deal_n,
                             "schemes": list(schemes), "perm_repeats": perm_repeats, "perm_model": perm_model,
@@ -1744,6 +1786,8 @@ def main() -> int:
     ap.add_argument("--exclude-if-true", nargs="*", default=[], help="extra outcomes flag columns to drop on")
     ap.add_argument("--threads", type=int, default=8, help="BLAS/OpenMP threads (keep modest on a shared box)")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--keep-non-english", action="store_true",
+                    help="keep clips whisperx confidently detected as non-English (their text features are garbage)")
     args = ap.parse_args()
     run(read_table(args.features), read_table(args.members), read_table(args.outcomes), targets=args.targets,
         out_dir=args.out_dir, selection=read_table(args.selection) if args.selection else None,
@@ -1751,7 +1795,8 @@ def main() -> int:
         min_deal_n=args.min_deal_n, perm_repeats=args.perm_repeats, perm_model=args.perm_model,
         perm_per_feature=not args.no_perm_per_feature, exclude_cols=args.exclude_if_true,
         fit_weighted=args.fit_weighted, niche_base=args.niche_base, niche=not args.no_niche,
-        min_account_n=args.min_account_n, score_lockbox=args.score_lockbox, threads=args.threads)
+        min_account_n=args.min_account_n, score_lockbox=args.score_lockbox, threads=args.threads,
+        exclude_non_english=not args.keep_non_english)
     return 0
 
 

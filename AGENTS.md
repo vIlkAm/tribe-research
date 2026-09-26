@@ -67,8 +67,9 @@ the owner explicitly decides to connect it:
 | `tools/select_study_set.py` | Curated ~1,500 study set, lockbox, pilot, account deep-dive (`docs/STUDY_SET.md`) |
 | `tools/make_batches.py` | Study set → ordered disjoint pod batches (pilot, frontend wiring set, 200s, deep-dive) |
 | `tools/prep_cpu.py` | Pre-scale batch clips on this server (niced, load-gated, pinned ffmpeg) before `push-batch` |
-| `tools/build_features.py` | Per-clip brain + baseline feature table from pulled outputs |
-| `tools/fit_models.py` | Baseline vs brain models: grouped CV, leave-one-deal-out, niche tuning, sealed lockbox |
+| `tools/build_features.py` | Per-clip brain, extractor-embedding (control) and baseline feature table from pulled outputs |
+| `tools/fit_models.py` | Baseline vs brain vs extractor-embedding control (A/B/E/BE): grouped CV, leave-one-deal-out, niche tuning, sealed lockbox |
+| `tools/power_check.py` | CPU power simulation (no TRIBE outputs, never reads lockbox labels) → `results/power/` |
 | `tools/profile_account.py` | One deal's or account's brain profile vs the general model |
 | `tools/handoff.py` | Validate bundles against the contract, index, tarball for the frontend (no footage) |
 | `tools/pod.sh` | Full-SSH push/pull/shell between this server and a pod (`push-batch`) |
@@ -78,6 +79,7 @@ the owner explicitly decides to connect it:
 | `tools/brain_report.py` | ROI features, summary PNG, demo MP4 from pulled outputs (CPU) |
 | `tribe_research/brain/` | ROI groups, feature extraction, headless surface renderer |
 | `tribe_research/outcomes/` | Reach at fixed ages, baselines, shrunk engagement, rankings, cross-platform |
+| `docs/PREREGISTRATION.md` | Primary endpoint (BE − E), stages, decision rules, frozen pipeline. Read before fitting real outputs |
 | `docs/RUNPOD.md` | Spin up, connect, run, tear down |
 | `tests/` | Offline tests (no GPU): sharding, manifest, dry-run + resume + merge, brain layer |
 

@@ -81,6 +81,15 @@ account, timing and luck. These are rough ceilings for any content model,
 brain features or not, so models are evaluated per platform and engagement is
 the most learnable target.
 
+## Is 1,500 enough?
+
+For a first read, yes. For a confirmatory brain claim, no. The 225-clip
+lockbox's CI on a Spearman gain is about ±0.06–0.13, while a realistic gain is
++0.03–0.06. Stage 1 therefore scores by 5-fold content CV over the train
+contents and leaves the lockbox sealed. A confirmatory test needs the full
+eligible set. See [`PREREGISTRATION.md`](PREREGISTRATION.md) and
+`tools/power_check.py`.
+
 ## Known gaps
 
 - No watch time / retention (not in public data).
