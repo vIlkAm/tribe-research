@@ -18,6 +18,8 @@ seam.
 The contract is the only thing either side depends on. The frontend never
 needs to know how TRIBE works; the backend never assumes a UI layout.
 
+**Current status (what's done, running, next):** [`STATUS.md`](STATUS.md).
+
 ## Sources of truth (read in this order)
 
 1. `docs/analysis.schema.json`: the contract (JSON Schema). Wins any disagreement.

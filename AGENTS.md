@@ -4,7 +4,9 @@ Standalone research project: run Meta's TRIBE v2 over short-form videos to get
 predicted cortical time series, then study them against performance metrics.
 
 Collaborating (frontend teammate or their agent)? Read [`docs/TEAM.md`](docs/TEAM.md)
-first: ownership, the analysis contract, and how it may change.
+first: ownership, the analysis contract, and how it may change. Project
+status (what's done, running, next) is in [`docs/STATUS.md`](docs/STATUS.md);
+keep it current when you change the state of something it lists.
 
 ## Isolation contract (read first)
 

@@ -12,6 +12,7 @@ words → Llama-3.2-3B ──┘   (whisperx transcribes the audio first)
 
 The expensive part is V-JEPA2 feature extraction; the TRIBE fusion model is small.
 Isolation rules and layout: [`AGENTS.md`](AGENTS.md).
+Where the project stands right now: [`docs/STATUS.md`](docs/STATUS.md).
 
 ## Quickstart for collaborators
 
