@@ -28,9 +28,9 @@ End product, gaps to a business and the demo plan: [`VISION_AND_DEMO.md`](VISION
 | 1. Pick clips, pre-scale to 384 px | CPU (this server) | ✅ Study set (1,500 + 373 deep-dive) ready. The other ~6,000 are being pre-scaled now (`r00–r15`) |
 | 2. TRIBE + extractors → brain response + embeddings per clip | GPU (RunPod) | ✅ Fast bf16 path passed every accuracy gate (L40S and A100). ⏳ Four pods share study batches b02–b09 through claim files: L40S (b02→), A100 (b09→b06), two RTX 4090s (b05, b06→). All of b02–b09 are expected by about 01:00 UTC |
 | 3. Features per clip (`tools/build_features.py`) | CPU | ✅ Code done and tested |
-| 4. Training + honest evaluation (`tools/fit_models.py`) | CPU, minutes | ✅ Code done, rules pre-registered ([`PREREGISTRATION.md`](PREREGISTRATION.md)). ⏳ Waiting for step 2 output |
-| 5. Save the model, score one new clip (`tools/predict.py`) | CPU, milliseconds | ✅ Code done and tested offline (`fit_models.py --save-model`, featurizer state, `predict.py`). ⏳ Waiting for step 4 |
-| 6. Bundles for the frontend (`tools/handoff.py`) | CPU | ✅ 40 real bf16 bundles (the wiring set: shortest and longest clips, a >60 s clip, a near-silent one) in the private release [`data-frontend40`](https://github.com/vIlkAm/tribe-research/releases/tag/data-frontend40), 68 MB, no footage. Pilot bundles too |
+| 4. Training + honest evaluation (`tools/fit_models.py`) | CPU, minutes | ✅ Code done, rules pre-registered ([`PREREGISTRATION.md`](PREREGISTRATION.md)). ✅ Preliminary fit on the 100 real clips of the complete batches (71 training contents, not validated, not stage 1). ⏳ Stage 1 waits for the study set |
+| 5. Save the model, score one new clip (`tools/predict.py`) | CPU, milliseconds | ✅ `model-prelim-v0` saved and released privately (weights, featurizer, sha256 manifest); served only with `--allow-preliminary` ([`MODEL.md`](MODEL.md)) |
+| 6. Bundles for the frontend (`tools/handoff.py`) | CPU | ✅ [`data-frontend40-v2`](https://github.com/vIlkAm/tribe-research/releases/tag/data-frontend40-v2): the same 40 bundles plus `performance.json` (preliminary) and per-clip `platform`/`video_link`/`is_lockbox` in `index.json`. ✅ 40 real bf16 bundles (the wiring set: shortest and longest clips, a >60 s clip, a near-silent one) in the private release [`data-frontend40`](https://github.com/vIlkAm/tribe-research/releases/tag/data-frontend40), 68 MB, no footage. Pilot bundles too |
 | 7. Frontend | Browser | See "For the frontend" below |
 
 ## Numbers that matter
@@ -63,12 +63,15 @@ End product, gaps to a business and the demo plan: [`VISION_AND_DEMO.md`](VISION
    ([`analysis.schema.json`](analysis.schema.json),
    [`analysis.types.ts`](analysis.types.ts)); fixture
    [`sample_analysis/`](sample_analysis/). Rules: [`TEAM.md`](TEAM.md).
-2. **Performance card (proposed v0.3):** the `performance` block, its states
-   (`not_trained` / `research_preview` / `validated` / `out_of_scope`), the
+2. **Performance card (proposed v0.3):** real bundles with `performance.json`,
+   the model behind them, what each status shows and how updates arrive:
+   [`MODEL.md`](MODEL.md). The `performance` block, its states
+   (`not_trained` / `preliminary` / `research_preview` / `validated` / `out_of_scope`), the
    wording rules and the job states are in
    [`PRODUCT_PIPELINE.md`](PRODUCT_PIPELINE.md) §3–4.
-   - Build the `not_trained` empty state first; it's the honest state until
-     stage 1 passes.
+   - Build the `not_trained` empty state and the `preliminary` card (grey badge,
+     caption verbatim, "Not enough reference clips yet" when the percentile is
+     null) first; `data-frontend40-v2` uses `preliminary` and `out_of_scope`.
    - Fixtures made by the real `predict.py` (synthetic test data, one per state) are in
      [`sample_analysis/performance/`](sample_analysis/performance/); its README maps each file
      to a UI state and lists the required labels. The draft schema is

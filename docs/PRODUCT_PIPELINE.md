@@ -5,8 +5,10 @@ is learned, how a clip becomes an analysis, what the UI may show about
 performance, and what the owner still has to decide.
 
 **Status:** the brain-analysis half runs today (batch, owner-launched pods). The
-performance half does not: no model has been fit on real TRIBE outputs, none is
-saved, and there is no inference service. "Inference" below is a design.
+performance half has one **preliminary** model (`model-prelim-v0`, 71 training
+contents, not validated, not the stage-1 analysis); its numbers are computed on
+our side and ship per clip as `performance.json` in `data-frontend40-v2`
+([`MODEL.md`](MODEL.md)). There is no inference service. "Inference" below is a design.
 Contract: `nvi.analysis.v0.2` (`analysis.schema.json` wins); change rules
 [`TEAM.md`](TEAM.md); labels [`OUTCOMES.md`](OUTCOMES.md); decision rules
 [`PREREGISTRATION.md`](PREREGISTRATION.md).
@@ -382,8 +384,10 @@ export type Performance =
 
 ## 5. Demo plan
 
-No model has been fit on real outputs yet, so a demo filmed soon shows the
-brain analysis with `not_trained`. Any performance card on screen is a mock
+The only real model is preliminary, so a demo filmed soon shows the brain
+analysis with either `not_trained` or the `preliminary` card (grey badge plus its
+caption, and "Not enough reference clips yet" where the percentile is null;
+[`MODEL.md`](MODEL.md)). Any performance card on screen is a mock
 labelled **"Illustrative — not model output"**. No real clip gets an invented
 number.
 

@@ -19,6 +19,8 @@ The contract is the only thing either side depends on. The frontend never
 needs to know how TRIBE works; the backend never assumes a UI layout.
 
 **Current status (what's done, running, next):** [`STATUS.md`](STATUS.md).
+**Performance numbers, model weights and updates:** [`MODEL.md`](MODEL.md) (we compute
+them; you get `performance.json` per bundle in a data release).
 
 ## Sources of truth (read in this order)
 
