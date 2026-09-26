@@ -735,6 +735,7 @@ def cmd_pod_stop(args) -> int:
 
 
 def cmd_pod_start(args) -> int:
+    rest("POST", f"/pods/{args.pod_id}/start")  # raises on "no free GPU": then nothing is recorded
     state = load_state()
     rec = state["pods"].setdefault(args.pod_id, {})
     now = now_ts()
@@ -742,7 +743,6 @@ def cmd_pod_start(args) -> int:
     if args.grace_min > 0:
         rec["grace_until"] = iso(now + args.grace_min * 60)
     write_json_atomic(STATE_FILE, state)
-    rest("POST", f"/pods/{args.pod_id}/start")
     out(f"started {args.pod_id}; the watchdog leaves it alone for {args.grace_min:g} min "
         f"(still counted in spend). Then: eval \"$(tools/runpod.py pod-wait {args.pod_id})\"")
     return 0
