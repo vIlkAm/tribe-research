@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "nvi.analysis.v0.3-draft.performance",
+  "title": "DRAFT: the proposed `performance` block (nvi.analysis.v0.3 proposal, docs/PRODUCT_PIPELINE.md §3)",
+  "description": "Draft, not part of the contract: exactly the block tools/predict.py emits today. The v0.3 PR merges it into docs/analysis.schema.json as an optional top-level `performance` key. Every number is a relative ranking within one deal × platform, a model prediction, not a guarantee. not_trained and out_of_scope carry no numbers. Fixtures: docs/sample_analysis/performance/ (tests/test_performance_samples.py).",
+  "type": "object",
+  "required": ["model_status", "reason", "brain_claim", "model_version", "context", "clip_in_training",
+               "retrospective", "engagement", "reach", "drivers", "warnings", "provenance"],
+  "additionalProperties": false,
+  "properties": {
+    "model_status": {"enum": ["not_trained", "research_preview", "validated", "out_of_scope"]},
+    "reason": {"type": ["string", "null"], "description": "Why there are no numbers (not_trained / out_of_scope); null when scored. Show it in the card."},
+    "brain_claim": {"enum": ["not_tested", "directional", "supported", "not_supported"], "description": "BE − E. Never say 'the brain response predicts' unless supported."},
+    "model_version": {"type": ["string", "null"], "description": "e.g. perf-stack-BE_v1+20260926.dfd5eb3; null only when no model is saved."},
+    "context": {"$ref": "#/$defs/context"},
+    "clip_in_training": {"enum": ["no", "train_oof", "lockbox"]},
+    "retrospective": {"type": "boolean"},
+    "engagement": {"anyOf": [{"$ref": "#/$defs/target_prediction"}, {"type": "null"}]},
+    "reach": {"anyOf": [{"$ref": "#/$defs/target_prediction"}, {"type": "null"}]},
+    "drivers": {"type": "array", "items": {"$ref": "#/$defs/driver"}},
+    "warnings": {"type": "array", "items": {"type": "string"}, "description": "Show them; any warning → muted card with a warning icon."},
+    "provenance": {"$ref": "#/$defs/provenance"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"model_status": {"enum": ["not_trained", "out_of_scope"]}}},
+      "then": {"properties": {"reason": {"type": "string"}, "engagement": {"type": "null"},
+                              "reach": {"type": "null"}, "drivers": {"maxItems": 0}}}
+    },
+    {
+      "if": {"properties": {"model_status": {"enum": ["research_preview", "validated"]}}},
+      "then": {"properties": {"reason": {"type": "null"}, "model_version": {"type": "string"},
+                              "engagement": {"$ref": "#/$defs/target_prediction"},
+                              "context": {"properties": {"deal_id": {"type": "string"},
+                                                         "platform": {"$ref": "#/$defs/platform"}}}}}
+    },
+    {
+      "if": {"properties": {"model_status": {"const": "out_of_scope"}}},
+      "then": {"properties": {"model_version": {"type": "string"}}}
+    },
+    {
+      "if": {"properties": {"model_status": {"const": "validated"}}},
+      "then": {"properties": {"engagement": {"properties": {"validation": {"properties": {"scheme": {"const": "lockbox"}}}}}}}
+    },
+    {
+      "if": {"properties": {"model_status": {"const": "research_preview"}}},
+      "then": {"properties": {"engagement": {"properties": {"validation": {"properties": {"scheme": {"const": "content_cv"}}}}}}}
+    },
+    {
+      "if": {"properties": {"clip_in_training": {"enum": ["train_oof", "lockbox"]}}, "required": ["clip_in_training"]},
+      "then": {"properties": {"retrospective": {"const": true}}}
+    },
+    {
+      "if": {"properties": {"clip_in_training": {"const": "train_oof"}}, "required": ["clip_in_training"]},
+      "then": {"properties": {"drivers": {"maxItems": 0}}, "description": "A training clip's drivers would be in-sample: omitted."}
+    }
+  ],
+  "$defs": {
+    "platform": {"enum": ["tiktok", "instagram", "youtube"]},
+    "unit": {"type": "number", "minimum": 0, "maximum": 1},
+    "context": {
+      "type": "object",
+      "required": ["deal_id", "deal_label", "platform", "account_id", "account_level"],
+      "additionalProperties": false,
+      "description": "Always an object. deal_id/deal_label/platform can be null (and platform an unsupported string) only when there are no numbers.",
+      "properties": {
+        "deal_id": {"type": ["string", "null"]},
+        "deal_label": {"type": ["string", "null"], "description": "Falls back to deal_id."},
+        "platform": {"type": ["string", "null"]},
+        "account_id": {"type": ["string", "null"]},
+        "account_level": {"type": "boolean", "description": "true iff engagement.percentile_account is set."}
+      }
+    },
+    "target_prediction": {
+      "type": "object",
+      "required": ["target", "percentile_deal_platform", "likely_range", "reference_n", "percentile_account",
+                   "account_reference_n", "confidence", "validation"],
+      "additionalProperties": false,
+      "properties": {
+        "target": {"enum": ["log_interactions_rate", "reach_rel_local"]},
+        "percentile_deal_platform": {"anyOf": [{"$ref": "#/$defs/unit"}, {"type": "null"}], "description": "0..1 weighted (1/incl_prob) mid-rank among the deal × platform reference contents' out-of-fold predictions; null if reference_n < 30."},
+        "likely_range": {"anyOf": [{"type": "array", "prefixItems": [{"$ref": "#/$defs/unit"}, {"$ref": "#/$defs/unit"}], "minItems": 2, "maxItems": 2}, {"type": "null"}], "description": "[p10, p90] of observed percentiles of the reference contents predicted closest; null if reference_n < 30. Expect it wide."},
+        "reference_n": {"type": "integer", "minimum": 0},
+        "percentile_account": {"anyOf": [{"$ref": "#/$defs/unit"}, {"type": "null"}], "description": "Only for accounts with enough training posts (fit_models --min-account-n, default 40)."},
+        "account_reference_n": {"type": ["integer", "null"], "minimum": 1},
+        "confidence": {"enum": ["low", "medium"], "description": "medium only when validated and reference_n >= 100."},
+        "validation": {
+          "type": "object", "required": ["scheme", "within_stratum_spearman", "ci95"], "additionalProperties": false,
+          "properties": {
+            "scheme": {"enum": ["content_cv", "lockbox"]},
+            "within_stratum_spearman": {"type": ["number", "null"]},
+            "ci95": {"type": "array", "prefixItems": [{"type": ["number", "null"]}, {"type": ["number", "null"]}], "minItems": 2, "maxItems": 2}
+          }
+        }
+      }
+    },
+    "driver": {
+      "type": "object",
+      "required": ["family", "label", "contribution"],
+      "additionalProperties": false,
+      "description": "contribution: signed, relative to the deal × platform reference average; bar length only, never print it. Model attribution, not a cause.",
+      "properties": {
+        "family": {"enum": ["metadata", "account_history", "content_embedding", "brain_response"]},
+        "label": {"type": "string"},
+        "contribution": {"type": "number"},
+        "brain_detail": {
+          "type": "array",
+          "description": "brain_response only: channel = channels[].key of the analysis, or \"other\" (PCA, moments, cross-channel).",
+          "items": {"type": "object", "required": ["channel", "contribution"], "additionalProperties": false,
+                    "properties": {"channel": {"type": "string"}, "contribution": {"type": "number"}}}
+        }
+      },
+      "if": {"properties": {"family": {"not": {"const": "brain_response"}}}},
+      "then": {"not": {"required": ["brain_detail"]}}
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["tribe_commit", "pod_code", "precision", "fast_video", "emb_export", "prescale",
+                   "features_version", "emb_version", "video_id"],
+      "additionalProperties": false,
+      "description": "For 'See evidence'. The model keys appear once a model is loaded; the featurizer keys only once the clip is featurised; artefact_sha256 only when scored.",
+      "properties": {
+        "tribe_commit": {"type": ["string", "null"]},
+        "pod_code": {"type": ["string", "null"]},
+        "precision": {"type": ["string", "null"]},
+        "fast_video": {"type": ["boolean", "null"]},
+        "emb_export": {"type": ["string", "null"]},
+        "prescale": {"type": ["string", "null"]},
+        "features_version": {"type": "string"},
+        "emb_version": {"type": "string"},
+        "video_id": {"type": "string"},
+        "model_version": {"type": "string"},
+        "model_git": {"type": "object", "required": ["commit", "dirty"], "additionalProperties": false,
+                      "properties": {"commit": {"type": ["string", "null"]}, "dirty": {"type": ["boolean", "null"]}}},
+        "training_features_sha256": {"type": ["string", "null"]},
+        "proxies_version": {"type": "string"},
+        "roi_map_sha256": {"type": ["string", "null"]},
+        "featurizer_npz_sha256": {"type": "string"},
+        "artefact_sha256": {"type": "string"}
+      }
+    }
+  }
+}

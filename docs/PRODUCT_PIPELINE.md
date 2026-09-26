@@ -156,6 +156,14 @@ always-warm pod vs serverless workers with cold starts (section 6).
 PR updating schema, types, sample bundle, spec §07, tests and changelog. It is
 additive, so it's a minor bump to `nvi.analysis.v0.3`.
 
+Build against the real tool output. Fixtures made by running `tools/predict.py`
+on synthetic test data are in
+[`sample_analysis/performance/`](sample_analysis/performance/), one per UI state.
+[`performance.schema.draft.json`](performance.schema.draft.json) is the draft
+schema for exactly the block `predict.py` emits.
+`tests/test_performance_samples.py` validates the fixtures against it. The
+example and TypeScript below follow the tool's output.
+
 **Why a new block and not `predictions`.** `predictions` is reserved for
 *behaviour* metrics: 3 s/5 s hold, completion, drop zones (spec §05). Those need
 watch-time/retention data, which doesn't exist, so `predictions` stays
@@ -215,7 +223,7 @@ it `prediction` next to `predictions` would invite bugs.
 ```json
 "performance": {
   "model_status": "research_preview", "reason": null, "brain_claim": "directional",
-  "model_version": "perf-stack_v1+20260930.ab12cd3",
+  "model_version": "perf-stack-BE_v1+20260930.ab12cd3",
   "context": { "deal_id": "d_123", "deal_label": "Deal A", "platform": "tiktok",
                "account_id": null, "account_level": false },
   "clip_in_training": "no", "retrospective": false,
@@ -235,8 +243,12 @@ it `prediction` next to `predictions` would invite bugs.
   ],
   "warnings": ["Low confidence: this deal has few reference clips on this platform."],
   "provenance": { "tribe_commit": "af58661", "pod_code": "ba2d55e", "precision": "bf16",
-                  "prescale": "s384", "features_version": "clip_features_v1",
-                  "emb_version": "emb_features_v1", "artefact_sha256": "…" }
+                  "fast_video": true, "emb_export": "emb_pool_v1", "prescale": "s384",
+                  "features_version": "clip_features_v1", "emb_version": "emb_features_v1",
+                  "video_id": "cd20b16879d630c4", "model_version": "perf-stack-BE_v1+20260930.ab12cd3",
+                  "model_git": { "commit": "ab12cd3…", "dirty": false },
+                  "training_features_sha256": "…", "proxies_version": "proxies_v0",
+                  "roi_map_sha256": "…", "featurizer_npz_sha256": "…", "artefact_sha256": "…" }
 }
 ```
 
@@ -247,9 +259,15 @@ export type ModelStatus = "not_trained" | "research_preview" | "validated" | "ou
 export type BrainClaim = "not_tested" | "directional" | "supported" | "not_supported";
 export type DriverFamily = "metadata" | "account_history" | "content_embedding" | "brain_response";
 
+export type Platform = "tiktok" | "instagram" | "youtube";
+
+/** Always present. deal_id/deal_label/platform can be null (platform even an unsupported string) only
+ *  when there are no numbers; scored blocks always have a deal and one of the three platforms. */
 export interface PerformanceContext {
-  deal_id: string; deal_label: string; platform: "tiktok" | "instagram" | "youtube";
-  account_id: string | null; account_level: boolean;
+  deal_id: string | null; deal_label: string | null; platform: Platform | string | null;
+  account_id: string | null;
+  /** true iff engagement.percentile_account is set. */
+  account_level: boolean;
 }
 
 export interface TargetPrediction {
@@ -261,8 +279,11 @@ export interface TargetPrediction {
   reference_n: number;
   /** Only for accounts with >= 40 training posts. */
   percentile_account: number | null; account_reference_n: number | null;
-  confidence: Confidence; // existing enum
-  validation: { scheme: "content_cv" | "lockbox"; within_stratum_spearman: number; ci95: [number, number] };
+  /** "medium" only when validated with reference_n >= 100. Not the analysis Confidence enum. */
+  confidence: "low" | "medium";
+  /** scheme is "lockbox" for engagement when validated, else "content_cv". Null when not estimated. */
+  validation: { scheme: "content_cv" | "lockbox"; within_stratum_spearman: number | null;
+                ci95: [number | null, number | null] };
 }
 
 /** contribution: signed, relative to the reference average. Bar length only; never print it. */
@@ -272,17 +293,31 @@ export interface Driver {
   brain_detail?: { channel: string; contribution: number }[];
 }
 
+/** For "See evidence". Model keys appear once a model is loaded, featurizer keys once the clip is
+ *  featurised, artefact_sha256 only when scored. */
+export interface PerformanceProvenance {
+  tribe_commit: string | null; pod_code: string | null; precision: string | null;
+  fast_video: boolean | null; emb_export: string | null; prescale: string | null;
+  features_version: string; emb_version: string; video_id: string;
+  model_version?: string; model_git?: { commit: string | null; dirty: boolean | null };
+  training_features_sha256?: string | null; proxies_version?: string; roi_map_sha256?: string | null;
+  featurizer_npz_sha256?: string; artefact_sha256?: string;
+}
+
 interface PerformanceBase {
-  reason: string | null; brain_claim: BrainClaim; model_version: string | null;
-  context: PerformanceContext | null;
+  brain_claim: BrainClaim;
+  context: PerformanceContext;
+  /** train_oof and lockbox are always retrospective; train_oof always has drivers: []. */
   clip_in_training: "no" | "train_oof" | "lockbox"; retrospective: boolean;
-  warnings: string[]; provenance: Record<string, unknown>;
+  warnings: string[]; provenance: PerformanceProvenance;
 }
 
 export type Performance =
-  | (PerformanceBase & { model_status: "not_trained" | "out_of_scope";
+  | (PerformanceBase & { model_status: "not_trained"; reason: string; model_version: string | null;
       engagement: null; reach: null; drivers: [] })
-  | (PerformanceBase & { model_status: "research_preview" | "validated";
+  | (PerformanceBase & { model_status: "out_of_scope"; reason: string; model_version: string;
+      engagement: null; reach: null; drivers: [] })
+  | (PerformanceBase & { model_status: "research_preview" | "validated"; reason: null; model_version: string;
       engagement: TargetPrediction; reach: TargetPrediction | null; drivers: Driver[] });
 
 // Analysis (v0.3): schema_version "nvi.analysis.v0.3"; performance?: Performance;
