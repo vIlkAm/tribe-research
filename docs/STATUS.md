@@ -5,7 +5,7 @@ from a person or an agent. The newest update is at the top. Details live in the
 linked docs; this page only says where things stand. Agents on either side: when
 you change the state of something below, update this file in the same commit.
 
-_Last updated: 2026-09-26 ~21:30 UTC (research/backend side). All times UTC._
+_Last updated: 2026-09-26 21:50 UTC (research/backend side). All times UTC._
 
 ## One-paragraph summary
 
@@ -100,6 +100,7 @@ End product, gaps to a business and the demo plan: [`VISION_AND_DEMO.md`](VISION
 
 ## Log
 
+- **2026-09-26 21:50 UTC:** Preliminary performance model fit on the 100 real bf16 clips of the complete batches (frontend40, b00_pilot, b09; 71 training contents, lockbox unscored, not validated, not stage 1). Private releases [`model-prelim-v0`](https://github.com/vIlkAm/tribe-research/releases/tag/model-prelim-v0) (weights, sha256 manifest) and [`data-frontend40-v2`](https://github.com/vIlkAm/tribe-research/releases/tag/data-frontend40-v2) (the 40 bundles + `performance.json`, `platform`/`video_link`/`is_lockbox` in `index.json`). No percentile yet: fewer than 30 reference clips per deal × platform. Frontend guide: [`MODEL.md`](MODEL.md).
 - **2026-09-26 21:30 UTC:** Four pods on the study set (about 470 clips/h combined). Prereg adds exploratory "good vs bad clip" contrast (M4) and an editing-covariates arm (X); moment detection parameters frozen before any outcome is read (900001b, 7aa63ee, d164f3c). The `preliminary` model status is in `predict.py` (6f02b13).
 
 - **2026-09-26 21:05 UTC:** Performance-card fixtures from the real `predict.py` (`sample_analysis/performance/`, `tools/make_performance_samples.py`), draft schema `performance.schema.draft.json`, PRODUCT_PIPELINE §3 aligned to the tool output.
