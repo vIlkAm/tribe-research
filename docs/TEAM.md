@@ -42,6 +42,8 @@ needs to know how TRIBE works; the backend never assumes a UI layout.
 - **Later:** import real outcomes (retention etc.), then a behavior model. Only
   then does `predictions` become `available`, and the hold/completion cards get
   real numbers. Until then the frontend shows the empty state.
+- **Product path:** link/upload → GPU worker → analysis + a proposed `performance`
+  block (v0.3, not yet in the contract): [`PRODUCT_PIPELINE.md`](PRODUCT_PIPELINE.md).
 
 ## Changing the contract
 
