@@ -81,7 +81,9 @@ the owner explicitly decides to connect it:
 | `tools/make_performance_samples.py` | Frontend fixtures for the proposed `performance` block: runs `predict.py` on `tests/test_predict.py`'s synthetic study → `docs/sample_analysis/performance/` (draft schema `docs/performance.schema.draft.json`) |
 | `tools/power_check.py` | CPU power simulation (no TRIBE outputs, never reads lockbox labels) → `results/power/` |
 | `tools/profile_account.py` | One deal's or account's brain profile vs the general model |
-| `tools/handoff.py` | Validate bundles against the contract, index, tarball for the frontend (no footage) |
+| `tools/handoff.py` | Validate bundles against the contract (+ optional `performance.json` against the draft schema, per-clip `--clip-meta`), index, tarball for the frontend (no footage) |
+| `tools/bundle_performance.py` | Server-side `predict.py` per bundle → `performance.json` next to `analysis.json` (clip's own post as context, lockbox flagged, no labels) + `clip_meta.json` |
+| `tools/package_model.py` / `tools/publish_model.sh` | Saved model + featurizer + ROI map → release tarball with sha256 manifest (no media, lockbox-free checked); `publish_model.sh TAG MODEL_DIR FEATURIZER` creates the private gh release (`docs/MODEL.md`) |
 | `tools/drive_pod.sh` | Drive one pod through study batches shared via `claim-<b>` files (noclobber): optional setup, push, `run_queue.sh`, pull; 1-worker manifest rewrite for 24 GB cards |
 | `tools/pod.sh` | Full-SSH push/pull/shell between this server and a pod (`push-batch`) |
 | `tools/make_manifest.py` | Content-hash IDs, durations, duration-balanced worker assignment |

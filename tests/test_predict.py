@@ -6,6 +6,7 @@ test_emb_control), two deals x two platforms, one fit_models CLI evaluation with
 
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import shutil
@@ -630,3 +631,64 @@ def test_rank_helpers():
     assert predict.weighted_percentile(3.5, ref, np.ones(4)) == 0.75
     lo, hi = predict.likely_range(0.0, np.linspace(0, 1, 100), np.linspace(0, 1, 100), np.ones(100))
     assert lo < hi <= 0.3  # the 30 nearest predictions are the lowest ones here
+
+
+# ── model release packaging (tools/package_model.py) ──────────────────────
+
+
+def test_package_model_release(served, study, tmp_path):
+    import tarfile
+
+    import package_model
+
+    fzd = tmp_path / "fz"
+    fzd.mkdir()
+    for f in ("features.featurizer.json", "features.featurizer.npz"):
+        shutil.copy(study["tmp"] / f, fzd / f)
+    (fzd / "features.meta.json").write_text(json.dumps({"out_root": [str(study["out"])]}))
+    failed = _with_metrics(served, tmp_path / "prelim", go=(0.01, -0.01, 0.03), lockbox="none")
+    args = ["--tag", "model-test-v0", "--model-dir", str(failed), "--featurizer", str(fzd / "features.featurizer.json"),
+            "--roi-map", str(study["roi"]), "--out", str(tmp_path / "rel")]
+    assert package_model.main(args) == 0
+    rel = json.loads((tmp_path / "rel/RELEASE_MANIFEST.json").read_text())
+    assert rel["status"] == "preliminary" and rel["predict_flag"] == "--allow-preliminary"
+    assert rel["cv_metrics"]["label"].startswith("PRELIMINARY") and "CC-BY-NC" in rel["licence"]
+    n_lock = len(study["lock"])
+    assert rel["batches"] == [{"out_root": str(study["out"]), "clips": N, "failed": 0,
+                               "train_clips": N - n_lock, "lockbox_clips": n_lock}]
+    assert rel["lockbox"]["lockbox_in_training_or_references"] == 0 and rel["lockbox"]["pca_fit_excluded"]["used"]
+    tar = tarfile.open(tmp_path / "rel/model-test-v0.tar.gz")
+    names = tar.getnames()
+    assert "model-test-v0/model/manifest.json" in names and "model-test-v0/roi_map/roi.npz" in names
+    assert not any(Path(n).suffix in package_model.MEDIA_EXT for n in names)
+    inner = json.load(tar.extractfile("model-test-v0/RELEASE_MANIFEST.json"))
+    for rel_path, digest in inner["files_sha256"].items():
+        assert hashlib.sha256(tar.extractfile(f"model-test-v0/{rel_path}").read()).hexdigest() == digest
+    notes = (tmp_path / "rel/NOTES.md").read_text()
+    assert "Preliminary, not validated" in notes and "CC-BY-NC" in notes and "0." not in notes  # no metrics
+    # the packaged model scores a clip from the tarball's own files
+    tar.extractall(tmp_path / "x", filter="data")
+    x = tmp_path / "x/model-test-v0"
+    blk = predict.predict_performance(study["new"] / "worker-9" / "n000.npz", _ctx(study, deal_id="deal-a",
+                                      has_audio=True), build_features.load_featurizer(
+                                          x / "featurizer/features.featurizer.json", roi_map=x / "roi_map/roi.npz"),
+                                      x / "model", allow_preliminary=True)
+    assert blk["model_status"] == "preliminary"
+    # a lockbox clip smuggled into a reference table stops the packaging; so does a media file
+    man = json.loads((failed / "manifest.json").read_text())
+    ref = failed / man["targets"][predict.PRIMARY]["files"]["reference"]
+    good = ref.read_text()
+    df = pd.read_csv(ref, dtype={"video_id": str})
+    df.loc[0, "video_id"] = sorted(study["lock"])[0]
+    df.to_csv(ref, index=False)
+    tm = man["targets"][predict.PRIMARY]
+    tm["sha256"]["reference"] = package_model.sha256(ref)
+    (failed / "manifest.json").write_text(json.dumps(man))
+    with pytest.raises(SystemExit, match="lockbox"):
+        package_model.main(args)
+    ref.write_text(good)
+    tm["sha256"]["reference"] = package_model.sha256(ref)
+    (failed / "manifest.json").write_text(json.dumps(man))
+    (failed / "clip.mp4").write_bytes(b"x")
+    with pytest.raises(SystemExit, match="media"):
+        package_model.main(args)
