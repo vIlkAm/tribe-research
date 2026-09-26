@@ -368,3 +368,114 @@ vp_id, deal_id, platform, duration and sha256 for each clip. A 60-clip draw
   per video-s; batching does not help. A frame-loop patch is the lever.
 - Peak VRAM per worker including the whisper server: 18.2 GB (fits 24 GB).
 - Pilot artifacts (outputs, logs, pip freeze, configs): `results/logs/pilot-l40s/`.
+
+## Fleet run
+
+`tools/fleet.py` runs many pods in parallel from one queue of batch dirs. It
+calls `tools/runpod.py` for every API call. It does its own SSH/rsync (the same
+`-rlpt` flags as `pod.sh`) with a known_hosts file per pod, because community
+hosts reuse IP:port. Nothing about it has been tried on a live pod yet.
+
+```bash
+# plan only (no API call, nothing written): queue, clips, rate, wall time, cost
+tools/fleet.py run --pods 3 --gpu-type L40S --max-usd 60 --usd-per-hour 0.90
+# skip batches a manually driven pod already runs
+tools/fleet.py run ... --exclude b02,b03,b04
+# the same with --go creates pods (billed); log in results/fleet/fleet.log
+nohup tools/fleet.py run ... --go >> results/fleet/driver.out 2>&1 &
+tools/fleet.py status              # per pod: phase, batch, next, clips/h, $; spend, ETA, halt, waiting
+tools/fleet.py add r16 'results/batches_s384/x*'   # join the running queue (merged at the next tick)
+tools/fleet.py exclude b05,b06                     # leave the running queue
+tools/fleet.py run --go            # resume after a crash/restart; the stored config is reused
+```
+
+- **Defaults (measured on the L40S, 2026-09-26).**
+  - `--fast-video --video-precision bf16` with `$JOB/feature-cache-bf16`.
+    Turn it off with `--no-fast-video`.
+  - Workers per GPU = floor((VRAM − 3 GB) / 19 GB), because each worker uses
+    about 13.5 GB and its whisper server about 5.5 GB. That gives 2 on 48 GB
+    cards, 1 on 24 GB cards and 4 on 80 GB cards. Override with
+    `--workers-per-gpu`.
+  - The launch script reads the pod's cgroup CPU quota (`cpu.max`, or v1
+    `cpu.cfs_quota_us`/`cpu.cfs_period_us`) because nproc reports the host. It
+    sets `OMP_NUM_THREADS` and `MKL_NUM_THREADS` to max(4, floor(quota /
+    workers)), and `TRIBE_VIDEO_THREADS` to min(8, that). It also sets
+    `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`. Override the threads
+    with `--omp-threads`.
+  - The plan assumes 1.1 s of wall time per source-second per worker
+    (`--wall-per-source-s`). That is ~120 clips/h per worker at a 26 s mean.
+    Other GPUs are assumed to match.
+- **Queue order without `--batches`:** `results/batches_s384/` b02..b09, then
+  d00_deep_dive and d01_deep_dive, then r00..r15.
+  - Only a batch with `prep.json` can be claimed. The rest wait, and a
+    missing dir waits too.
+  - Globs given to `--batches` are rescanned while the driver runs.
+  - `add` and `exclude` go through `results/fleet/inbox.jsonl`, because the
+    driver owns `state.json`.
+  - An excluded batch this fleet is already running finishes, but it is not
+    requeued.
+- **Resume:** `run` starts from the config stored in `state.json`, and only
+  flags given on the command line override it.
+  - Pod-shaping flags are refused while a fleet pod is live: GPU, disk,
+    image, job dir, workers and threads.
+  - Output-shaping flags are refused for the whole run: fast-video, precision
+    and worker args. Use `--fleet-dir` for a separate run.
+  - A restart clears a halt.
+- **Job dir on the container disk.** `JOB=/root/tribe-job` by default
+  (`--container-disk-gb 100`, `--volume-gb 20` for the unused pod volume).
+  - JOB is exported at the top of every remote script and for every local
+    subprocess.
+  - A stop, a spot pre-emption or a watchdog action **erases** the container
+    disk. So a running batch is pulled every `--pull-every-min` (15), and
+    `--go` refuses a watchdog whose `--max-usd` or `--max-hours` is lower
+    than the fleet's.
+- **Per pod:**
+  - create → SSH → push code (rsync first, so it never races setup's apt) →
+    `setup.sh` under `setsid nohup` (`logs/setup.out`) → push the first batch
+    while setup runs → wait for `$JOB/.setup_done`.
+  - On `$JOB/.setup_failed` or after `--setup-timeout-min` (30), the driver
+    pulls `setup-timings.txt`, `prefetch.log` and `setup.out`, then
+    terminates the pod.
+  - A `.setup_failed` also **halts** the fleet: no new pods until a restart.
+    A timeout gets a replacement pod.
+  - A pod that finds nothing left to claim during setup is terminated at once.
+  - Workers are launched through `run_worker.sh` with `GPU = k % gpu_count`,
+    one pid file each.
+- **Prefetch:**
+  - Batch k+1 is pushed as soon as batch k is launched.
+  - When k finishes, k+1 is launched *before* k is pulled.
+  - A pull is verified per clip: `<vid>.json` + `.npz` for every clip the
+    pod reports done. Only then is the batch done and its videos deleted from
+    the pod.
+  - A batch with no outputs dir on the pod is not rsynced.
+  - A batch of ≥ 3 clips that finishes with **0 clips done** (after worker
+    retries) means the pod or the code is broken. The driver pulls logs,
+    terminates the pod, requeues the batch and halts the fleet.
+- **Queue:** `results/fleet/state.json` is file-locked, and only one driver
+  runs at a time.
+  - A batch that loses its pod goes back to the queue. The next pod's
+    manifest drops the clips already pulled into
+    `results/fleet/outputs/<batch>/`, and `worker`/`num_workers` are
+    rewritten for that pod's worker count.
+  - A sharded prep (`prep.shard*.json` only) does not count as ready.
+  - After 3 failed attempts a batch is marked failed.
+  - Dead workers are relaunched once (`--worker-retries`).
+  - A pod unreachable for `--dead-after-min` (10), or stopped/missing in
+    `pod-list`, is terminated and replaced. The limit is `--max-creates` pods
+    (default 2 × `--pods`). The same applies while draining.
+  - If a finished batch's pull never verifies, the pod is ended after
+    `--drain-timeout-min` (30) and the batch is requeued.
+- **Money:**
+  - The estimate is $/h × uptime for every pod the fleet created.
+    `--usd-per-hour` is used until the API reports the real rate.
+  - Within 15 min of burn of `--max-usd`, the driver stops creating pods and
+    claiming batches. Idle pods and pods still in setup are terminated.
+  - At `--max-usd`, it pulls partial outputs and terminates every fleet pod.
+  - An idle pod with nothing ready is pulled and terminated after
+    `--idle-grace-min` (10, below the watchdog's 20).
+  - A failed terminate keeps the pod in the spend. It is retried every
+    `pod-list` poll until the API shows the pod gone. `status` shows it as
+    STILL BILLED, and the driver does not exit before then.
+  - It only ever stops or terminates pod ids recorded in its own state.
+- Merge a batch afterwards with `tools/merge.py --manifest
+  results/batches_s384/<b>/manifest.jsonl --out-root results/fleet/outputs/<b>`.
