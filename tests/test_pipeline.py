@@ -93,6 +93,8 @@ def test_worker_dry_run_resume_and_merge(tmp_path):
     assert data["preds"].dtype == np.float16
     assert data["preds"].shape == (row["n_segments"], 20484)
     assert data["seg_start"].shape == (row["n_segments"],)
+    meta = json.loads(next((out / "worker-0").glob("*.json")).read_text())
+    assert meta["words"] == []  # dry run: no transcript; the real model exports whisperx words
     assert json.loads((out / "benchmark.json").read_text())["videos_done"] == 5
 
 

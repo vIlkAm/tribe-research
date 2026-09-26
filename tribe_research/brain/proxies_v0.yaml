@@ -1,0 +1,110 @@
+# Neural proxy channels v0 — HYPOTHESIS, RESEARCH PROXY ONLY.
+#
+# Each channel is the vertex-weighted mean of the union of its ROI groups
+# (roi_groups_v0.yaml), z-scored within the clip. These are the lanes the
+# frontend shows (Frontend spec §03, backend guide §05).
+#
+# direction vocabulary (Frontend spec §07: "the backend must explicitly state
+# whether higher/lower has a learned positive association, a hypothesis-only
+# direction, or no monotonic interpretation"):
+#   learned_positive / learned_negative   validated on our held-out outcomes (none yet)
+#   hypothesis_positive                   literature prior only; must be validated
+#   context_dependent                     meaning depends on the content/moment
+#   no_monotonic                          do NOT read higher or lower as better
+#
+# Cognitive control must never be hypothesis_positive: preferred short videos
+# showed dACC/dlPFC *deactivation* (Hong et al. 2026, spec [S3]).
+#
+# Copy rules (spec §08): no "firing", no "caused", no mind-reading claims.
+# tests/test_brain.py scans every string below.
+version: proxies_v0
+channels:
+  attention:
+    label: Attention proxy
+    roi_groups: [attention_dorsal, attention_ventral]
+    regions_text: Dorsal attention (FEF / IPS) and ventral attention / salience (insula / frontal operculum)
+    direction: hypothesis_positive
+    direction_note: Higher can be better, but compare against behavioral outcomes before relying on it.
+    default_visible: true
+    color: "#4F5BD5"
+    copy:
+      tooltip: Predicted response in attention and salience networks, relative to the rest of this clip.
+      rise: Strong predicted attention capture
+      fall: Predicted attention response falls
+  social:
+    label: Social relevance
+    roi_groups: [social_tpj_sts, social_dmpfc]
+    regions_text: TPJ / posterior STS and dmPFC
+    direction: hypothesis_positive
+    direction_note: Hypothesized positive for sharing/transmission; not yet validated on our outcomes.
+    default_visible: true
+    color: "#2E8B57"
+    copy:
+      tooltip: Predicted response in networks associated with thinking about other people.
+      rise: Higher social-relevance proxy
+      fall: Social-relevance proxy drops
+  value:
+    label: Value proxy
+    roi_groups: [value_vmpfc]
+    regions_text: vmPFC / medial OFC (cortical proxy only; no NAcc in the TRIBE checkpoint)
+    direction: hypothesis_positive
+    direction_note: Hypothesized positive; the public TRIBE checkpoint is cortical-only, so there is no striatal value signal.
+    default_visible: true
+    color: "#D9822B"
+    copy:
+      tooltip: Predicted response in cortical areas associated with subjective value.
+      rise: Higher cortical value proxy
+      fall: Cortical value proxy drops
+  control:
+    label: Cognitive-control response
+    roi_groups: [control_dacc_dlpfc]
+    regions_text: dACC and dlPFC
+    direction: no_monotonic
+    direction_note: Do not read higher or lower as better. Preferred short videos have been associated with deactivation here; learn the sign from our own data.
+    default_visible: true
+    color: "#8E6CC0"
+    copy:
+      tooltip: Predicted response in control networks. Neither direction is better by default.
+      rise: Control-network response rises
+      fall: Control-network response falls
+  self:
+    label: Self relevance
+    roi_groups: [self_mpfc_pcc]
+    regions_text: mPFC, PCC and precuneus
+    direction: context_dependent
+    direction_note: Meaning depends on the content and the moment.
+    default_visible: false
+    color: "#C0507A"
+    copy:
+      tooltip: Predicted response in networks associated with self-related processing.
+      rise: Self-relevance proxy rises here
+      fall: Self-relevance proxy falls here
+  language:
+    label: Language / semantic load
+    roi_groups: [language]
+    regions_text: IFG (44/45), STG/STS language areas
+    direction: context_dependent
+    direction_note: Tracks predicted language processing; high is not better by itself.
+    default_visible: false
+    color: "#3A8FB7"
+    copy:
+      tooltip: Predicted response in language and semantic areas.
+      rise: Predicted language processing rises
+      fall: Predicted language processing falls
+  sensory:
+    label: Sensory drive
+    roi_groups: [visual_early, visual_motion, auditory]
+    regions_text: Early visual, visual motion (MT+) and auditory cortex
+    direction: context_dependent
+    direction_note: Follows visual/audio change; timing matters more than level.
+    default_visible: false
+    color: "#7A8A99"
+    copy:
+      tooltip: Predicted response in early visual, motion and auditory cortex.
+      rise: Sensory drive peaks
+      fall: Sensory drive drops
+# Spec §03 lists these, but they need models we don't have yet. They are
+# reported as unavailable, never approximated from TRIBE ROIs.
+unavailable:
+  memorability: Needs a BOLD Moments student model (backend guide §06); not built.
+  arousal: Needs an EEG/pupil student model (EEG Moments); not built.

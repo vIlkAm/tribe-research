@@ -10,3 +10,9 @@ scipy==1.18.1
 pandas==3.0.6
 imageio==2.37.4
 imageio-ffmpeg==0.6.0
+# analysis contract tests (docs/analysis.schema.json)
+jsonschema==4.26.0
+jsonschema-specifications==2025.9.1
+referencing==0.37.0
+attrs==26.1.0
+rpds-py==2026.6.3

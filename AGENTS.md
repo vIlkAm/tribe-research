@@ -10,15 +10,22 @@ the owner explicitly decides to connect it:
 
 - No reads/writes to the self-host Supabase/Postgres, read mirror, Qdrant, or any
   `services/clipping-cartel` container, network, volume, or compose project.
+  **One exception:** read-only file copies out of the backfill archive
+  (`services/clipping-cartel/media_archive_worker/archive/backfill-20260926/`),
+  via `tools/select_sample.py` (owner decision below).
 - No Cartel credentials in `.env`; this project has its own RunPod/HF tokens.
 - Nothing here binds a port on this host. Videos move to pods by rsync/`runpodctl`
   **from** this server, never by exposing an HTTP listener (the March prototype
   served videos unauthenticated on the public IP — don't repeat that).
 - Performance metrics are imported as an exported file (CSV/JSONL) into
   `results/`, not queried live.
-- The Cartel media archive (e.g. `/archive/backfill-20260926/`) is client
-  media. Pushing any of it to a pod is a third-party transfer that needs an
-  explicit owner decision; it is not a default input.
+- **Owner decision, 2026-09-26:** the backfilled clips are company-owned
+  ("those clips are in fact ours, we are owners of it … we are not
+  commercialising a product"). They may be copied to RunPod pods for this
+  non-commercial research. Still no DB queries: clip selection is file-based and
+  metrics arrive later as an exported file keyed by the `source_name` (the
+  `video_performances` id in the filename). Revisit the TRIBE CC-BY-NC licence
+  before any of this feeds a product or client deliverable.
 - Demo visuals are model predictions for an average subject. Keep the caption,
   and label anything built from dry-run data or a synthetic ROI map as such.
 - RunPod pods are billed. Don't launch, resume, or submit to one without the

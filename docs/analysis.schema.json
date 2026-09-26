@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "nvi.analysis.v0.2",
+  "title": "Neural Video Intelligence analysis object (GET /v1/analyses/{analysis_id})",
+  "description": "Neural-only v0.2. predictions stay not_available until a behavior model exists. All neural values are within-clip z-scores (relative to this clip only).",
+  "type": "object",
+  "required": ["schema_version", "analysis_id", "video_id", "duration_ms", "status", "research_only", "synthetic",
+               "model_versions", "provenance", "timing", "predictions", "channels", "unavailable_channels",
+               "events", "moments", "assets", "quality"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "nvi.analysis.v0.2"},
+    "analysis_id": {"type": "string", "pattern": "^a_[0-9a-f]{12}$"},
+    "video_id": {"type": "string"},
+    "source_name": {"type": ["string", "null"], "description": "Upstream id for the outcome join (video_performances id for backfill clips)."},
+    "duration_ms": {"type": "integer", "minimum": 0},
+    "status": {"enum": ["queued", "processing", "complete", "failed"]},
+    "research_only": {"const": true},
+    "synthetic": {"type": "boolean", "description": "true = dry-run predictions or a synthetic ROI map. UI must show a SYNTHETIC banner."},
+    "model_versions": {
+      "type": "object", "required": ["neural", "behavior", "explain"], "additionalProperties": false,
+      "properties": {
+        "neural": {"type": "string"},
+        "behavior": {"type": ["string", "null"]},
+        "explain": {"type": "string"}
+      }
+    },
+    "provenance": {"type": "object", "required": ["tribe_commit", "roi_map", "proxies_version", "feature_version", "normalization"]},
+    "timing": {
+      "type": "object",
+      "required": ["time_base", "native_tr_s", "display_hz", "n_display_samples", "onset_window_ms", "gaps_ms"],
+      "properties": {
+        "time_base": {"const": "stimulus"},
+        "native_tr_s": {"type": "number", "description": "Real model resolution. The display grid is upsampled by sample-and-hold; do not imply finer resolution."},
+        "display_hz": {"const": 2},
+        "n_display_samples": {"type": "integer"},
+        "onset_window_ms": {"$ref": "#/$defs/span"},
+        "gaps_ms": {"type": "array", "items": {"$ref": "#/$defs/span"}}
+      }
+    },
+    "predictions": {
+      "type": "object", "required": ["status", "metrics"],
+      "properties": {
+        "status": {"enum": ["not_available", "available"]},
+        "reason": {"type": "string"},
+        "metrics": {"type": "object", "additionalProperties": {"$ref": "#/$defs/interval"}}
+      },
+      "if": {"properties": {"status": {"const": "not_available"}}},
+      "then": {"properties": {"metrics": {"maxProperties": 0}}}
+    },
+    "channels": {"type": "array", "items": {"$ref": "#/$defs/channel"}},
+    "unavailable_channels": {
+      "type": "array",
+      "items": {"type": "object", "required": ["key", "kind", "reason"],
+                "properties": {"key": {"type": "string"}, "kind": {"$ref": "#/$defs/kind"}, "reason": {"type": "string"}}}
+    },
+    "events": {
+      "type": "object", "required": ["shots_ms", "words", "speech_spans_ms", "unavailable_lanes"],
+      "properties": {
+        "shots_ms": {"type": ["array", "null"], "items": {"type": "integer"}, "description": "null = not computed (see unavailable_lanes)."},
+        "words": {"type": "array", "items": {"type": "object", "required": ["start_ms", "end_ms", "text"],
+                  "properties": {"start_ms": {"type": "integer"}, "end_ms": {"type": "integer"}, "text": {"type": "string"}}}},
+        "speech_spans_ms": {"type": "array", "items": {"$ref": "#/$defs/span"}},
+        "unavailable_lanes": {"type": "array", "items": {"type": "object", "required": ["key", "reason"]}}
+      }
+    },
+    "moments": {"type": "array", "items": {"$ref": "#/$defs/moment"}},
+    "assets": {
+      "type": "object",
+      "properties": {
+        "brain_map": {"$ref": "#/$defs/sprite"},
+        "research_vertex_map": {"$ref": "#/$defs/sprite"},
+        "region_map": {
+          "type": "object", "required": ["idmap_src", "legend_src", "ids"],
+          "description": "Static per ROI-map version. idmap_src pixels encode which channel region is under the cursor (same tile geometry as brain_map); ids maps '#rrggbb' -> channel key.",
+          "properties": {"idmap_src": {"type": "string"}, "legend_src": {"type": "string"},
+                         "ids": {"type": "object", "additionalProperties": {"type": "string"}}}
+        },
+        "summary_png": {"type": "string"},
+        "demo_mp4": {"type": "string"}
+      }
+    },
+    "quality": {
+      "type": "object", "required": ["n_segments", "has_words", "warnings"],
+      "properties": {"n_segments": {"type": "integer"}, "has_words": {"type": "boolean"},
+                     "warnings": {"type": "array", "items": {"type": "string"}}}
+    }
+  },
+  "$defs": {
+    "span": {"type": "array", "items": {"type": "integer"}, "minItems": 2, "maxItems": 2},
+    "kind": {"enum": ["neural_proxy", "behavior", "observed"]},
+    "interval": {"type": "object", "required": ["value"],
+                 "properties": {"value": {"type": "number"}, "lo": {"type": "number"}, "hi": {"type": "number"}}},
+    "channel": {
+      "type": "object",
+      "required": ["key", "label", "kind", "unit", "direction", "direction_note", "confidence", "source_model",
+                   "research_status", "hz", "native_tr_s", "resampling", "default_visible", "color", "basis",
+                   "copy", "values", "summary"],
+      "properties": {
+        "key": {"type": "string"},
+        "label": {"type": "string"},
+        "kind": {"$ref": "#/$defs/kind"},
+        "unit": {"const": "z_within_clip"},
+        "direction": {"enum": ["learned_positive", "learned_negative", "hypothesis_positive", "context_dependent", "no_monotonic"],
+                      "description": "Never infer from the key. no_monotonic = neither direction is better."},
+        "direction_note": {"type": "string"},
+        "confidence": {"enum": ["uncalibrated", "low", "medium", "high"]},
+        "source_model": {"type": "string"},
+        "research_status": {"enum": ["research_proxy", "validated"]},
+        "hz": {"type": "number"},
+        "native_tr_s": {"type": "number"},
+        "resampling": {"const": "sample_and_hold"},
+        "default_visible": {"type": "boolean"},
+        "color": {"type": "string", "pattern": "^#[0-9A-Fa-f]{6}$"},
+        "basis": {"type": "object", "required": ["roi_groups", "regions_text", "atlas"]},
+        "copy": {"type": "object", "required": ["tooltip", "rise", "fall"]},
+        "values": {"type": "array", "items": {"type": ["number", "null"]}, "description": "display_hz grid from t=0; null = no prediction (gap)."},
+        "summary": {"type": "object"}
+      }
+    },
+    "moment": {
+      "type": "object",
+      "required": ["id", "kind", "start_ms", "end_ms", "channels", "peak_z", "severity", "title", "description",
+                   "evidence", "hypothesis", "test_metric", "status", "relative_to", "confidence", "in_onset_window"],
+      "properties": {
+        "id": {"type": "string"},
+        "kind": {"enum": ["attention_drop", "broad_response", "proxy_rise", "proxy_fall"]},
+        "start_ms": {"type": "integer"}, "end_ms": {"type": "integer"},
+        "channels": {"type": "array", "items": {"type": "string"}},
+        "peak_z": {"type": "number"},
+        "severity": {"type": "number", "minimum": 0, "maximum": 1, "description": "Ranking within this clip only."},
+        "title": {"type": "string"}, "description": {"type": "string"},
+        "evidence": {"type": "array", "items": {"type": "string"}},
+        "hypothesis": {"type": ["string", "null"]},
+        "test_metric": {"type": ["string", "null"]},
+        "status": {"enum": ["observation", "edit_hypothesis_untested", "validated"]},
+        "relative_to": {"const": "this_clip"},
+        "confidence": {"enum": ["uncalibrated", "low", "medium", "high"]},
+        "in_onset_window": {"type": "boolean"}
+      }
+    },
+    "sprite": {
+      "type": "object",
+      "required": ["mode", "src", "tile_w", "tile_h", "cols", "rows", "frame_start_ms", "frame_end_ms", "views", "colormap"],
+      "description": "Pre-rendered 2D cortical views, one tile per native TRIBE step. Show tile i (row-major) while frame_start_ms[i] <= t < frame_end_ms[i]. In a gap (timing.gaps_ms) dim the panel and label it 'no prediction'.",
+      "properties": {
+        "mode": {"enum": ["proxy", "research_vertex"], "description": "research_vertex = per-vertex map; only in Research mode."},
+        "src": {"type": "string"},
+        "tile_w": {"type": "integer"}, "tile_h": {"type": "integer"},
+        "cols": {"type": "integer"}, "rows": {"type": "integer"},
+        "frame_start_ms": {"type": "array", "items": {"type": "integer"}},
+        "frame_end_ms": {"type": "array", "items": {"type": "integer"}},
+        "views": {"type": "array", "items": {"type": "string"}},
+        "colormap": {"type": "object", "required": ["name", "vmin", "vmax", "threshold", "unit"]}
+      }
+    }
+  }
+}

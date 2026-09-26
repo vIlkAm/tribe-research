@@ -94,10 +94,11 @@ termination. Delete the volume only when you're finished with the project.
 
 ## Which videos to send
 
-Start with 3–5 representative clips you own or have cleared for research use.
-Pushing clips to a pod sends them to a third party, RunPod, and TRIBE v2 is
-CC-BY-NC-4.0. The Clipping Cartel backfill archive
-(`/archive/backfill-20260926/…`) is client media. It is **not** a default input.
-Using it needs an explicit owner decision covering both the transfer and the
-licence (see AGENTS.md). Performance metrics come in as an exported file, never
-as a live database query.
+The backfilled clips are company-owned and cleared by the owner (2026-09-26)
+for this non-commercial research, including copying them to RunPod. Pick a
+stratified sample with `tools/select_sample.py`. It copies the files (never
+symlinks, which rsync would push as broken links), checks each sha256, and
+keeps the `video_performances` id as `source_name` for the later metrics join.
+Performance metrics still arrive as an exported file, never as a live
+database query. TRIBE v2 is CC-BY-NC-4.0: revisit the licence before any of
+this feeds a product or client deliverable.

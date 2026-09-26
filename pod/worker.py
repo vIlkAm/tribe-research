@@ -63,6 +63,10 @@ class StubModel:
     def modalities(events) -> dict:
         return {"event_counts": {"Video": 1, "Audio": 1}, "has_words": False}
 
+    @staticmethod
+    def words(events) -> list[dict]:
+        return []
+
     def predict(self, events):
         duration = self._durations[events["video_path"]]
         n = max(1, math.ceil(duration / self.tr))
@@ -87,6 +91,15 @@ class TribeAdapter:
         counts = events["type"].value_counts().to_dict() if "type" in events else {}
         return {"event_counts": {str(k): int(v) for k, v in counts.items()},
                 "has_words": bool(counts.get("Word", 0))}
+
+    @staticmethod
+    def words(events) -> list[dict]:
+        """whisperx words TRIBE already transcribed, in stimulus seconds (timeline speech lane)."""
+        if "type" not in events:
+            return []
+        w = events[events["type"] == "Word"].sort_values("start")
+        return [{"start": round(float(r.start), 3), "duration": round(float(r.duration), 3),
+                 "text": str(getattr(r, "text", ""))} for r in w.itertuples()]
 
     def predict(self, events):
         preds, segments = self.model.predict(events=events, verbose=False)
@@ -194,6 +207,7 @@ def process(model, row: dict, video_path: Path, out_dir: Path, common: dict) -> 
     events = model.events(str(video_path))
     t1 = time.perf_counter()
     modalities = model.modalities(events)
+    words = model.words(events)
     preds, starts, durs = order_segments(*model.predict(events))
     t2 = time.perf_counter()
 
@@ -209,8 +223,9 @@ def process(model, row: dict, video_path: Path, out_dir: Path, common: dict) -> 
         "n_vertices": int(preds.shape[1]),
         "tr_s": float(model.tr),
         "modalities": modalities,
+        "words": words,
         "preds_dtype_saved": "float16",
-        "hemodynamic_offset_note": "TRIBE preds are shifted 5 s into the past to cancel hemodynamic lag",
+        "hemodynamic_offset_note": "TRIBE preds are shifted 5 s into the past to cancel hemodynamic lag (seg_start is stimulus time)",
         "timing_s": {
             "events_dataframe": round(t1 - t0, 3),  # audio extract + whisperx + text
             "predict": round(t2 - t1, 3),  # feature extraction (V-JEPA2 etc.) + TRIBE
