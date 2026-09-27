@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { probeSourceClip, resolveSourceClipUrl, SOURCE_CLIP_LABEL } from '../src/lib/source-clip.ts';
 
 test('source clip resolves as ../clips/<video_id>.mp4 against the index URL', () => {
-  assert.equal(resolveSourceClipUrl('/demo-stage1/index.json', '39a56688d3b5b35e'), 'http://localhost/clips/39a56688d3b5b35e.mp4');
+  assert.equal(resolveSourceClipUrl('/demo-stage1/index.json', '0123456789abcdef'), 'http://localhost/clips/0123456789abcdef.mp4');
   assert.equal(resolveSourceClipUrl('https://h.test/a/b/index.json', 'clip_1-x'), 'https://h.test/a/clips/clip_1-x.mp4');
   assert.equal(resolveSourceClipUrl('https://h.test/index.json', 'abc'), 'https://h.test/clips/abc.mp4');
   for (const bad of ['', '../x', 'a/b', 'a.mp4', 'a?b', 'a#b', '-lead', 'x y', '%2e%2e']) {
