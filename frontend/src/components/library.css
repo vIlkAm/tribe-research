@@ -198,3 +198,4 @@ button.score-tile:hover{border-color:#4a5566;background:#17202b}
 .theory-group{color:#6d7b8f;font-weight:400}
 .library-section{overflow-x:auto}
 @media (max-width:700px){.library-top{flex-wrap:wrap}.library-top .demo-topbar-actions{flex-basis:100%}.library-top .internal-badge{white-space:normal;font-size:10px}}
+.lib-caption a{color:#d8b985;text-decoration:underline;text-underline-offset:2px}

@@ -54,6 +54,8 @@ function MethodDialog({ open, onClose, analysis }: { open: boolean; onClose: () 
     <h2 id="method-title">A window into predicted response.</h2>
     <p>This is an interactive research demo inspired by Meta’s TRIBE v2. It is independently built and is not affiliated with Meta.</p>
     {analysis.synthetic && <div className="method-callout"><Info size={19} /><div><strong>The included sample is synthetic.</strong><p>Synthetic data is used for interface testing, not measured brain activity. Consult the bundle provenance for how the sample was produced.</p></div></div>}
+    <h3>The model: TRIBE v2</h3>
+    <p>TRIBE v2 (d’Ascoli et al., FAIR at Meta, 2026) predicts fMRI brain responses from a clip’s video, audio and text. The paper evaluates it on 1,117 hours of fMRI from 720 people; on the 7T HCP set its prediction of the group-average response reached R ≈ 0.4, about twice the median single person’s scan. It models an average viewer’s perception, not behaviour such as watching on or sharing.</p>
     <h3>Real anatomy. Region-level signals.</h3>
     <p>The 3D surface is FreeSurfer fsaverage5: 20,484 cortical vertices. HCP-MMP1 annotations map the seven proxy channels onto the same region groups the research proxies use. The 3D view is available when a bundle carries all seven channels as within-clip z-scores; other bundles use the contracted 2D atlas. Each region receives its channel’s value; this is not a raw per-vertex response map.</p>
     <h3>How to read the light</h3>

@@ -1,6 +1,7 @@
 import { ArrowLeft } from 'lucide-react';
 import type { Learned, LearnedGoodVsBad } from '../lib/library';
 import { bandPath, linePath, seriesRange } from '../lib/library';
+import { TRIBE_PAPER } from '../lib/tribe-paper';
 import './library.css';
 
 const W = 1000, H = 260;
@@ -62,6 +63,14 @@ export default function LearnedView({ learned, onBack }: { learned: Learned | nu
       <h1>What the model learned</h1>
       <p className="learned-lede">What the first full study found when it tested whether predicted brain response helps rank clips. Internal research view.</p>
       {!learned && <p className="learned-empty">The research summary is not available on this server.</p>}
+      <section className="learned-section" aria-labelledby="learned-model">
+        <h2 id="learned-model">The brain model: TRIBE v2 (Meta FAIR, {TRIBE_PAPER.date})</h2>
+        <p className="learned-sub">Every brain visual here is a prediction from Meta’s TRIBE v2 for an average viewer. From the paper, “{TRIBE_PAPER.title}” ({TRIBE_PAPER.authors}):</p>
+        <div className="learned-keys">{TRIBE_PAPER.facts.map(f => <div key={f.value} className="learned-key"><strong>{f.value}</strong><span>{f.text}</span></div>)}</div>
+        <p className="learned-result">{TRIBE_PAPER.limits}</p>
+        <p className="lib-caption">Numbers from the TRIBE v2 paper · {TRIBE_PAPER.links.map((l, i) => <span key={l.href}>{i ? ' · ' : ''}<a href={l.href} target="_blank" rel="noreferrer">{l.label}</a></span>)} · TRIBE v2 is CC BY-NC 4.0; this demo is independent and not affiliated with Meta</p>
+      </section>
+
       {learned && learned.statements.length > 0 && <section className="learned-section" aria-labelledby="learned-findings">
         <h2 id="learned-findings">What the study found</h2>
         {(learned.key_numbers.length > 0 || learned.decision) && <div className="learned-keys">

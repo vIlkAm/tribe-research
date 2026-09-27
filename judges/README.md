@@ -64,6 +64,19 @@ Some TikTok clips were re-encoded from HEVC to H.264 only so that every browser 
 - So the tool shows *where* attention is predicted to rise and fall inside a clip, which is useful for editing
   review. It does not tell you whether a clip will go viral.
 
+## The brain model (TRIBE v2)
+
+From the paper (d'Ascoli et al., "A foundation model of vision, audition, and language for in-silico neuroscience",
+FAIR at Meta, 2026; code https://github.com/facebookresearch/tribev2):
+
+- Evaluated on 1,117 hours of fMRI from 720 people across 8 datasets (trained on 25 people and 452 hours).
+- Reads video (V-JEPA2), audio (w2v-BERT) and text (Llama 3.2) features of a clip.
+- On the 7T HCP set, its prediction of the group-average brain response reached R ≈ 0.4, about twice the median
+  single person's scan as a predictor of the group average. That is why we use its average-viewer prediction.
+- The brain responds about 5 s after what caused it; our timelines shift the prediction back to line up with the video.
+- The paper's own limits: fMRI time scale (seconds), and the brain is modelled as a passive observer, not an agent
+  producing behaviour. That fits our result: it describes perception, not whether people keep watching or share.
+
 ## Important notes
 
 - **Predictions, not measurements.** Every brain visual is TRIBE v2's prediction for an *average* viewer; no one's
