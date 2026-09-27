@@ -1,21 +1,8 @@
 {
- "schema": "nvi.examples.v0",
+ "schema": "nvi.examples.v1",
  "synthetic": true,
  "internal_only": true,
- "title": "SYNTHETIC pair title",
- "pairs": [
-  {
-   "fell_short": "synthetic-fell",
-   "beat_expectations": "synthetic-beat",
-   "same": "same synthetic group"
-  },
-  {
-   "fell_short": "bad id/..",
-   "beat_expectations": "x",
-   "same": ""
-  }
- ],
- "rule": "SYNTHETIC rule.",
- "caveat": "SYNTHETIC caveat: one illustrative pair, not evidence.",
+ "default_pair": { "a": "synthetic-great-1", "b": "synthetic-bad-1" },
+ "caveat": "SYNTHETIC caveat: two clips, not evidence.",
  "caption_null": "SYNTHETIC caption_null."
 }

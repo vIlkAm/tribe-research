@@ -2,19 +2,23 @@ import { useId, useRef, useState, type KeyboardEvent, type PointerEvent, type Re
 import type { Library } from '../lib/library';
 import { clockTime, percentileAt, percentileReadout, referenceLine, seriesPaths } from '../lib/library';
 import type { DemoMoment } from '../lib/demo';
+import { STRIP_LEGEND, StripGuide } from './strip-guide';
 import './library.css';
 
 const W = 1000, H = 120;
 
 /** "Engagement at any moment": this clip's predicted response as a percentile of similar clips, per second. */
-export default function ResponseStrip({ library, durationMs, timeMs, onSeek, compact = false, highlight = null, action }: {
+export default function ResponseStrip({ library, durationMs, timeMs, onSeek, compact = false, highlight = null, action, interpreterLine }: {
   library: Library; durationMs: number; timeMs: number; onSeek: (ms: number) => void;
   /** Stage variant: one-line header and a chart that fills the available height. */
   compact?: boolean;
   /** Demo moment window, shaded on the chart. */
   highlight?: DemoMoment | null;
   action?: ReactNode;
+  /** Library-wide interpreter line (library_patterns.json), shown verbatim in the guide. */
+  interpreterLine?: string | null;
 }) {
+  const [guide, setGuide] = useState(false);
   const index = library.index;
   const wrap = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState<number | null>(null);
@@ -79,11 +83,10 @@ export default function ResponseStrip({ library, durationMs, timeMs, onSeek, com
       </div>
     </div>
     <div className="strip-foot">
-      <span><i className="key-band" /> Middle half of similar clips</span>
-      <span><i className="key-above" /> Above typical</span>
-      <span><i className="key-below" /> Below typical</span>
-      <span className="strip-hint">{compact ? "Not a views forecast · click to jump" : "Click to jump"}</span>
+      <span className="strip-legend">{STRIP_LEGEND}</span>
+      <button type="button" className="strip-guide-button" aria-expanded={guide} onClick={() => setGuide(value => !value)}><span aria-hidden="true">i</span> How to read this</button>
     </div>
+    {guide && <StripGuide interpreterLine={interpreterLine} onClose={() => setGuide(false)} />}
     <p className="lib-caption">TRIBE v2 prediction · average subject{reference ? ` · ${reference}` : ''}</p>
   </section>;
 }

@@ -18,9 +18,9 @@
  "label": "observed on platform",
  "caption": "SYNTHETIC caption shown verbatim.",
  "caption_null": "SYNTHETIC null-result caption shown verbatim.",
- "vs_expectation": {
-  "role": "fell_short",
-  "residual_pct_in_stratum": 0.2,
-  "plain": "SYNTHETIC: fell short of expectation."
- }
+ "tier": "bad",
+ "tier_label": "Did badly",
+ "tier_plain": "SYNTHETIC tier sentence shown verbatim.",
+ "views_pct_in_deal_platform": 12.5,
+ "n_ref_posts": 40
 }

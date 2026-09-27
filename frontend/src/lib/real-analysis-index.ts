@@ -22,10 +22,12 @@ export interface RealBundleIndexEntry {
   platform?: string;
   video_link?: string | null;
   is_lockbox?: boolean;
-  /** Local internal copy only: role in the fell-short / beat-expectations example pair. */
+  /** Legacy local field (earlier example pair); unused. */
   internal_example?: string | null;
-  /** Demo picker role ("spike" | "flat" | "fell_short" | "beat_expectations"); parsed defensively in demo.ts. */
+  /** Demo performance tier ("great" | "typical" | "bad"); parsed defensively in demo.ts. */
   demo_role?: unknown;
+  /** Demo picker deal name; parsed defensively in demo.ts. */
+  deal_label?: unknown;
   /** Demo "Play this moment" window {start_ms, end_ms, label}; parsed defensively in demo.ts. */
   demo_moment?: unknown;
 }

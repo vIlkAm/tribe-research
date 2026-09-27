@@ -149,7 +149,7 @@ export function clockTime(ms: number): string {
 
 export function percentileReadout(value: number | null, ms: number): string {
   if (value === null) return `No library comparison at ${clockTime(ms)}`;
-  return `Stronger than ${Math.round(value)}% of similar clips at ${clockTime(ms)}`;
+  return `Predicted response stronger than ${Math.round(value)}% of similar clips at ${clockTime(ms)}`;
 }
 
 /** Moment copy without a leading `m:ss–m:ss:` range (the card shows the range itself). */

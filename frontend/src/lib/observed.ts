@@ -8,9 +8,10 @@
  */
 import type { Analysis } from '../data/analysis.types.ts';
 import type { RealBundleIndex, RealBundleIndexEntry } from './real-analysis-index.ts';
+import { chooseDemoClip, clipHeading, demoClips, parseTier, TIER_LABELS, VIDEO_ID, type DemoClip, type DemoTier } from './demo.ts';
 
 export const OBSERVED_SCHEMA = 'nvi.observed.v0';
-export const EXAMPLES_SCHEMA = 'nvi.examples.v0';
+export const EXAMPLES_SCHEMAS = ['nvi.examples.v1', 'nvi.examples.v0'];
 
 type Obj = Record<string, unknown>;
 const isObj = (value: unknown): value is Obj => !!value && typeof value === 'object' && !Array.isArray(value);
@@ -18,10 +19,6 @@ const str = (value: unknown): string => typeof value === 'string' ? value.trim()
 const num = (value: unknown): number | null => typeof value === 'number' && Number.isFinite(value) ? value : null;
 const count = (value: unknown): number | null => { const n = num(value); return n === null || n < 0 ? null : n; };
 const schemaOf = (value: Obj): unknown => value.schema_version ?? value.schema;
-const VIDEO_ID = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
-
-export type ExampleRole = 'fell_short' | 'beat_expectations';
-export const ROLE_TITLES: Record<ExampleRole, string> = { fell_short: 'Fell short', beat_expectations: 'Beat expectations' };
 
 export interface Observed {
   platform: string;
@@ -37,7 +34,12 @@ export interface Observed {
   account_usual_n_posts: number | null;
   caption: string;
   caption_null: string;
-  vs_expectation: { role: ExampleRole | null; plain: string } | null;
+  /** Performance tier within this deal × platform (observed views). */
+  tier: DemoTier | null;
+  tier_label: string;
+  tier_plain: string;
+  views_pct_in_deal_platform: number | null;
+  n_ref_posts: number | null;
 }
 
 /** Lockbox status from every place it can be recorded; any positive signal wins. */
@@ -58,8 +60,8 @@ function safeLink(value: unknown): string | null {
 export function parseObserved(value: unknown, options: { lockbox: boolean }): Observed | null {
   if (options.lockbox) return null;
   if (!isObj(value) || schemaOf(value) !== OBSERVED_SCHEMA) return null;
-  const vs = isObj(value.vs_expectation) ? value.vs_expectation : null;
-  const role = vs?.role === 'fell_short' || vs?.role === 'beat_expectations' ? vs.role : null;
+  const tier = parseTier(value.tier);
+  const pct = num(value.views_pct_in_deal_platform);
   const observed: Observed = {
     platform: str(value.platform),
     video_link: safeLink(value.video_link),
@@ -70,7 +72,11 @@ export function parseObserved(value: unknown, options: { lockbox: boolean }): Ob
     account_usual_n_posts: count(value.account_usual_n_posts),
     caption: str(value.caption),
     caption_null: str(value.caption_null),
-    vs_expectation: vs && (role || str(vs.plain)) ? { role, plain: str(vs.plain) } : null,
+    tier,
+    tier_label: str(value.tier_label) || (tier ? TIER_LABELS[tier] : ''),
+    tier_plain: str(value.tier_plain),
+    views_pct_in_deal_platform: pct !== null && pct >= 0 && pct <= 100 ? pct : null,
+    n_ref_posts: count(value.n_ref_posts),
   };
   return observed.views !== null || observed.likes !== null || observed.engagement_rate_pct !== null ? observed : null;
 }
@@ -108,41 +114,48 @@ export function formatDate(value: string): string {
 // ---------------------------------------------------------------------------
 // examples.json
 
-export interface ExamplePair { fell_short: string; beat_expectations: string; same: string }
-export interface Examples { title: string; pairs: ExamplePair[]; rule: string; caveat: string; caption_null: string }
+export interface Examples { title: string; rule: string; caveat: string; caption_null: string; defaultPair: { a: string; b: string } | null }
 
+/**
+ * `examples.json`: v1 `{default_pair: {a, b}, caveat, caption_null}`; v0 (`pairs`) is
+ * read as a = beat expectations, b = fell short. The caveat is mandatory: the
+ * comparison is never shown without it.
+ */
 export function parseExamples(value: unknown): Examples | null {
-  if (!isObj(value) || schemaOf(value) !== EXAMPLES_SCHEMA) return null;
-  const pairs = (Array.isArray(value.pairs) ? value.pairs : []).flatMap(pair => {
-    if (!isObj(pair)) return [];
-    const fell = str(pair.fell_short), beat = str(pair.beat_expectations);
-    if (!VIDEO_ID.test(fell) || !VIDEO_ID.test(beat) || fell === beat) return [];
-    return [{ fell_short: fell, beat_expectations: beat, same: str(pair.same) }];
-  });
+  if (!isObj(value) || !EXAMPLES_SCHEMAS.includes(schemaOf(value) as string)) return null;
   const caveat = str(value.caveat);
-  // The caveat is mandatory: the pair must never be shown without it.
-  if (!pairs.length || !caveat) return null;
-  return { title: str(value.title), pairs, rule: str(value.rule), caveat, caption_null: str(value.caption_null) };
+  if (!caveat) return null;
+  let a = '', b = '';
+  if (isObj(value.default_pair)) { a = str(value.default_pair.a); b = str(value.default_pair.b); }
+  else if (Array.isArray(value.pairs)) {
+    const pair = value.pairs.find(isObj);
+    if (pair) { a = str(pair.beat_expectations); b = str(pair.fell_short); }
+  }
+  const defaultPair = VIDEO_ID.test(a) && VIDEO_ID.test(b) && a !== b ? { a, b } : null;
+  return { title: str(value.title), rule: str(value.rule), caveat, caption_null: str(value.caption_null), defaultPair };
 }
 
-export interface CompareColumn { role: ExampleRole; title: string; entry: RealBundleIndexEntry }
-export interface CompareModel { title: string; caveat: string; same: string; rule: string; caption_null: string; columns: [CompareColumn, CompareColumn] }
+export type CompareSlot = 'a' | 'b';
+export interface CompareColumn { slot: CompareSlot; tier: DemoTier | null; title: string; clip: DemoClip; entry: RealBundleIndexEntry }
+export interface CompareModel { title: string; caveat: string; rule: string; caption_null: string; columns: [CompareColumn, CompareColumn] }
 
-/** First pair whose two clips are both in the index; fell short on the left. */
-export function compareModel(examples: Examples | null, index: RealBundleIndex | null): CompareModel | null {
+/**
+ * The two clips to compare: the requested ones when they are in the index, else the
+ * default pair, else the first great and first bad clip. Never the same clip twice.
+ */
+export function compareModel(examples: Examples | null, index: RealBundleIndex | null, requested: { a?: string | null; b?: string | null } = {}): CompareModel | null {
   if (!examples || !index) return null;
-  for (const pair of examples.pairs) {
-    const fell = index.bundles.find(bundle => bundle.video_id === pair.fell_short);
-    const beat = index.bundles.find(bundle => bundle.video_id === pair.beat_expectations);
-    if (!fell || !beat) continue;
-    return {
-      title: examples.title || 'A clip that fell short vs one that beat expectations',
-      caveat: examples.caveat, same: pair.same, rule: examples.rule, caption_null: examples.caption_null,
-      columns: [
-        { role: 'fell_short', title: ROLE_TITLES.fell_short, entry: fell },
-        { role: 'beat_expectations', title: ROLE_TITLES.beat_expectations, entry: beat },
-      ],
-    };
-  }
-  return null;
+  const clips = demoClips(index);
+  if (clips.length < 2) return null;
+  const find = (id?: string | null) => id ? clips.find(clip => clip.video_id === id) ?? null : null;
+  const a = find(requested.a) ?? find(examples.defaultPair?.a) ?? clips.find(clip => clip.tier === 'great') ?? chooseDemoClip(clips, null)!;
+  const other = clips.filter(clip => clip !== a);
+  const pick = (clip: DemoClip | null) => clip && clip !== a ? clip : null;
+  const b = pick(find(requested.b)) ?? pick(find(examples.defaultPair?.b)) ?? other.find(clip => clip.tier === 'bad') ?? other[0];
+  const column = (slot: CompareSlot, clip: DemoClip): CompareColumn => ({ slot, tier: clip.tier, title: clipHeading(clip), clip, entry: clip.entry });
+  return {
+    title: examples.title || 'Compare two clips',
+    caveat: examples.caveat, rule: examples.rule, caption_null: examples.caption_null,
+    columns: [column('a', a), column('b', b)],
+  };
 }

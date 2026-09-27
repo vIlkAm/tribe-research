@@ -58,7 +58,7 @@ test('playhead readout uses the second under the playhead', () => {
   assert.equal(percentileAt(index, 12500), null);
   assert.equal(percentileAt(index, 999_999), index.percentile[index.percentile.length - 1]);
   assert.equal(percentileAt(index, -1), null);
-  assert.equal(percentileReadout(78.4, 7200), 'Stronger than 78% of similar clips at 0:07');
+  assert.equal(percentileReadout(78.4, 7200), 'Predicted response stronger than 78% of similar clips at 0:07');
   assert.equal(percentileReadout(null, 65000), 'No library comparison at 1:05');
   assert.equal(clockTime(0), '0:00');
   assert.equal(momentText('0:25–0:28: predicted response dips.'), 'Predicted response dips.');

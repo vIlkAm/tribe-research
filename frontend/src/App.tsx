@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUpRight, AudioLines, Box, Brain, Columns2, ChevronDown, CircleHelp, Crosshair, Expand, ExternalLink, Focus, FolderOpen, Info, Layers3, LoaderCircle, Pause, Play, Repeat2, RotateCcw, Rotate3D, Scan, SkipBack, Sparkles, Upload, X } from 'lucide-react';
+import { ArrowUpRight, AudioLines, BarChart3, Box, Brain, Columns2, ChevronDown, CircleHelp, Crosshair, Expand, ExternalLink, Focus, FolderOpen, Info, Layers3, LoaderCircle, Pause, Play, Repeat2, RotateCcw, Rotate3D, Scan, SkipBack, Sparkles, Upload, X } from 'lucide-react';
 import type { Analysis, Channel, Moment } from './data/analysis.types';
 import { assertAnalysis, BUNDLE_PATH, formatTime, isGap, sampleAt, signalText, stepPath } from './lib/analysis';
 import BrainAtlas from './components/BrainAtlas';
@@ -18,7 +18,10 @@ import StandoutMoments from './components/StandoutMoments';
 import LearnedView from './components/LearnedView';
 import CompareView from './components/CompareView';
 import ObservedPanel from './components/ObservedPanel';
-import { compareModel, parseExamples, parseObserved, siblingUrl, type Examples, type Observed } from './lib/observed';
+import { parseExamples, parseObserved, siblingUrl, type Examples, type Observed } from './lib/observed';
+import { parsePatterns, type Patterns } from './lib/patterns';
+import LibraryView from './components/LibraryView';
+import { ObservedRow } from './components/observed-row';
 import { fetchOptionalJson } from './lib/real-bundle';
 import { parseRealBundleIndex, type RealBundleIndex } from './lib/real-analysis-index';
 import { parseLearned, parseLibrary, verdictLabel, type Learned, type Library, type LibraryMoment } from './lib/library';
@@ -63,11 +66,11 @@ function MethodDialog({ open, onClose, analysis }: { open: boolean; onClose: () 
 
 interface WorkspaceProps {
   analysis: Analysis; localBundle: LocalBundle | null; onOpen: () => void; onReset: () => void; onComparison: () => void; onAnalyze: () => void;
-  learnedAvailable: boolean; onLearned: () => void; compareAvailable: boolean; onCompare: () => void;
+  learnedAvailable: boolean; onLearned: () => void; compareAvailable: boolean; onCompare: () => void; libraryAvailable: boolean; onLibrary: () => void; interpreterLine?: string;
   clips: DemoClip[]; currentClip: string | null; clipBusy: string | null; onChooseClip: (clip: DemoClip) => void; demoMoment: DemoMoment | null;
 }
 
-function Workspace({ analysis, localBundle, onOpen, onReset, onComparison, onAnalyze, learnedAvailable, onLearned, compareAvailable, onCompare, clips, currentClip, clipBusy, onChooseClip, demoMoment }: WorkspaceProps) {
+function Workspace({ analysis, localBundle, onOpen, onReset, onComparison, onAnalyze, learnedAvailable, onLearned, compareAvailable, onCompare, libraryAvailable, onLibrary, interpreterLine, clips, currentClip, clipBusy, onChooseClip, demoMoment }: WorkspaceProps) {
   const demoCompatible = supportsBrain3d(analysis);
   const [timeMs, setTimeMs] = useState(localBundle ? 0 : Math.min(4200, analysis.duration_ms - 1));
   const [playing, setPlaying] = useState(() => !matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -245,6 +248,7 @@ function Workspace({ analysis, localBundle, onOpen, onReset, onComparison, onAna
     <div className="demo-topbar-actions">
       {learnedAvailable && <a className="topbar-button" href="?view=learned" onClick={event => { event.preventDefault(); onLearned(); }}><Brain size={14} /> Learned</a>}
       {compareAvailable && <a className="topbar-button" href="?view=compare" onClick={event => { event.preventDefault(); onCompare(); }}><Columns2 size={14} /> Compare</a>}
+      {libraryAvailable && <a className="topbar-button" href="?view=library" onClick={event => { event.preventDefault(); onLibrary(); }}><BarChart3 size={14} /> Library</a>}
       <span className="research-chip" title="TRIBE v2 is CC-BY-NC: research use only">Research preview</span>
       <button type="button" className="topbar-icon" onClick={onOpen} aria-label="Open analysis" title="Open analysis"><FolderOpen size={15} /></button>
       <button type="button" className="topbar-button is-secondary" onClick={onAnalyze}><Upload size={14} /> Upload</button>
@@ -275,7 +279,8 @@ function Workspace({ analysis, localBundle, onOpen, onReset, onComparison, onAna
     <DemoShell topbar={topbar}
       video={<StageVideo analysis={analysis} player={clip} timeMs={timeMs} playing={playing} onTogglePlay={togglePlay} onSeek={seek} footer={!library?.index ? momentButton : undefined} />}
       brain={brainPanel}
-      strip={library?.index ? <ResponseStrip compact library={library} durationMs={analysis.duration_ms} timeMs={timeMs} onSeek={seek} highlight={demoMoment} action={momentButton} /> : undefined}
+      metrics={observed ? <ObservedRow observed={observed} /> : undefined}
+      strip={library?.index ? <ResponseStrip compact library={library} durationMs={analysis.duration_ms} timeMs={timeMs} onSeek={seek} highlight={demoMoment} action={momentButton} interpreterLine={interpreterLine} /> : undefined}
       below={below} footer={footer} />
     <MethodDialog analysis={analysis} open={methodOpen} onClose={() => setMethodOpen(false)} />
   </>;
@@ -289,8 +294,10 @@ export default function App() {
   const [realIndex, setRealIndex] = useState<RealBundleIndex | null>(null);
   const [examples, setExamples] = useState<Examples | null>(null);
   const [examplesChecked, setExamplesChecked] = useState(!realIndexUrl);
-  const compare = useMemo(() => compareModel(examples, realIndex), [examples, realIndex]);
   const clips = useMemo(() => demoClips(realIndex), [realIndex]);
+  const compareAvailable = !!examples && !!realIndex && clips.length >= 2;
+  const [patterns, setPatterns] = useState<Patterns | null>(null);
+  const [patternsChecked, setPatternsChecked] = useState(false);
   const [clipBusy, setClipBusy] = useState<string | null>(null);
   const [demoReady, setDemoReady] = useState(!realIndexUrl);
   const clipOperation = useRef(0);
@@ -325,6 +332,14 @@ export default function App() {
     return () => controller.abort();
   }, []);
   useEffect(() => {
+    // Optional internal library-wide patterns served next to index.html; absent → no button.
+    const controller = new AbortController();
+    void fetchOptionalJson(assetUrl('library_patterns.json'), controller.signal)
+      .then(value => { if (!controller.signal.aborted) setPatterns(parsePatterns(value)); })
+      .finally(() => { if (!controller.signal.aborted) setPatternsChecked(true); });
+    return () => controller.abort();
+  }, []);
+  useEffect(() => {
     // Optional internal example pair next to the approved index; absent → no button.
     if (!realIndexUrl) return;
     const controller = new AbortController();
@@ -338,7 +353,7 @@ export default function App() {
       .finally(() => { if (!controller.signal.aborted) setExamplesChecked(true); });
     return () => controller.abort();
   }, [realIndexUrl]);
-  function showView(next: 'learned' | 'compare' | null) {
+  function showView(next: 'learned' | 'compare' | 'library' | null) {
     const url = new URL(window.location.href);
     if (next) url.searchParams.set('view', next); else url.searchParams.delete('view');
     history.replaceState(null, '', url);
@@ -401,13 +416,18 @@ export default function App() {
   const intake = <AnalysisIntake open={intakeOpen} onClose={() => setIntakeOpen(false)} onOpen={openBundle} onOpenExport={() => setPickerOpen(true)} />;
   if (learnedView) return learned || learnedChecked ? <LearnedView learned={learned} onBack={() => showLearned(false)} /> : <div className="loading-screen"><LoaderCircle className="spin" /><p>Loading the research summary</p></div>;
   if (view === 'compare') {
-    if (compare && realIndexUrl) return <CompareView indexUrl={realIndexUrl} model={compare} onBack={() => showView(null)} onLearned={() => showView('learned')} />;
+    if (compareAvailable && realIndexUrl) return <CompareView indexUrl={realIndexUrl} examples={examples!} index={realIndex!} onBack={() => showView(null)} onLearned={() => showView('learned')} />;
     if (!examplesChecked) return <div className="loading-screen"><LoaderCircle className="spin" /><p>Loading the example pair</p></div>;
     return <div className="learned-page"><header className="learned-top"><button type="button" className="learned-back" onClick={() => showView(null)}>← Back to the analysis</button><span className="internal-badge">Internal research view</span></header><main className="learned-main"><p className="learned-empty">The example pair is not available on this server.</p></main></div>;
+  }
+  if (view === 'library') {
+    if (patterns) return <LibraryView indexUrl={realIndexUrl} clips={clips} patterns={patterns} onBack={() => showView(null)} onOpenClip={clip => { showView(null); void openDemoClip(clip); }} />;
+    if (!patternsChecked || !examplesChecked) return <div className="loading-screen"><LoaderCircle className="spin" /><p>Loading the library view</p></div>;
+    return <div className="learned-page"><header className="learned-top"><button type="button" className="learned-back" onClick={() => showView(null)}>← Back to the analysis</button><span className="internal-badge">Internal research view · exploratory</span></header><main className="learned-main"><p className="learned-empty">The library view is not available on this server.</p></main></div>;
   }
   if (comparison) return <Suspense fallback={<div className="loading-screen"><LoaderCircle className="spin" /><p>Preparing the comparison</p></div>}><ComparisonDemo onBack={() => showComparison(false)} /></Suspense>;
   if (!demoReady && !localBundle) return <div className="loading-screen"><Brand /><LoaderCircle size={24} className="spin" /><p>Opening the demo clip</p></div>;
   if (!analysis) return <><div className="loading-screen"><Brand />{error ? <><h1>Couldn’t load the analysis.</h1><p>{error}</p><button className="retry-button" onClick={() => setAttempt(v => v + 1)}><RotateCcw size={17} /> Try again</button><button className="open-analysis-button" onClick={openPicker}><FolderOpen size={15} /> Open analysis</button></> : <><LoaderCircle size={24} className="spin" /><p>Preparing your research workspace</p></>}</div>{picker}{intake}</>;
   if (analysis.status !== 'complete') return <><div className="loading-screen"><Brand /><h1>{analysis.status === 'failed' ? 'Analysis failed.' : analysis.status === 'queued' ? 'Analysis queued.' : 'Analysis is processing.'}</h1><p>{analysis.analysis_id} · {localBundle ? 'Open a completed export when it is available.' : 'Results appear when a completed bundle is available.'}</p>{analysis.synthetic && <span className="synthetic-tag">SYNTHETIC SAMPLE</span>}{analysis.quality.warnings.map((warning, i) => <p key={i}>{warning}</p>)}<div className="analysis-state-actions"><button className="open-analysis-button" onClick={openPicker}><FolderOpen size={15} /> Open analysis</button>{localBundle ? <button className="retry-button" onClick={reset}>Back to demo</button> : <button className="retry-button" onClick={() => { setSample(null); setAttempt(v => v + 1); }}>Check again</button>}</div></div>{picker}{intake}</>;
-  return <><Workspace key={revision} analysis={analysis} localBundle={localBundle} onOpen={openPicker} onReset={reset} onComparison={() => showComparison(true)} onAnalyze={() => setIntakeOpen(true)} learnedAvailable={!!learned} onLearned={() => showLearned(true)} compareAvailable={!!compare} onCompare={() => showView('compare')} clips={clips} currentClip={currentClip?.video_id ?? null} clipBusy={clipBusy} onChooseClip={clip => void openDemoClip(clip)} demoMoment={demoMoment} />{picker}{intake}</>;
+  return <><Workspace key={revision} analysis={analysis} localBundle={localBundle} onOpen={openPicker} onReset={reset} onComparison={() => showComparison(true)} onAnalyze={() => setIntakeOpen(true)} learnedAvailable={!!learned} onLearned={() => showLearned(true)} compareAvailable={compareAvailable} onCompare={() => showView('compare')} libraryAvailable={!!patterns} onLibrary={() => showView('library')} interpreterLine={patterns?.interpreter_line || undefined} clips={clips} currentClip={currentClip?.video_id ?? null} clipBusy={clipBusy} onChooseClip={clip => void openDemoClip(clip)} demoMoment={demoMoment} />{picker}{intake}</>;
 }

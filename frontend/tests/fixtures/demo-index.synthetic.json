@@ -1,19 +1,23 @@
 {
   "schema_version": "nvi.analysis.v0.2",
   "synthetic": false,
-  "count": 6,
-  "_note": "SYNTHETIC test fixture: made-up IDs and timings, no real clips.",
+  "count": 8,
+  "_note": "SYNTHETIC test fixture: made-up IDs, deals and timings, no real clips.",
   "bundles": [
-    { "video_id": "synthetic-spike", "analysis_id": "a-spike", "path": "synthetic-spike/analysis.json", "duration_ms": 20000, "status": "complete", "synthetic": false, "n_channels": 7, "n_moments": 2, "has_words": true, "n_warnings": 0,
-      "demo_role": "spike", "demo_moment": { "start_ms": 3000, "end_ms": 7000, "label": "SYNTHETIC spike at 0:03" } },
-    { "video_id": "synthetic-flat", "analysis_id": "a-flat", "path": "synthetic-flat/analysis.json", "duration_ms": 15000, "status": "complete", "synthetic": false, "n_channels": 7, "n_moments": 2, "has_words": true, "n_warnings": 0,
-      "demo_role": "flat", "demo_moment": { "start_ms": 12000, "end_ms": 99000 } },
-    { "video_id": "synthetic-beat", "analysis_id": "a-beat", "path": "synthetic-beat/analysis.json", "duration_ms": 18000, "status": "complete", "synthetic": false, "n_channels": 7, "n_moments": 2, "has_words": true, "n_warnings": 0,
-      "demo_role": "beat_expectations", "internal_example": "beat_expectations" },
-    { "video_id": "synthetic-fell", "analysis_id": "a-fell", "path": "synthetic-fell/analysis.json", "duration_ms": 18000, "status": "complete", "synthetic": false, "n_channels": 7, "n_moments": 2, "has_words": true, "n_warnings": 0,
-      "demo_role": "fell_short", "internal_example": "fell_short", "demo_moment": { "start_ms": 5000, "end_ms": 4000, "label": "backwards" } },
-    { "video_id": "synthetic-plain", "analysis_id": "a-plain", "path": "synthetic-plain/analysis.json", "duration_ms": 10000, "status": "complete", "synthetic": false, "n_channels": 7, "n_moments": 2, "has_words": true, "n_warnings": 0,
-      "demo_role": "viral!!", "demo_moment": "0:03" },
-    { "video_id": "synthetic-spike", "analysis_id": "a-dup", "path": "synthetic-dup/analysis.json", "duration_ms": 10000, "status": "complete", "synthetic": false, "n_channels": 7, "n_moments": 2, "has_words": true, "n_warnings": 0 }
+    { "video_id": "synthetic-great-1", "analysis_id": "a-g1", "path": "synthetic-great-1/analysis.json", "duration_ms": 21000, "status": "complete", "synthetic": false, "n_channels": 7, "n_moments": 2, "has_words": true, "n_warnings": 0,
+      "demo_role": "great", "deal_label": "Deal Alpha", "platform": "youtube", "demo_moment": { "start_ms": 3000, "end_ms": 7000, "label": "SYNTHETIC moment at 0:03" } },
+    { "video_id": "synthetic-great-2", "analysis_id": "a-g2", "path": "synthetic-great-2/analysis.json", "duration_ms": 15000, "status": "complete", "synthetic": false, "n_channels": 7, "n_moments": 2, "has_words": true, "n_warnings": 0,
+      "demo_role": "great", "deal_label": "Deal Beta", "platform": "tiktok", "demo_moment": { "start_ms": 12000, "end_ms": 99000 } },
+    { "video_id": "synthetic-typical-1", "analysis_id": "a-t1", "path": "synthetic-typical-1/analysis.json", "duration_ms": 65000, "status": "complete", "synthetic": false, "n_channels": 7, "n_moments": 2, "has_words": true, "n_warnings": 0,
+      "demo_role": "typical", "deal_label": "Deal Gamma", "platform": "instagram" },
+    { "video_id": "synthetic-bad-1", "analysis_id": "a-b1", "path": "synthetic-bad-1/analysis.json", "duration_ms": 18000, "status": "complete", "synthetic": false, "n_channels": 7, "n_moments": 2, "has_words": true, "n_warnings": 0,
+      "demo_role": "bad", "deal_label": "Deal Alpha", "platform": "tiktok", "demo_moment": { "start_ms": 5000, "end_ms": 4000, "label": "backwards" } },
+    { "video_id": "synthetic-bad-2", "analysis_id": "a-b2", "path": "synthetic-bad-2/analysis.json", "duration_ms": 18000, "status": "complete", "synthetic": false, "n_channels": 7, "n_moments": 2, "has_words": true, "n_warnings": 0,
+      "demo_role": "bad", "deal_label": "Deal Delta", "platform": "youtube", "is_lockbox": true },
+    { "video_id": "synthetic-legacy", "analysis_id": "a-legacy", "path": "synthetic-legacy/analysis.json", "duration_ms": 10000, "status": "complete", "synthetic": false, "n_channels": 7, "n_moments": 2, "has_words": true, "n_warnings": 0,
+      "demo_role": "spike", "internal_example": "beat_expectations", "demo_moment": "0:03" },
+    { "video_id": "synthetic-typical-2", "analysis_id": "a-t2", "path": "synthetic-typical-2/analysis.json", "duration_ms": 9400, "status": "complete", "synthetic": false, "n_channels": 7, "n_moments": 2, "has_words": true, "n_warnings": 0,
+      "demo_role": "typical", "deal_label": 42, "platform": "youtube" },
+    { "video_id": "synthetic-great-1", "analysis_id": "a-dup", "path": "synthetic-dup/analysis.json", "duration_ms": 10000, "status": "complete", "synthetic": false, "n_channels": 7, "n_moments": 2, "has_words": true, "n_warnings": 0 }
   ]
 }

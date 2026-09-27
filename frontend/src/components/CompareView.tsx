@@ -1,8 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { LoaderCircle } from 'lucide-react';
 import type { LocalBundle } from '../lib/local-bundle';
-import type { CompareColumn, CompareModel, Observed } from '../lib/observed';
-import { formatMultiplier, parseObserved } from '../lib/observed';
+import type { CompareColumn, CompareModel, CompareSlot, Examples, Observed } from '../lib/observed';
+import { compareModel, parseObserved } from '../lib/observed';
+import { clipParam, demoClips, groupDemoClips, type DemoGroup } from '../lib/demo';
+import type { RealBundleIndex } from '../lib/real-analysis-index';
+import { ObservedRow } from './observed-row';
 import { parseLibrary, type Library } from '../lib/library';
 import { fetchOptionalJson, openRealBundle } from '../lib/real-bundle';
 import { probeSourceClip, SOURCE_CLIP_LABEL } from '../lib/source-clip';
@@ -69,23 +72,39 @@ function Stage({ column }: { column: ColumnState }) {
   </>;
 }
 
-/** Internal side-by-side of one example pair (fell short vs beat expectations). */
-export default function CompareView({ indexUrl, model, onBack, onLearned }: { indexUrl: string; model: CompareModel; onBack: () => void; onLearned: () => void }) {
+function ComparePair({ indexUrl, model, groups, onChoose, onBack, onLearned }: { indexUrl: string; model: CompareModel; groups: DemoGroup[]; onChoose: (slot: CompareSlot, videoId: string) => void; onBack: () => void; onLearned: () => void }) {
   const first = useCompareColumn(indexUrl, model.columns[0]);
   const second = useCompareColumn(indexUrl, model.columns[1]);
-  const byRole = (column: CompareColumn) => column.role === model.columns[0].role ? first : second;
-  return <CompareFrame model={model} onBack={onBack} onLearned={onLearned}
+  const bySlot = (column: CompareColumn) => column.slot === 'a' ? first : second;
+  return <CompareFrame model={model} groups={groups} onChoose={onChoose} onBack={onBack} onLearned={onLearned}
     renderHeader={column => {
-      const observed = byRole(column).state?.observed;
-      return observed?.views_vs_account_usual_x != null ? <span className="compare-observed-chip">Views vs this account’s recent usual: <strong>{formatMultiplier(observed.views_vs_account_usual_x)}</strong></span> : null;
+      const observed = bySlot(column).state?.observed;
+      return observed ? <ObservedRow observed={observed} /> : null;
     }}
-    renderStage={column => <Stage column={byRole(column)} />}
+    renderStage={column => <Stage column={bySlot(column)} />}
     renderBelow={column => {
-      const { state, seek } = byRole(column);
+      const { state, seek } = bySlot(column);
       if (!state) return null;
       return <>
         {state.library && <ClipScorecard library={state.library} onSeek={seek} showCaveat={false} />}
         {state.observed && <ObservedPanel observed={state.observed} />}
       </>;
     }} />;
+}
+
+/** Internal side-by-side of two clips the viewer picks (default: the example pair). */
+export default function CompareView({ indexUrl, examples, index, onBack, onLearned }: { indexUrl: string; examples: Examples; index: RealBundleIndex; onBack: () => void; onLearned: () => void }) {
+  const [requested, setRequested] = useState(() => ({ a: clipParam(window.location.search, 'a'), b: clipParam(window.location.search, 'b') }));
+  const model = useMemo(() => compareModel(examples, index, requested), [examples, index, requested]);
+  const groups = useMemo(() => groupDemoClips(demoClips(index)), [index]);
+  if (!model) return null;
+  function choose(slot: CompareSlot, videoId: string) {
+    const next = { a: model!.columns[0].clip.video_id, b: model!.columns[1].clip.video_id, [slot]: videoId };
+    const url = new URL(window.location.href);
+    url.searchParams.set('a', next.a); url.searchParams.set('b', next.b);
+    history.replaceState(null, '', url);
+    setRequested(next);
+  }
+  // Remount per pair so each column starts with a fresh clip player.
+  return <ComparePair key={`${model.columns[0].clip.video_id}|${model.columns[1].clip.video_id}`} indexUrl={indexUrl} model={model} groups={groups} onChoose={choose} onBack={onBack} onLearned={onLearned} />;
 }
