@@ -5,7 +5,7 @@ from a person or an agent. The newest update is at the top. Details live in the
 linked docs; this page only says where things stand. Agents on either side: when
 you change the state of something below, update this file in the same commit.
 
-_Last updated: 2026-09-27 00:40 UTC. All times UTC._
+_Last updated: 2026-09-27 00:55 UTC. All times UTC._
 
 ## One-paragraph summary
 
@@ -32,7 +32,7 @@ End product, gaps to a business and the demo plan: [`VISION_AND_DEMO.md`](VISION
 | 3. Features per clip (`tools/build_features.py`) | CPU | ✅ Code done and tested |
 | 4. Training + honest evaluation (`tools/fit_models.py`) | CPU, minutes | ✅ Stage 1 fit once on the full study set: **no-GO**, product state `not_trained` ([`STAGE1_RESULT.md`](STAGE1_RESULT.md)) |
 | 5. Save the model, score one new clip (`tools/predict.py`) | CPU, milliseconds | ✅ `model-prelim-v0` saved and released privately (weights, featurizer, sha256 manifest); served only with `--allow-preliminary` ([`MODEL.md`](MODEL.md)) |
-| 6. Bundles for the frontend (`tools/handoff.py`) | CPU | ✅ [`data-frontend40-v2`](https://github.com/vIlkAm/tribe-research/releases/tag/data-frontend40-v2): the same 40 bundles plus `performance.json` (preliminary) and per-clip `platform`/`video_link`/`is_lockbox` in `index.json`. ✅ 40 real bf16 bundles (the wiring set: shortest and longest clips, a >60 s clip, a near-silent one) in the private release [`data-frontend40`](https://github.com/vIlkAm/tribe-research/releases/tag/data-frontend40), 68 MB, no footage. Pilot bundles too |
+| 6. Bundles for the frontend (`tools/handoff.py`) | CPU | ✅ **Demo:** [`data-demo-stage1-v1`](https://github.com/vIlkAm/tribe-research/releases/tag/data-demo-stage1-v1): hero + two fallbacks from three deals, `not_trained` card, no numbers. ✅ [`data-frontend40-v2`](https://github.com/vIlkAm/tribe-research/releases/tag/data-frontend40-v2): the same 40 bundles plus `performance.json` (preliminary) and per-clip `platform`/`video_link`/`is_lockbox` in `index.json`. ✅ 40 real bf16 bundles (the wiring set: shortest and longest clips, a >60 s clip, a near-silent one) in the private release [`data-frontend40`](https://github.com/vIlkAm/tribe-research/releases/tag/data-frontend40), 68 MB, no footage. Pilot bundles too |
 | 7. Frontend | Browser | See "For the frontend" below |
 
 ## Numbers that matter
@@ -102,7 +102,7 @@ End product, gaps to a business and the demo plan: [`VISION_AND_DEMO.md`](VISION
 
 ## Log
 
-- **2026-09-27 00:40 UTC:** Study set complete (1,486 of 1,500 ok; 14 excluded, 0.9 %). Stage 1 ran once: BE − A +0.009 [−0.009, +0.024] and account-scheme BE − A −0.012, so **no-GO** and the card stays `not_trained`. BE − E is a null (+0.0004). Secondary: the extractor embeddings predict reach over metadata (E − A +0.073 [+0.025, +0.117]); the brain adds nothing on top. Full write-up: [`STAGE1_RESULT.md`](STAGE1_RESULT.md). Next: `data-demo-stage1-v1` (issue #2).
+- **2026-09-27 00:40 UTC:** Study set complete (1,486 of 1,500 ok; 14 excluded, 0.9 %). Stage 1 ran once: BE − A +0.009 [−0.009, +0.024] and account-scheme BE − A −0.012, so **no-GO** and the card stays `not_trained`. BE − E is a null (+0.0004). Secondary: the extractor embeddings predict reach over metadata (E − A +0.073 [+0.025, +0.117]); the brain adds nothing on top. Full write-up: [`STAGE1_RESULT.md`](STAGE1_RESULT.md). Demo data: [`data-demo-stage1-v1`](https://github.com/vIlkAm/tribe-research/releases/tag/data-demo-stage1-v1) (3 bundles, `not_trained`, no internal IDs; issue #2).
 - **2026-09-27 00:20 UTC (frontend handoff):** The complete self-hostable
   ViralBrain frontend is available under `frontend/` on the frontend handoff
   branch/PR. It includes source, package lock, tests, static assets and

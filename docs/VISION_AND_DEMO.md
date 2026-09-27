@@ -63,8 +63,8 @@ base. Live only if a warm pod is rehearsed, and cut it in the edit.
    "TRIBE v2 prediction · average subject".
 3. Brain map hover with region tooltip (within-clip z).
 4. Moments: one observation and one dashed "untested edit hypothesis".
-5. Outcome card in its honest state (`not_trained`, or `preliminary`/`research_preview`
-   with its caption).
+5. Outcome card in its honest state: `not_trained` (stage 1 was a no-GO), with the
+   release's reason sentence. Demo data: `data-demo-stage1-v1`.
 6. Second clip from another deal to show context switching. Never compare z across
    clips.
 7. Closing card: "Research preview · non-commercial (TRIBE CC-BY-NC) · predictions,
@@ -74,8 +74,9 @@ To make it land:
 
 - **Hero clips from the study set**, not the 40 wiring clips: English, clear speech,
   in neither lockbox file.
-- **Best moment:** a predicted-vs-actual slide on train clips, out-of-fold predictions
-  only, never on either lockbox, stamped as a preview.
+- ~~Predicted-vs-actual slide~~: dropped. Stage 1 was a no-GO
+  ([`STAGE1_RESULT.md`](STAGE1_RESULT.md)), so the card is `not_trained` and the demo
+  shows no performance numbers. The honest test result is itself the story.
 - **Keep every required label on screen** ("Illustrative", "Untested hypothesis",
   "Research preview", "Preliminary — not validated"). They protect the claim and read
   as rigour.
