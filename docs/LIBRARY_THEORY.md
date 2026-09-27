@@ -75,3 +75,25 @@ share of low seconds, ending). No features are added.
 
 The outcomes, features, statistic, split, thresholds and wording rules above. If a result looks wrong, the fix
 is a bug fix, dated here with its reason, not a new rule.
+
+## Changes after the run
+
+- **2026-09-27, wording bug fix:** the interpreter sentence gave account size 43% and video 69%, which adds to more
+  than 100% without the negative overlap (-11%). It now states which part is larger and shows all three shares. No
+  number, rule or verdict changed.
+
+## Result (2026-09-27, run once: `tools/library_theory.py`, `results/library/theory.json`)
+
+- 1,143 library clips from 182 accounts. Discovery half: 699 clips, 103 accounts. Confirmation half: 444 clips,
+  81 accounts.
+- **Views:** within a deal x platform, views vary more from video to video (within-account share 69%) than from
+  account to account (43%; overlap -11%, so big accounts see smaller jumps).
+- **Held up on new accounts: one pair.** Longer clips have higher engagement per view within the same account:
+  r = +0.28 on discovery, +0.27 [+0.15, +0.36] on confirmation, +0.28 on the full library (small). This is not a
+  cause: longer clips also tend to get fewer views (-0.11 within account), and rates per view rise as views fall.
+- **Candidates that did not hold:** length vs total views (-0.15 on discovery, -0.03 on confirmation) and the
+  strongest 3 s vs engagement (+0.14, then +0.01).
+- **No brain-line summary held up** for account size, video vs account or engagement. On the full library (for
+  context only, not corrected for 48 tests) the share of seconds above the typical line goes with views
+  (r = +0.14) and with video vs account (+0.11), and the share of low seconds goes the other way (-0.14, -0.12).
+  These are very small to small, not confirmed on held-out accounts, and in line with stage 1's no-GO.
