@@ -1,0 +1,19 @@
+{
+  "schema_version": "nvi.analysis.v0.2",
+  "synthetic": false,
+  "count": 6,
+  "_note": "SYNTHETIC test fixture: made-up IDs and timings, no real clips.",
+  "bundles": [
+    { "video_id": "synthetic-spike", "analysis_id": "a-spike", "path": "synthetic-spike/analysis.json", "duration_ms": 20000, "status": "complete", "synthetic": false, "n_channels": 7, "n_moments": 2, "has_words": true, "n_warnings": 0,
+      "demo_role": "spike", "demo_moment": { "start_ms": 3000, "end_ms": 7000, "label": "SYNTHETIC spike at 0:03" } },
+    { "video_id": "synthetic-flat", "analysis_id": "a-flat", "path": "synthetic-flat/analysis.json", "duration_ms": 15000, "status": "complete", "synthetic": false, "n_channels": 7, "n_moments": 2, "has_words": true, "n_warnings": 0,
+      "demo_role": "flat", "demo_moment": { "start_ms": 12000, "end_ms": 99000 } },
+    { "video_id": "synthetic-beat", "analysis_id": "a-beat", "path": "synthetic-beat/analysis.json", "duration_ms": 18000, "status": "complete", "synthetic": false, "n_channels": 7, "n_moments": 2, "has_words": true, "n_warnings": 0,
+      "demo_role": "beat_expectations", "internal_example": "beat_expectations" },
+    { "video_id": "synthetic-fell", "analysis_id": "a-fell", "path": "synthetic-fell/analysis.json", "duration_ms": 18000, "status": "complete", "synthetic": false, "n_channels": 7, "n_moments": 2, "has_words": true, "n_warnings": 0,
+      "demo_role": "fell_short", "internal_example": "fell_short", "demo_moment": { "start_ms": 5000, "end_ms": 4000, "label": "backwards" } },
+    { "video_id": "synthetic-plain", "analysis_id": "a-plain", "path": "synthetic-plain/analysis.json", "duration_ms": 10000, "status": "complete", "synthetic": false, "n_channels": 7, "n_moments": 2, "has_words": true, "n_warnings": 0,
+      "demo_role": "viral!!", "demo_moment": "0:03" },
+    { "video_id": "synthetic-spike", "analysis_id": "a-dup", "path": "synthetic-dup/analysis.json", "duration_ms": 10000, "status": "complete", "synthetic": false, "n_channels": 7, "n_moments": 2, "has_words": true, "n_warnings": 0 }
+  ]
+}

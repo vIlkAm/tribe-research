@@ -89,7 +89,8 @@ test('compare view renders both columns and the caveat', () => {
   const model = compareModel(parseExamples(examples), index)!;
   const html = renderToStaticMarkup(createElement(CompareFrame, {
     model, onBack: () => undefined, onLearned: () => undefined,
-    renderColumn: column => createElement('p', { className: 'column-body' }, `body:${column.entry.video_id}`),
+    renderStage: column => createElement('p', { className: 'column-body' }, `body:${column.entry.video_id}`),
+    renderBelow: column => createElement('p', { className: 'column-below' }, `below:${column.entry.video_id}`),
   }));
   assert.match(html, /SYNTHETIC caveat: one illustrative pair, not evidence\./);
   assert.match(html, /Internal research view/);
@@ -98,5 +99,9 @@ test('compare view renders both columns and the caveat', () => {
   assert.ok(fell > 0 && beat > fell, 'fell short column comes first');
   assert.ok(html.indexOf('body:synthetic-fell') > fell && html.indexOf('body:synthetic-beat') > beat);
   assert.equal((html.match(/class="compare-column /g) ?? []).length, 2);
+  // First screen: caveat and both stages; details only below it.
+  const screenEnd = html.indexOf('class="compare-below"');
+  assert.ok(html.indexOf('SYNTHETIC caveat') < screenEnd && html.indexOf('body:synthetic-beat') < screenEnd);
+  assert.ok(html.indexOf('below:synthetic-fell') > screenEnd && html.indexOf('below:synthetic-beat') > screenEnd);
   assert.match(html, /Research preview · non-commercial \(TRIBE CC-BY-NC\)/);
 });

@@ -1,0 +1,124 @@
+/* One-screen desktop demo layout: 48 px top bar + a stage exactly one viewport tall.
+   The stage sizes are enforced (fixed height, min-height:0, overflow hidden), never
+   left to content. Everything else sits below the fold. Keep --demo-topbar equal to
+   TOPBAR_PX in demo-layout.ts. */
+:root{--demo-topbar:48px;--stage-pad:12px;--stage-gap:12px}
+
+.demo-app{min-height:100vh}
+
+/* Top bar */
+.demo-topbar{height:var(--demo-topbar);box-sizing:border-box;display:flex;align-items:center;gap:14px;padding:0 16px;border-bottom:1px solid #222833;background:#0b0f15;overflow:hidden;white-space:nowrap}
+.demo-topbar .brand{font-size:17px;gap:7px;letter-spacing:-.5px;flex:none;text-decoration:none;color:inherit}
+.demo-topbar .brand img{width:24px;height:24px}
+.demo-topbar .synthetic-tag{flex:none;border:0;padding:0}
+.demo-picker{display:flex;gap:2px;padding:3px;border:1px solid #29303c;border-radius:8px;background:#0e131b;min-width:0;overflow:hidden}
+.demo-picker-item{padding:5px 12px;border-radius:6px;font-size:12.5px;color:#9aa6b6;text-decoration:none;white-space:nowrap}
+.demo-picker-item:hover{color:#e3e8ef;background:#161d27}
+.demo-picker-item[aria-current=page]{background:#252e3b;color:#fff;box-shadow:inset 0 -2px 0 var(--accent)}
+.demo-picker-item.is-busy{opacity:.6;cursor:progress}
+.demo-current{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#9aa6b6;min-width:0;max-width:280px}
+.demo-current>span{overflow:hidden;text-overflow:ellipsis}
+.demo-current button{display:flex;padding:3px;border:0;border-radius:4px;background:none;color:#9aa6b6}
+.demo-topbar-actions{margin-left:auto;display:flex;align-items:center;gap:8px;flex:none}
+.topbar-button{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 11px;border:1px solid #2c3441;border-radius:7px;font-size:12.5px;color:#dfe5ec;text-decoration:none;background:#121821}
+.topbar-button:hover{border-color:#46526a;background:#18202b}
+.topbar-button.is-secondary{background:transparent;color:#9aa6b6}
+.topbar-icon{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border:1px solid transparent;border-radius:7px;background:none;color:#9aa6b6}
+.topbar-icon:hover{border-color:#2c3441;color:#e3e8ef}
+.research-chip{font-size:10.5px;letter-spacing:.3px;padding:3px 8px;border-radius:999px;border:1px solid #6b5738;color:#e0c18e;background:#251f17}
+
+/* Stage: exactly the viewport below the top bar. Clip column width follows the
+   stage height at 9:16, so vertical clips fill it. */
+.demo-main{max-width:none;margin:0;padding:0}
+.demo-stage{height:calc(100vh - var(--demo-topbar));min-height:0;overflow:hidden;box-sizing:border-box;padding:var(--stage-pad);display:grid;grid-template-columns:minmax(0,calc((100vh - var(--demo-topbar) - 2 * var(--stage-pad)) * 9 / 16)) minmax(0,1fr);grid-template-rows:minmax(0,1fr);gap:var(--stage-gap)}
+.demo-stage>*,.demo-stage-side>*{min-height:0;min-width:0;overflow:hidden}
+.demo-stage-side{display:grid;grid-template-rows:minmax(0,3fr) minmax(0,2fr);grid-template-columns:minmax(0,1fr);gap:var(--stage-gap)}
+.demo-stage.no-strip .demo-stage-side{grid-template-rows:minmax(0,1fr)}
+
+/* Brain panel inside the stage: fills its cell; labels become small overlays. */
+.demo-stage .brain-stage{height:100%;min-height:0;align-self:stretch}
+.demo-stage .stage-top{top:12px;left:16px;right:14px}
+.demo-stage .stage-subtitle{font-size:15px;margin-top:4px}
+.demo-stage .stage-context{top:44px;left:16px}
+.demo-stage .brain-view{top:0;height:100%}
+.demo-stage .brain-tools{top:60px;right:14px}
+.demo-stage .stage-bottom{left:14px;right:14px;bottom:40px}
+.demo-stage .brain-scale{bottom:22px}
+.demo-stage .brain-caption{bottom:6px;font-size:9.5px;line-height:1.35;pointer-events:none}
+.demo-stage .brain-caption>span{display:inline}
+.demo-stage .brain-caption>span+span{margin-left:.6em;font-size:9px}
+.demo-stage .brain-tooltip{bottom:74px;left:16px}
+.demo-stage .brain-stage:fullscreen{height:100vh}
+
+/* Response strip inside the stage */
+.demo-stage-strip .response-strip{margin:0;height:100%;box-sizing:border-box;display:flex;flex-direction:column;padding:10px 16px 8px}
+.strip-compact-head{display:flex;align-items:center;gap:16px;margin-bottom:8px;flex:none;min-width:0}
+.strip-compact-head h2{font-size:15px;font-weight:500;color:#e3e8ef;flex:none;letter-spacing:-.2px}
+.response-strip.is-compact .strip-readout{flex-direction:row;align-items:baseline;gap:9px;min-width:0;text-align:left;overflow:hidden}
+.response-strip.is-compact .strip-readout strong{font-size:21px}
+.response-strip.is-compact .strip-readout span{font-size:13px;color:#c6ced9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.response-strip.is-compact .strip-chart{flex:1;min-height:0;grid-template-rows:minmax(0,1fr)}
+.response-strip.is-compact .strip-plot{height:100%;min-height:0}
+.response-strip.is-compact .strip-foot{flex:none;margin-top:6px;font-size:10.5px}
+.response-strip.is-compact .lib-caption{flex:none;margin-top:3px}
+.strip-moment{position:absolute;top:0;bottom:0;background:#f4d35e1c;border-left:1px dashed #f4d35eaa;border-right:1px dashed #f4d35eaa;pointer-events:none}
+.strip-moment span{position:absolute;top:4px;left:6px;font-size:10.5px;color:#f4d35e;white-space:nowrap}
+.moment-play{display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 12px;border-radius:7px;border:1px solid #6b5a2c;background:#2a2410;color:#f4d35e;font-size:12.5px;white-space:nowrap;flex:none}
+.moment-play:hover{background:#352d14}
+.moment-play span{color:#e9dca8;opacity:.85}
+.strip-compact-head .moment-play{margin-left:auto}
+
+/* Stage clip */
+.stage-video{height:100%;display:flex;flex-direction:column;gap:8px;min-height:0}
+.stage-video-frame{position:relative;flex:1;min-height:0;border-radius:10px;overflow:hidden;background:#05070a;border:1px solid #232b36}
+.stage-video-frame video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;cursor:pointer}
+.stage-video-top{position:absolute;top:8px;left:8px;right:8px;display:flex;justify-content:space-between;align-items:center;pointer-events:none}
+.stage-video-top span{font-size:11px;background:#000a;padding:2px 7px;border-radius:5px;color:#e6ebf1}
+.stage-video-top button{pointer-events:auto;background:#000a;border:0;border-radius:6px;padding:5px;display:flex;color:#e6ebf1}
+.stage-video-loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#8b97a8}
+.stage-video-play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:62px;height:62px;border-radius:50%;border:1px solid #ffffff40;background:#000b;color:#fff;display:flex;align-items:center;justify-content:center}
+.stage-video-controls{flex:none;display:flex;align-items:center;gap:8px}
+.stage-video-controls input{flex:1;min-width:0;accent-color:var(--accent)}
+.stage-video-toggle{flex:none;width:30px;height:30px;border-radius:50%;border:1px solid #2c3441;background:#121821;display:flex;align-items:center;justify-content:center}
+.stage-video-error{flex:none;margin:0;font-size:11.5px;color:#e0a080}
+.stage-video-frame .stage-video-error{position:absolute;left:8px;right:8px;bottom:8px;background:#000c;padding:6px 8px;border-radius:6px}
+.stage-video-empty{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;border:1px dashed #2c3441;border-radius:10px;color:#8b97a8;font-size:12.5px;text-align:center;padding:16px}
+.stage-video-empty button{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border:1px solid #2c3441;border-radius:7px;background:#121821;font-size:12px}
+.stage-video .moment-play{align-self:center}
+
+/* Below the fold */
+.demo-below{max-width:1600px;margin:0 auto;padding:18px 24px 0}
+.demo-below>.lib-panel:first-child{margin-top:0}
+.below-signals{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:18px;margin-top:18px;align-items:start}
+.below-signals .timeline-panel{margin-top:0}
+.demo-below .analysis-details{margin:18px 0 0}
+.demo-main>footer{max-width:1600px;margin:32px auto 0;padding:20px 24px}
+.demo-main>footer a{display:inline-flex;align-items:center;gap:4px;color:#7f90a8;text-decoration:none}
+.demo-main>footer a:hover,.demo-main>footer button:hover{color:#dfe5ec}
+
+/* Compare view: header, caveat and both stages on one screen; details below. */
+.compare-screen{height:100vh;display:flex;flex-direction:column;overflow:hidden}
+.compare-screen .demo-topbar{flex:none}
+.compare-screen .demo-topbar h1{font-size:14px;font-weight:500;color:#dfe5ec;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.compare-screen .compare-caveat{flex:none;margin:8px var(--stage-pad) 0;padding:6px 12px;gap:16px}
+.compare-screen .compare-caveat p{font-size:12px;line-height:1.45;max-width:none}
+.compare-screen .compare-caveat a{padding:5px 10px;font-size:12px}
+.compare-screen .compare-grid{flex:1;min-height:0;margin:0;padding:var(--stage-pad);gap:var(--stage-gap);grid-template-rows:minmax(0,1fr);align-items:stretch}
+.compare-screen .compare-column{min-height:0;overflow:hidden;display:flex;flex-direction:column;padding:10px 12px 12px}
+.compare-screen .compare-column-head{flex:none;display:flex;align-items:center;gap:12px;padding-bottom:8px;margin-bottom:10px;border-bottom:2px solid #3c4553}
+.compare-screen .compare-column.is-fell_short .compare-column-head{border-bottom-color:var(--lib-below)}
+.compare-screen .compare-column.is-beat_expectations .compare-column-head{border-bottom-color:var(--lib-above)}
+.compare-screen .compare-column-title{font-size:17px;padding:0;border:0}
+.compare-stage{flex:1;min-height:0;overflow:hidden;display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1fr);grid-template-rows:minmax(0,1fr);gap:10px}
+.compare-stage>*{min-height:0;min-width:0;overflow:hidden}
+.compare-stage .response-strip.is-compact{margin:0;height:100%;box-sizing:border-box;display:flex;flex-direction:column;padding:10px 12px 8px}
+.compare-stage .strip-compact-head{flex-wrap:wrap;gap:4px 12px}
+.compare-stage .response-strip.is-compact .strip-readout span{white-space:normal}
+.compare-stage .strip-chart{grid-template-columns:48px minmax(0,1fr)}
+.compare-stage .strip-foot{margin-left:56px;gap:4px 10px}
+.compare-observed-chip{font-size:12px;color:#c6ced9;margin-left:auto;white-space:nowrap}
+.compare-observed-chip strong{font-family:var(--mono);color:#fff}
+.compare-below{max-width:1640px;margin:0 auto;padding:18px 24px 60px}
+.compare-below-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px;align-items:start}
+.compare-below-grid>section{min-width:0}
+.compare-below-grid>section>h2{font-size:15px;font-weight:500;color:#9aa6b6;margin-bottom:4px}

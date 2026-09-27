@@ -24,6 +24,10 @@ export interface RealBundleIndexEntry {
   is_lockbox?: boolean;
   /** Local internal copy only: role in the fell-short / beat-expectations example pair. */
   internal_example?: string | null;
+  /** Demo picker role ("spike" | "flat" | "fell_short" | "beat_expectations"); parsed defensively in demo.ts. */
+  demo_role?: unknown;
+  /** Demo "Play this moment" window {start_ms, end_ms, label}; parsed defensively in demo.ts. */
+  demo_moment?: unknown;
 }
 
 export interface RealBundleIndex {
