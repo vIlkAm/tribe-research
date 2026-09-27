@@ -428,7 +428,7 @@ export default function App() {
     return <div className="learned-page"><header className="learned-top"><button type="button" className="learned-back" onClick={() => showView(null)}>← Back to the analysis</button><span className="internal-badge">Internal research view</span></header><main className="learned-main"><p className="learned-empty">The example pair is not available on this server.</p></main></div>;
   }
   if (view === 'library') {
-    if (patterns) return <LibraryView indexUrl={realIndexUrl} clips={clips} patterns={patterns} theory={theory} onBack={() => showView(null)} onOpenClip={clip => { showView(null); void openDemoClip(clip); }} />;
+    if (patterns) return <LibraryView indexUrl={realIndexUrl} clips={clips} patterns={patterns} theory={theory} onBack={() => showView(null)} onOpenClip={clip => { showView(null); void openDemoClip(clip); }} onResults={learned ? () => showView('learned') : undefined} />;
     if (!patternsChecked || !examplesChecked) return <div className="loading-screen"><LoaderCircle className="spin" /><p>Loading the library view</p></div>;
     return <div className="learned-page"><header className="learned-top"><button type="button" className="learned-back" onClick={() => showView(null)}>← Back to the analysis</button><span className="internal-badge">Internal research view · exploratory</span></header><main className="learned-main"><p className="learned-empty">The library view is not available on this server.</p></main></div>;
   }

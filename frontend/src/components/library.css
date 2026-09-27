@@ -199,3 +199,5 @@ button.score-tile:hover{border-color:#4a5566;background:#17202b}
 .library-section{overflow-x:auto}
 @media (max-width:700px){.library-top{flex-wrap:wrap}.library-top .demo-topbar-actions{flex-basis:100%}.library-top .internal-badge{white-space:normal;font-size:10px}}
 .lib-caption a{color:#d8b985;text-decoration:underline;text-underline-offset:2px}
+.theory-results-link{margin:14px 0 0;padding:12px 14px;border-left:3px solid #dfb67c;background:#11161e;border-radius:0 8px 8px 0;color:#cfd7e2;font-size:13.5px;line-height:1.5}
+.theory-results-link a{color:#f1d3a6;font-weight:600;text-decoration:underline;text-underline-offset:2px}

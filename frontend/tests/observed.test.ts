@@ -141,3 +141,14 @@ test('metrics row: tier chip, numbers, × usual and the tier sentence verbatim',
   const bare = renderToStaticMarkup(createElement(ObservedRow, { observed: { ...parsed, tier: null, tier_label: '', tier_plain: '', likes: null } }));
   assert.doesNotMatch(bare, /tier-chip|likes|observed-row-plain/);
 });
+
+test('library statistics point to the results page only when it is available', async () => {
+  const { TheorySection } = await import('../src/components/theory-view.ts');
+  const { parseTheory } = await import('../src/lib/theory.ts');
+  // Synthetic theory file: shape only, no real numbers.
+  const theory = parseTheory({ schema: 'nvi.theory.v0', n_clips: 10, n_accounts: 2, outcomes: {}, pairs: [], interpreter_line: 'Synthetic line.', decomposition: { share_video: 0.6, share_account: 0.5, share_covariance: -0.1 } })!;
+  assert.ok(theory);
+  const withLink = renderToStaticMarkup(createElement(TheorySection, { theory, onResults: () => {} }));
+  assert.match(withLink, /class="theory-results-link"[^]*href="\?view=learned"[^>]*>See the results/);
+  assert.doesNotMatch(renderToStaticMarkup(createElement(TheorySection, { theory })), /theory-results-link/);
+});

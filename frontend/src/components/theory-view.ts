@@ -18,7 +18,7 @@ function Cell({ pair }: { pair: TheoryPair | undefined }) {
 }
 
 /** "What holds across the library": views split into account size vs the video's swing, and the 12 × 4 table. */
-export function TheorySection({ theory }: { theory: Theory }) {
+export function TheorySection({ theory, onResults }: { theory: Theory; onResults?: () => void }) {
   const d = theory.decomposition;
   const held = theory.pairs.filter(p => p.verdict === 'holds');
   return h('section', { className: 'library-section theory-section', 'aria-labelledby': 'theory-title' },
@@ -43,5 +43,7 @@ export function TheorySection({ theory }: { theory: Theory }) {
         h('tbody', null, theoryRows(theory).map(row => h('tr', { key: row.feature },
           h('th', { scope: 'row' }, row.label, row.group === 'brain' ? h('small', { className: 'theory-group' }, ' brain') : null),
           ...THEORY_OUTCOMES.map(o => h(Cell, { key: o, pair: row.cells[o] }))))))),
-    h('p', { className: 'library-note' }, 'r is a rank correlation within the same client and platform (views, account size) or within the same account (video vs its account, engagement). Exploratory: not the pre-registered test, which was a no-GO for the brain response as a views predictor.'));
+    h('p', { className: 'library-note' }, 'r is a rank correlation within the same client and platform (views, account size) or within the same account (video vs its account, engagement). Exploratory: not the pre-registered test, which was a no-GO for the brain response as a views predictor.'),
+    onResults ? h('p', { className: 'theory-results-link' }, 'Grouped by views against the account’s usual instead, the top third of clips had a higher predicted response than the bottom third, a small gap fixed before it was computed. ',
+      h('a', { href: '?view=learned', onClick: (event: { preventDefault: () => void }) => { event.preventDefault(); onResults(); } }, 'See the results →')) : null);
 }

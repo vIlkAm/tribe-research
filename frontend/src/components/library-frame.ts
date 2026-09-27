@@ -57,8 +57,8 @@ function ClipRow({ row, onOpenClip }: { row: LibraryRow; onOpenClip: (clip: Demo
 }
 
 /** Internal library page: the demo clips as a table plus what great clips have in common. Node-renderable. */
-export default function LibraryFrame({ patterns, theory = null, rows, onBack, onOpenClip }: {
-  patterns: Patterns; theory?: Theory | null; rows: LibraryRow[]; onBack: () => void; onOpenClip: (clip: DemoClip) => void;
+export default function LibraryFrame({ patterns, theory = null, rows, onBack, onOpenClip, onResults }: {
+  patterns: Patterns; theory?: Theory | null; rows: LibraryRow[]; onBack: () => void; onOpenClip: (clip: DemoClip) => void; onResults?: () => void;
 }) {
   const size = [
     patterns.n_library !== null ? `${patterns.n_library.toLocaleString('en-US')} clips` : null,
@@ -82,7 +82,7 @@ export default function LibraryFrame({ patterns, theory = null, rows, onBack, on
           h('span', { className: `tier-chip is-${t.tier}` }, t.label || TIER_LABELS[t.tier]),
           t.n_contents !== null ? ` ${t.n_contents.toLocaleString('en-US')} clips` : null,
           t.rule_plain ? ` · ${t.rule_plain}` : null))) : null),
-      theory ? h(TheorySection, { theory }) : null,
+      theory ? h(TheorySection, { theory, onResults }) : null,
       rows.length ? h('section', { className: 'library-section', 'aria-labelledby': 'library-clips-title' },
         h('h2', { id: 'library-clips-title' }, `The clips (${rows.length})`),
         h('table', { className: 'library-clip-table' },
