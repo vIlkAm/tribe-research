@@ -5,7 +5,7 @@ from a person or an agent. The newest update is at the top. Details live in the
 linked docs; this page only says where things stand. Agents on either side: when
 you change the state of something below, update this file in the same commit.
 
-_Last updated: 2026-09-27 00:20 UTC. All times UTC._
+_Last updated: 2026-09-27 00:40 UTC. All times UTC._
 
 ## One-paragraph summary
 
@@ -16,8 +16,10 @@ on our own clips' real performance gives an in-context outlook: how this clip
 likely ranks against similar clips in the same deal and platform. TRIBE is fixed
 (Meta's weights). What we train is small: ridge models over brain features,
 extractor embeddings and metadata. The brain-analysis half works on real clips
-today. The performance half is being trained tonight, once enough clips have
-gone through the GPU.
+today. **Stage 1 ran and is a no-GO** ([`STAGE1_RESULT.md`](STAGE1_RESULT.md)): the
+brain features don't beat metadata by the pre-registered margin, so the
+performance card stays `not_trained` and the demo shows the brain analysis
+without a performance number.
 
 End product, gaps to a business and the demo plan: [`VISION_AND_DEMO.md`](VISION_AND_DEMO.md).
 
@@ -28,7 +30,7 @@ End product, gaps to a business and the demo plan: [`VISION_AND_DEMO.md`](VISION
 | 1. Pick clips, pre-scale to 384 px | CPU (this server) | ✅ Study set (1,500 + 373 deep-dive) ready. The other ~6,000 are being pre-scaled now (`r00–r15`) |
 | 2. TRIBE + extractors → brain response + embeddings per clip | GPU (RunPod) | ✅ Fast bf16 path passed every accuracy gate (L40S and A100). ⏳ Four pods share study batches b02–b09 through claim files: L40S (b02→), A100 (b09→b06), two RTX 4090s (b05, b06→). All of b02–b09 are expected by about 01:00 UTC |
 | 3. Features per clip (`tools/build_features.py`) | CPU | ✅ Code done and tested |
-| 4. Training + honest evaluation (`tools/fit_models.py`) | CPU, minutes | ✅ Code done, rules pre-registered ([`PREREGISTRATION.md`](PREREGISTRATION.md)). ✅ Preliminary fit on the 100 real clips of the complete batches (71 training contents, not validated, not stage 1). ⏳ Stage 1 waits for the study set |
+| 4. Training + honest evaluation (`tools/fit_models.py`) | CPU, minutes | ✅ Stage 1 fit once on the full study set: **no-GO**, product state `not_trained` ([`STAGE1_RESULT.md`](STAGE1_RESULT.md)) |
 | 5. Save the model, score one new clip (`tools/predict.py`) | CPU, milliseconds | ✅ `model-prelim-v0` saved and released privately (weights, featurizer, sha256 manifest); served only with `--allow-preliminary` ([`MODEL.md`](MODEL.md)) |
 | 6. Bundles for the frontend (`tools/handoff.py`) | CPU | ✅ [`data-frontend40-v2`](https://github.com/vIlkAm/tribe-research/releases/tag/data-frontend40-v2): the same 40 bundles plus `performance.json` (preliminary) and per-clip `platform`/`video_link`/`is_lockbox` in `index.json`. ✅ 40 real bf16 bundles (the wiring set: shortest and longest clips, a >60 s clip, a near-silent one) in the private release [`data-frontend40`](https://github.com/vIlkAm/tribe-research/releases/tag/data-frontend40), 68 MB, no footage. Pilot bundles too |
 | 7. Frontend | Browser | See "For the frontend" below |
@@ -46,7 +48,7 @@ End product, gaps to a business and the demo plan: [`VISION_AND_DEMO.md`](VISION
 
 ## What "trained" will mean
 
-- **Stage 1** is 5-fold cross-validation on the ~1,275 study training clips.
+- **Stage 1** is 5-fold cross-validation on the ~1,275 study training clips. It ran on 2026-09-27: no-GO.
   - If brain + embeddings beat metadata alone by the pre-registered margin, the
     model ships as `research_preview`.
   - If not, it stays `not_trained`, and the UI shows the brain analysis without a
@@ -100,6 +102,7 @@ End product, gaps to a business and the demo plan: [`VISION_AND_DEMO.md`](VISION
 
 ## Log
 
+- **2026-09-27 00:40 UTC:** Study set complete (1,486 of 1,500 ok; 14 excluded, 0.9 %). Stage 1 ran once: BE − A +0.009 [−0.009, +0.024] and account-scheme BE − A −0.012, so **no-GO** and the card stays `not_trained`. BE − E is a null (+0.0004). Secondary: the extractor embeddings predict reach over metadata (E − A +0.073 [+0.025, +0.117]); the brain adds nothing on top. Full write-up: [`STAGE1_RESULT.md`](STAGE1_RESULT.md). Next: `data-demo-stage1-v1` (issue #2).
 - **2026-09-27 00:20 UTC (frontend handoff):** The complete self-hostable
   ViralBrain frontend is available under `frontend/` on the frontend handoff
   branch/PR. It includes source, package lock, tests, static assets and
