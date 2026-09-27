@@ -71,6 +71,22 @@ def videos_root_for(pick: dict, batches_dir: Path | None) -> Path | None:
     return root if (root / pick["source_path"]).exists() else None
 
 
+def scrub_blocks(dest: Path, ids: list[str], reason: str | None) -> None:
+    """Browser-facing blocks carry no account ID; a not_trained reason carries no digits (no CV numbers)."""
+    if reason is not None and any(c.isdigit() for c in reason):
+        raise SystemExit(f"--not-trained-reason must not contain numbers: {reason!r}")
+    for vid in ids:
+        f = dest / vid / "performance.json"
+        blk = json.loads(f.read_text())
+        blk["context"]["account_id"] = None
+        if blk["model_status"] == "not_trained":
+            if reason is not None:
+                blk["reason"] = reason
+            if any(c.isdigit() for c in blk["reason"]):
+                raise SystemExit(f"{vid}: not_trained reason carries numbers: {blk['reason']!r}")
+        f.write_text(json.dumps(blk, indent=2, ensure_ascii=False) + "\n")
+
+
 def check_blocks(dest: Path, ids: list[str], not_trained: bool) -> dict:
     statuses = {}
     for vid in ids:
@@ -128,6 +144,7 @@ def build(args) -> dict:
         clip_meta=work / "clip_meta.json", selection=args.study_selection, lockbox_ext=args.lockbox_ext,
         members=args.members, outcomes=args.outcomes, allow_preliminary=False)
     bundle_performance.run(bp)
+    scrub_blocks(dest, ids, args.not_trained_reason if args.not_trained else None)
     statuses = check_blocks(dest, ids, args.not_trained)
     meta = json.loads(bp.clip_meta.read_text())
     if any(m["is_lockbox"] for m in meta):
@@ -185,6 +202,8 @@ def main(argv=None) -> int:
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--model-dir", type=Path, default=None, help="fit_models.py --save-model dir")
     g.add_argument("--not-trained", action="store_true", help="no model: every block is not_trained")
+    ap.add_argument("--not-trained-reason", default=None,
+                    help="reason shown in every not_trained block (no digits), e.g. the stage-1 no-GO sentence")
     ap.add_argument("--featurizer", type=Path, default=None, help="<stem>.featurizer.json (with --model-dir)")
     ap.add_argument("--model-release", default=None, help="private model release tag, e.g. model-stage1-v1")
     ap.add_argument("--release", default="data-demo-stage1-v1")

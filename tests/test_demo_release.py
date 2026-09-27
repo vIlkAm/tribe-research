@@ -232,8 +232,23 @@ def test_build_not_trained_release_end_to_end(tmp_path, monkeypatch):
     for b in idx["bundles"]:
         blk = json.load(tar.extractfile(f"data-demo-stage1-v1/{b['performance_path']}"))
         assert blk["engagement"] is None and blk["reach"] is None and blk["drivers"] == []
-        assert "views" not in json.dumps(blk)
+        assert "views" not in json.dumps(blk) and blk["context"]["account_id"] is None
     assert (out / "data-demo-stage1-v1.RELEASE_MANIFEST.json").exists() and not (out / "work").exists()
     # exactly one of --model-dir / --not-trained
     with pytest.raises(SystemExit):
         bdr.main(["--selection", str(sel_json), "--out", str(tmp_path / "rel2")])
+
+
+def test_scrub_drops_account_id_and_refuses_numbers_in_the_reason(tmp_path):
+    blk = _perf("not_trained")
+    blk["context"]["account_id"] = "acct-1"
+    blk["reason"] = "BE - A = +0.009 fails the GO rule"
+    (tmp_path / "v1").mkdir()
+    (tmp_path / "v1" / "performance.json").write_text(json.dumps(blk))
+    with pytest.raises(SystemExit, match="numbers"):
+        bdr.scrub_blocks(tmp_path, ["v1"], None)  # the stock reason quotes CV numbers
+    with pytest.raises(SystemExit, match="numbers"):
+        bdr.scrub_blocks(tmp_path, ["v1"], "failed at 0.02")
+    bdr.scrub_blocks(tmp_path, ["v1"], "The stage-one test did not pass.")
+    out = json.loads((tmp_path / "v1" / "performance.json").read_text())
+    assert out["context"]["account_id"] is None and out["reason"] == "The stage-one test did not pass."
