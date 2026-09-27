@@ -92,7 +92,7 @@ test('compare view renders both columns and the caveat', () => {
     renderStage: column => createElement('p', { className: 'column-body' }, `body:${column.entry.video_id}`),
     renderBelow: column => createElement('p', { className: 'column-below' }, `below:${column.entry.video_id}`),
   }));
-  assert.match(html, /SYNTHETIC caveat: one illustrative pair, not evidence\./);
+  assert.match(html, /<div class="compare-caveat" role="note"><p>SYNTHETIC caveat: one illustrative pair, not evidence\.<\/p>/, 'caveat verbatim, alone in its note');
   assert.match(html, /Internal research view/);
   assert.match(html, /href="\?view=learned"[^>]*>What the model learned/);
   const fell = html.indexOf('>Fell short</h2>'), beat = html.indexOf('>Beat expectations</h2>');

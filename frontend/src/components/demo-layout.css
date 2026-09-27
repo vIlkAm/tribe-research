@@ -122,3 +122,4 @@
 .compare-below-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px;align-items:start}
 .compare-below-grid>section{min-width:0}
 .compare-below-grid>section>h2{font-size:15px;font-weight:500;color:#9aa6b6;margin-bottom:4px}
+.compare-screen .compare-same{margin:0;font-size:11.5px;color:#7d899a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
