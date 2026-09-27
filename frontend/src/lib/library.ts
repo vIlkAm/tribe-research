@@ -213,6 +213,8 @@ export interface Learned {
   decision: string;
   caveat: string;
   good_vs_bad: LearnedGoodVsBad | null;
+  /** Same chart grouped by views against the account's usual (exploratory). */
+  views_vs_usual: LearnedGoodVsBad | null;
 }
 
 function formatValue(value: unknown): string {
@@ -302,9 +304,9 @@ export function parseLearned(value: unknown): Learned | null {
   if (value.schema_version !== undefined && value.schema_version !== LEARNED_SCHEMA) return null;
   const learned: Learned = {
     statements: parseStatements(value.stage1), key_numbers: parseKeyNumbers(value.stage1), decision: parseDecision(value.stage1),
-    caveat: str(value.caveat), good_vs_bad: parseGoodVsBad(value.good_vs_bad),
+    caveat: str(value.caveat), good_vs_bad: parseGoodVsBad(value.good_vs_bad), views_vs_usual: parseGoodVsBad(value.views_vs_usual),
   };
-  return learned.statements.length || learned.good_vs_bad ? learned : null;
+  return learned.statements.length || learned.good_vs_bad || learned.views_vs_usual ? learned : null;
 }
 
 /** Shared y-range for curves with optional bands. */

@@ -53,6 +53,10 @@ Some TikTok clips were re-encoded from HEVC to H.264 only so that every browser 
   own account's usual (luck, timing and the algorithm included), not account size. No brain-line summary held
   up. One pattern held: longer clips get more interactions per view within the same account (small, and not a
   cause: longer clips also get fewer views).
+- **Grouped by views against the account's usual** (Learned page; exploratory, grouping fixed before it was
+  computed): the third of clips above their account's usual had a higher predicted brain response over the first
+  30 seconds than the third below it, including the opening (+0.09 library standard deviations, 95% range +0.03 to
+  +0.15; it also holds when whole accounts are resampled). Small, but in the direction you would expect.
 - So the tool shows *where* attention is predicted to rise and fall inside a clip, which is useful for editing
   review. It does not tell you whether a clip will go viral.
 

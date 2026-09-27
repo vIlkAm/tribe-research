@@ -457,11 +457,8 @@ def boot_curves(X: np.ndarray, rng: np.random.Generator, n_boot: int = N_BOOT) -
     return mean, lo, hi, draws
 
 
-def good_vs_bad(lib: Library, oof: Path, train_ids: set[str]) -> dict:
-    lab = bmp.refuse_multi_deal(bmp.labels_from_oof(oof))
-    lab = bmp.one_row_per_content(lab)
-    n0 = len(lab)
-    lab = lab[lab["video_id"].isin(train_ids) & lab["video_id"].isin(list(lib.index))].reset_index(drop=True)
+def _gvb_curves(lib: Library, lab, rng: np.random.Generator) -> tuple:
+    """Top vs bottom within-deal thirds of lab["y"] -> (lab, top, bot, R, index block, channel blocks)."""
     y, strata = lab["y"].to_numpy(float), lab["stratum"].astype(str).to_numpy()
     tl = mp.tertile_labels(y, strata)
     S = GVB_HORIZON_S
@@ -476,7 +473,6 @@ def good_vs_bad(lib: Library, oof: Path, train_ids: set[str]) -> dict:
     R = np.stack([grid30(v, lib.entries[lib.index[v]].r) for v in lab["video_id"]])          # [n, S]
     U = np.stack([grid30(v, lib.entries[lib.index[v]].u) for v in lab["video_id"]])          # [n, C, S]
     top, bot = tl == 1, tl == -1
-    rng = np.random.default_rng(mp.SEED)
 
     def block(Xt, Xb):
         mt, lt, ht, dt = boot_curves(Xt, rng)
@@ -486,6 +482,32 @@ def good_vs_bad(lib: Library, oof: Path, train_ids: set[str]) -> dict:
         return {"top": {"mean": mt, "lo": lt, "hi": ht, "n_per_second": np.isfinite(Xt).sum(0)},
                 "bottom": {"mean": mb, "lo": lb_, "hi": hb, "n_per_second": np.isfinite(Xb).sum(0)},
                 "diff_top_minus_bottom": {"mean": mt - mb, "lo": dlo, "hi": dhi}}
+
+    index = block(R[top], R[bot])
+    channels = {key: {"label_plain": CHANNEL_LABELS[key], **block(U[top, k], U[bot, k])}
+                for k, key in enumerate(lib.keys)}
+    return tl, top, bot, R, index, channels
+
+
+def _labels(oof: Path, train_ids: set[str], lib: Library, target: str, residual: bool):
+    lab = bmp.labels_from_oof(oof, target)
+    if not residual:  # raw target: labels_from_oof gives y - pred_A_stack; add the prediction back
+        import pandas as pd
+        o = pd.read_csv(oof, dtype={"video_id": str, "stratum": str})
+        o = o[(o["scheme"] == "content") & (o["target"] == target) & o["stratum"].notna()]
+        lab = lab.assign(y=o["y"].to_numpy(float))
+    lab = bmp.refuse_multi_deal(lab)
+    n0 = len(bmp.one_row_per_content(lab))
+    lab = bmp.one_row_per_content(lab)
+    lab = lab[lab["video_id"].isin(train_ids) & lab["video_id"].isin(list(lib.index))].reset_index(drop=True)
+    return lab, n0
+
+
+def good_vs_bad(lib: Library, oof: Path, train_ids: set[str]) -> dict:
+    lab, n0 = _labels(oof, train_ids, lib, bmp.PRIMARY_TARGET, residual=True)
+    S = GVB_HORIZON_S
+    rng = np.random.default_rng(mp.SEED)
+    tl, top, bot, R, index, channels = _gvb_curves(lib, lab, rng)
 
     out = {
         "definition": ("Within each deal, clips are split into thirds by how much better or worse they did than "
@@ -498,9 +520,8 @@ def good_vs_bad(lib: Library, oof: Path, train_ids: set[str]) -> dict:
         "n_contents": int(len(lab)), "n_label_rows_before_train_filter": int(n0),
         "n_top": int(top.sum()), "n_bottom": int(bot.sum()), "n_deals": int(lab["stratum"].nunique()),
         "weighting": "unweighted", "n_boot": N_BOOT, "seed": mp.SEED,
-        "index": block(R[top], R[bot]),
-        "channels": {key: {"label_plain": CHANNEL_LABELS[key], **block(U[top, k], U[bot, k])}
-                     for k, key in enumerate(lib.keys)},
+        "index": index,
+        "channels": channels,
         "result_plain": ("Clips with more and with fewer likes and comments per view than expected show the same "
                          "predicted brain response over time; the pre-registered test (M4) found no reliable "
                          "difference. The groups are by engagement per view, not views: clips with fewer views "
@@ -510,6 +531,54 @@ def good_vs_bad(lib: Library, oof: Path, train_ids: set[str]) -> dict:
     }
     return out
 
+
+
+def _group_diff(Xt: np.ndarray, Xb: np.ndarray, rng: np.random.Generator, n_boot: int = N_BOOT) -> dict:
+    """Top minus bottom in the per-clip mean over the given seconds, bootstrap 95% interval over clips."""
+    with _quiet():
+        t, b = np.nanmean(Xt, 1), np.nanmean(Xb, 1)
+    t, b = t[np.isfinite(t)], b[np.isfinite(b)]
+    draws = np.array([rng.choice(t, len(t)).mean() - rng.choice(b, len(b)).mean() for _ in range(n_boot)])
+    lo, hi = np.percentile(draws, [2.5, 97.5])
+    return {"diff": float(t.mean() - b.mean()), "lo": float(lo), "hi": float(hi), "top_mean": float(t.mean()),
+            "bottom_mean": float(b.mean())}
+
+
+def views_vs_usual(lib: Library, oof: Path, train_ids: set[str]) -> dict:
+    """Learned chart grouped by views against the account's usual (design: LIBRARY_THEORY.md, 2026-09-27)."""
+    lab, n0 = _labels(oof, train_ids, lib, "reach_rel_local", residual=False)
+    S = GVB_HORIZON_S
+    rng = np.random.default_rng(mp.SEED)
+    tl, top, bot, R, index, channels = _gvb_curves(lib, lab, rng)
+    whole = _group_diff(R[top], R[bot], rng)
+    opening = _group_diff(R[top][:, :int(mp.HOOK_S)], R[bot][:, :int(mp.HOOK_S)], rng)
+    d = index["diff_top_minus_bottom"]
+    sig = [s for s, lo, hi in zip(range(S), d["lo"], d["hi"]) if np.isfinite(lo) and (lo > 0 or hi < 0)]
+
+    def says(x):
+        if x["lo"] > 0:
+            return "higher"
+        return "lower" if x["hi"] < 0 else "about the same"
+    result = (f"Over the first 30 seconds, clips that beat their account's usual views had a {says(whole)} predicted "
+              f"response than clips below it (difference {whole['diff']:+.2f} library sd, 95% range "
+              f"{whole['lo']:+.2f} to {whole['hi']:+.2f}). In the opening 4 seconds it was {says(opening)} "
+              f"({opening['diff']:+.2f}, {opening['lo']:+.2f} to {opening['hi']:+.2f}). Exploratory, not the "
+              "pre-registered test.")
+    return {
+        "definition": ("Within each deal, clips are split into thirds by views against their account's usual "
+                       "(reach_rel_local, content-scheme training rows, one row per content). Curves are the "
+                       "unweighted mean response index per second (0-29 s) for the top and bottom thirds; bands are "
+                       "95% bootstrap intervals over contents (seed 20260926, 1,000 draws). Design fixed before it was "
+                       "computed: docs/LIBRARY_THEORY.md, 2026-09-27."),
+        "unit": "content", "stratum": "deal", "target": "reach_rel_local", "seconds": list(range(S)),
+        "n_contents": int(len(lab)), "n_label_rows_before_train_filter": int(n0),
+        "n_top": int(top.sum()), "n_bottom": int(bot.sum()), "n_deals": int(lab["stratum"].nunique()),
+        "weighting": "unweighted", "n_boot": N_BOOT, "seed": mp.SEED, "exploratory": True,
+        "index": index, "channels": channels,
+        "summary": {"whole_0_29": whole, "opening_0_4": opening, "seconds_ci_excludes_0": sig,
+                    "n_seconds": S},
+        "result_plain": result,
+    }
 
 STAGE1 = {
     "result": "no-GO",
@@ -537,13 +606,14 @@ def learned(lib: Library, state: dict, oof: Path, train_ids: set[str]) -> dict:
     pc = pc1(lib)
     gvb = good_vs_bad(lib, oof, train_ids)
     gvb["pc1_loadings"] = pc
+    vvu = views_vs_usual(lib, oof, train_ids)
     return clean({
         "schema_version": LEARNED_SCHEMA, "internal": True,
         "caveat": CAVEAT + " This file is an internal walkthrough of what the study found.",
         "reference": {"n_clips": len(lib.entries), "description": REF_DESCRIPTION, "state": "moments_pop state_v1",
                       "state_train_ids_sha256": state["train_ids_sha256"]},
         "channels": [{"key": k, "label_plain": CHANNEL_LABELS[k]} for k in lib.keys],
-        "stage1": STAGE1, "good_vs_bad": gvb, "pc1_loadings": pc,
+        "stage1": STAGE1, "good_vs_bad": gvb, "views_vs_usual": vvu, "pc1_loadings": pc,
     })
 
 

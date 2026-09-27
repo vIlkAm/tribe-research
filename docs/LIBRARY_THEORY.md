@@ -114,3 +114,11 @@ is a bug fix, dated here with its reason, not a new rule.
   swing around the usual includes luck, timing and the algorithm. The "big accounts see smaller jumps" reading of
   the overlap was dropped (the overlap is largely mechanical). A 7-day-only decomposition was added as a
   descriptive check. No verdict changed.
+- **2026-09-27, Learned chart by views: result** (`tools/build_library_profile.py --learned`, run once with the
+  design above): 1,254 contents, 12 deals, 415 per third. Clips above their account's usual had a higher predicted
+  response than clips below it: whole 0-29 s +0.091 library sd [+0.028, +0.155], opening 4 s +0.095 [+0.018,
+  +0.175]; 12 of 30 seconds (0-2, 4-12) have intervals excluding 0, and the gap closes after about 25 s. Added check,
+  after seeing the result: resampling accounts instead of clips (192 accounts, 2,000 draws) gives +0.091 [+0.029,
+  +0.153] and +0.095 [+0.015, +0.172]. This fits the full-library direction above (share above typical vs video
+  +0.11); the theory table's within-account rank test of the opening alone stays "no pattern" (+0.04). Exploratory,
+  small, and it does not change stage 1's no-GO.

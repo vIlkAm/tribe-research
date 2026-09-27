@@ -5,7 +5,11 @@ import './library.css';
 
 const W = 1000, H = 260;
 
-function GoodVsBadChart({ data }: { data: LearnedGoodVsBad }) {
+interface GroupLabels { top: string; bottom: string; aria: string }
+const ENGAGEMENT: GroupLabels = { top: 'More likes & comments per view than expected', bottom: 'Fewer than expected', aria: 'clips with more and with fewer likes and comments per view than expected' };
+const VIEWS: GroupLabels = { top: "Above their account's usual views", bottom: "Below their account's usual views", aria: "clips above and below their account's usual views" };
+
+function GoodVsBadChart({ data, labels }: { data: LearnedGoodVsBad; labels: GroupLabels }) {
   const range = seriesRange(data.top.mean, data.top.lo, data.top.hi, data.bottom.mean, data.bottom.lo, data.bottom.hi);
   const first = data.seconds[0], last = data.seconds[data.seconds.length - 1];
   const ticks = data.seconds.filter(s => s % 5 === 0);
@@ -15,7 +19,7 @@ function GoodVsBadChart({ data }: { data: LearnedGoodVsBad }) {
     <div className="learned-plot">
       <div className="learned-y" aria-hidden="true"><span>Higher response</span><span>Lower response</span></div>
       <div className="learned-svg">
-        <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label="Average predicted response over the first seconds for clips with more and with fewer likes and comments per view than expected">
+        <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label={`Average predicted response over the first seconds for ${labels.aria}`}>
           {data.top.lo.length > 0 && <path className="band-above" d={bandPath(data.top.lo, data.top.hi, W, H, range)} />}
           {data.bottom.lo.length > 0 && <path className="band-below" d={bandPath(data.bottom.lo, data.bottom.hi, W, H, range)} />}
           <path className="line-above" d={linePath(data.top.mean, W, H, range)} vectorEffect="non-scaling-stroke" />
@@ -25,21 +29,21 @@ function GoodVsBadChart({ data }: { data: LearnedGoodVsBad }) {
       </div>
     </div>
     <figcaption>
-      <span><i className="key-above" /> More likes & comments per view than expected{n(data.n_top)}</span>
-      <span><i className="key-below" /> Fewer than expected{n(data.n_bottom)}</span>
+      <span><i className="key-above" /> {labels.top}{n(data.n_top)}</span>
+      <span><i className="key-below" /> {labels.bottom}{n(data.n_bottom)}</span>
       <span>Shaded: likely range of the group average</span>
     </figcaption>
   </figure>;
 }
 
-function ChannelMultiples({ data }: { data: LearnedGoodVsBad }) {
+function ChannelMultiples({ data, labels }: { data: LearnedGoodVsBad; labels: GroupLabels }) {
   if (!data.channels.length) return null;
   const w = 300, h = 90;
   return <div className="learned-multiples">{data.channels.map(channel => {
     const range = seriesRange(channel.top, channel.bottom);
     return <figure key={channel.key}>
       <figcaption>{channel.label}</figcaption>
-      <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" role="img" aria-label={`${channel.label}: clips with more versus fewer likes and comments per view than expected`}>
+      <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" role="img" aria-label={`${channel.label}: ${labels.aria}`}>
         <path className="line-above" d={linePath(channel.top, w, h, range)} vectorEffect="non-scaling-stroke" />
         <path className="line-below" d={linePath(channel.bottom, w, h, range)} vectorEffect="non-scaling-stroke" />
       </svg>
@@ -67,12 +71,20 @@ export default function LearnedView({ learned, onBack }: { learned: Learned | nu
         <div className="learned-statements">{learned.statements.map((s, i) => <div key={i} className="learned-statement">{s.value && <strong>{s.value}</strong>}<p>{s.text}</p></div>)}</div>
         {learned.key_numbers.length > 0 && <p className="technical-note">Numbers are rank correlations (Spearman) between predicted and actual performance, from 0 (no ranking) to 1 (perfect); “adds” is the change in that correlation.</p>}
       </section>}
+      {learned?.views_vs_usual && <section className="learned-section" aria-labelledby="learned-views">
+        <h2 id="learned-views">Clips above vs below their account's usual views</h2>
+        <p className="learned-sub">Average predicted response over the first 30 seconds, for the top third and bottom third of clips within each client by views against their own account's usual, so account size is taken out. Exploratory: this grouping was fixed before it was computed, but it is not the pre-registered test (below).</p>
+        <GoodVsBadChart data={learned.views_vs_usual} labels={VIEWS} />
+        {learned.views_vs_usual.result_plain && <p className="learned-result">{learned.views_vs_usual.result_plain}</p>}
+        {learned.views_vs_usual.channels.length > 0 && <><h3>By brain signal <span className="learned-sub">(each chart has its own scale, so small gaps look bigger)</span></h3><ChannelMultiples data={learned.views_vs_usual} labels={VIEWS} /></>}
+        <p className="lib-caption">TRIBE v2 prediction · average subject · Internal research view</p>
+      </section>}
       {learned?.good_vs_bad && <section className="learned-section" aria-labelledby="learned-gvb">
-        <h2 id="learned-gvb">More vs fewer likes and comments per view than expected</h2>
+        <h2 id="learned-gvb">Pre-registered test: more vs fewer likes and comments per view than expected</h2>
         <p className="learned-sub">Average predicted response over the first seconds, for the top third and bottom third of clips by likes and comments per view against what basic clip and account information predicted. This is engagement per view, not views: clips with fewer views tend to have higher rates. If brain response explained it, the two lines would separate; gaps inside the shaded ranges are noise.</p>
-        <GoodVsBadChart data={learned.good_vs_bad} />
+        <GoodVsBadChart data={learned.good_vs_bad} labels={ENGAGEMENT} />
         {learned.good_vs_bad.result_plain && <p className="learned-result">{learned.good_vs_bad.result_plain}</p>}
-        {learned.good_vs_bad.channels.length > 0 && <><h3>By brain signal <span className="learned-sub">(each chart has its own scale, so small gaps look bigger)</span></h3><ChannelMultiples data={learned.good_vs_bad} /></>}
+        {learned.good_vs_bad.channels.length > 0 && <><h3>By brain signal <span className="learned-sub">(each chart has its own scale, so small gaps look bigger)</span></h3><ChannelMultiples data={learned.good_vs_bad} labels={ENGAGEMENT} /></>}
         <p className="lib-caption">TRIBE v2 prediction · average subject · Internal research view</p>
       </section>}
       {learned?.caveat && <p className="learned-caveat">{learned.caveat}</p>}

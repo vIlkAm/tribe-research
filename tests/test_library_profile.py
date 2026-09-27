@@ -177,3 +177,22 @@ def test_learned_good_vs_bad_train_only(world, tmp_path):
     assert all(a <= m <= b for a, m, b in zip(lo, g["index"]["top"]["mean"], hi) if m is not None)
     assert g["result_plain"].startswith("Clips with more and with fewer likes") and "pc1_loadings" in g
     assert json.dumps(out, allow_nan=False) == json.dumps(blp.learned(lib, STATE, oof, train), allow_nan=False)
+
+
+def test_learned_views_vs_usual_uses_raw_views(world, tmp_path):
+    _, _, lib = world
+    ids = [e.video_id for e in lib.entries]
+    oof = tmp_path / "oof.csv"
+    with open(oof, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["target", "scheme", "vp_id", "video_id", "y", "w", "stratum", "pred_A_stack"])
+        for i, v in enumerate(ids):  # raw y rises with i; y - pred_A falls, so a residual label would flip the order
+            w.writerow(["reach_rel_local", "content", f"q{i}", v, float(i), 1.0, "d0|tiktok", 3.0 * i])
+            w.writerow(["log_interactions_rate", "content", f"p{i}", v, 0.0, 1.0, "d0|tiktok", 0.0])
+    lab, n0 = blp._labels(oof, set(ids), lib, "reach_rel_local", residual=False)
+    assert n0 == len(ids) and dict(zip(lab["video_id"], lab["y"])) == {v: float(i) for i, v in enumerate(ids)}
+    v = blp.learned(lib, STATE, oof, set(ids))["views_vs_usual"]
+    assert v["target"] == "reach_rel_local" and v["exploratory"] and v["n_top"] == v["n_bottom"] > 0
+    s = v["summary"]
+    assert s["whole_0_29"]["lo"] <= s["whole_0_29"]["diff"] <= s["whole_0_29"]["hi"]
+    assert v["result_plain"].startswith("Over the first 30 seconds") and "Exploratory" in v["result_plain"]

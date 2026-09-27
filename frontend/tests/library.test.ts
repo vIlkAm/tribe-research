@@ -131,6 +131,11 @@ test('learned summary accepts the producer layout: curves under index, channel c
   assert.deepEqual(gvb.top.mean, [0, 1, 0]);
   assert.deepEqual(gvb.bottom.hi, [1.1, 2.1, 1.1]);
   assert.deepEqual(gvb.channels, [{ key: 'attention', label: 'Grabs attention', top: [0, 1, 0], bottom: [1, 2, 1] }]);
+  assert.equal(parsed.views_vs_usual, null);
+  const views = parseLearned({ schema_version: 'nvi.learned.v0', views_vs_usual: { seconds: [0, 1, 2], n_top: 4, n_bottom: 4, index: { top: curve(0.2), bottom: curve(0) }, channels: {}, result_plain: 'Higher.' } });
+  assert.ok(views && !views.good_vs_bad);
+  assert.deepEqual(views.views_vs_usual?.top.mean, [0.2, 1.2, 0.2]);
+  assert.equal(views.views_vs_usual?.result_plain, 'Higher.');
 });
 
 test('learned object fallback ignores non-prose fields', () => {
