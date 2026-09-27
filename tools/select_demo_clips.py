@@ -103,8 +103,9 @@ def load_manifests(batches_dir: Path, names: list[str]) -> dict[str, dict]:
     return rows
 
 
-def select(out_roots: list[Path], selection: Path, lockbox_ext: Path | None, members: Path, batches_dir: Path,
-           logs: list[Path], params: dict = PARAMS) -> dict:
+def eligible(out_roots: list[Path], selection: Path, lockbox_ext: Path | None, members: Path, batches_dir: Path,
+             logs: list[Path], params: dict = PARAMS) -> tuple[list[dict], dict, list[dict], list[dict]]:
+    """Every clip passing the eligibility rule (no outcome read): (eligible, counts, used roots, skipped roots)."""
     sel = pd.read_csv(selection, usecols=SEL_COLS, dtype={"video_id": str, "deal_id": str})
     ext = set(pd.read_csv(lockbox_ext, usecols=["video_id"], dtype=str)["video_id"]) \
         if lockbox_ext is not None and lockbox_ext.exists() else set()
@@ -164,6 +165,13 @@ def select(out_roots: list[Path], selection: Path, lockbox_ext: Path | None, mem
                      "source_name": mrow["source_name"], "batch": mrow["batch"],
                      "rank_key": hash_rank(vid, params["seed"])})
     counts["eligible"] = len(elig)
+    return elig, counts, used_roots, skipped
+
+
+def select(out_roots: list[Path], selection: Path, lockbox_ext: Path | None, members: Path, batches_dir: Path,
+           logs: list[Path], params: dict = PARAMS) -> dict:
+    elig, counts, used_roots, skipped = eligible(out_roots, selection, lockbox_ext, members, batches_dir, logs,
+                                                 params)
     counts["eligible_in_preferred_strata"] = sum(e["preferred_stratum"] for e in elig)
     order = sorted(elig, key=lambda e: (not e["preferred_stratum"], e["rank_key"]))
     picks, deals = [], set()

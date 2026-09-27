@@ -102,6 +102,7 @@ End product, gaps to a business and the demo plan: [`VISION_AND_DEMO.md`](VISION
 
 ## Log
 
+- **2026-09-27 04:30 UTC (internal walkthrough):** Library response profiles (`tools/build_library_profile.py`, `nvi.library.v0`: per-second percentile vs the 1,264 train clips, hook/hold/peak/dead-zone/finish) and a `What the model learned` page (train-only good-vs-bad curves: flat, matching M4) are in the frontend (scorecard, response strip, plain signal names; 65 frontend tests). Internal fell-short vs beat-expectations pair picked by rule (`tools/select_example_pair.py`, hero's deal × platform, views must agree with the label): the hero (beat) and one fell-short clip, shown with observed platform numbers **only** in the tailnet view; never lockbox, never in a release. The pair is an illustration, not evidence.
 - **2026-09-27 00:40 UTC:** Study set complete (1,486 of 1,500 ok; 14 excluded, 0.9 %). Stage 1 ran once: BE − A +0.009 [−0.009, +0.024] and account-scheme BE − A −0.012, so **no-GO** and the card stays `not_trained`. BE − E is a null (+0.0004). Secondary: the extractor embeddings predict reach over metadata (E − A +0.073 [+0.025, +0.117]); the brain adds nothing on top. Full write-up: [`STAGE1_RESULT.md`](STAGE1_RESULT.md). Demo data: [`data-demo-stage1-v1`](https://github.com/vIlkAm/tribe-research/releases/tag/data-demo-stage1-v1) (3 bundles, `not_trained`, no internal IDs; issue #2).
 - **2026-09-27 00:20 UTC (frontend handoff):** The complete self-hostable
   ViralBrain frontend is available under `frontend/` on the frontend handoff
