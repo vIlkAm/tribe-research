@@ -81,6 +81,7 @@ for b in idx['bundles']:
     check(o['tier'] == b['demo_role'] and lo <= pct <= hi and len(ref) >= 100 and len(ref) == o['n_ref_posts']
           and abs(pct - o['views_pct_in_deal_platform']) < 0.1,
           f'{v}: tier {o["tier"]} ok (recomputed {pct:.1f}th pct of {len(ref)} posts)')
+    check(o.get('shares') != 0 and o.get('saves') != 0, f'{v}: unreported shares/saves shown as blank, not 0')
     xx = np.exp(x)
     check(abs(o['views_vs_account_usual_x'] - xx) < 1e-6 and (o['tier'] != 'great' or xx > 1)
           and (o['tier'] != 'bad' or xx < 1), f'{v}: {xx:.2f}x usual agrees with tier {o["tier"]}')

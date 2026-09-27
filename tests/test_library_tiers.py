@@ -68,17 +68,17 @@ def _tab(rng, n=240, signal=True):
 def test_patterns_find_planted_signal_only():
     rows = {r["key"]: r for r in lt.patterns(_tab(np.random.default_rng(1)), np.random.default_rng(2), n_boot=300)}
     r = rows["brain_above_typical"]
-    assert r["verdict"] == "reliable" and r["diff_great_minus_bad"]["lo"] > 30
-    assert r["coin_flip"]["point"] > 0.95 and "higher" in r["plain"]
-    assert sum(v["verdict"] == "reliable" for v in rows.values()) <= 2
+    assert r["verdict"] == "weak_tendency" and r["diff_great_minus_bad"]["lo"] > 30
+    assert r["coin_flip"]["point"] > 0.95 and "higher" in r["plain"] and "exploratory" in r["plain"]
+    assert sum(v["verdict"] == "weak_tendency" for v in rows.values()) <= 2
     line = lt.interpreter_line(r)
-    assert "70%" in line and "30%" in line and "coin flip" in line
+    assert "70%" in line and "30%" in line and "50%" in line and "coin flip" in line
 
 
 def test_patterns_null_gives_no_verdict():
     rows = lt.patterns(_tab(np.random.default_rng(3), signal=False), np.random.default_rng(4), n_boot=300)
     assert all(0 <= r["q"] <= 1 for r in rows)
-    assert sum(r["verdict"] == "reliable" for r in rows) <= 1
+    assert sum(r["verdict"] == "weak_tendency" for r in rows) <= 1
 
 
 def _elig(vid, deal, key, dur=20.0):

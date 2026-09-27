@@ -186,23 +186,26 @@ def patterns(tab: pd.DataFrame, rng: np.random.Generator, n_boot: int = N_BOOT) 
     for r, qq in zip(rows, q):
         d = r["diff_great_minus_bad"]
         reliable = qq <= Q_MAX and (d["lo"] > 0 or d["hi"] < 0)
-        r["q"], r["verdict"] = float(qq), "reliable" if reliable else "no_reliable_difference"
+        r["q"], r["verdict"] = float(qq), "weak_tendency" if reliable else "no_reliable_difference"
         u = r["unit"]
         if reliable:
-            r["plain"] = (f"Clips that did great are {'higher' if d['point'] > 0 else 'lower'} on this than clips "
-                          f"that did badly by about {abs(d['point']):.2g} {u} (same deal and platform).")
+            r["plain"] = (f"Weak tendency (exploratory): clips that did great are {'higher' if d['point'] > 0 else 'lower'} "
+                          f"on this than clips that did badly by about {abs(d['point']):.2g} {u} (same deal and "
+                          "platform), but it does not sort single clips.")
         else:
             r["plain"] = "No reliable difference between clips that did great and clips that did badly."
     return rows
 
 
 def interpreter_line(f: dict) -> str:
-    """Stated from the numbers, whatever they are."""
+    """Stated from the numbers, whatever they are: where each tier sits against the typical line."""
     m, c = f["mean"], f["coin_flip"]
-    return (f"Across the library, clips that did great sit above the typical line in {m['great']:.0f}% of seconds "
-            f"on average and clips that did badly in {m['bad']:.0f}%. Pick one of each at random and the great one "
-            f"has more seconds above the line {100 * c['point']:.0f}% of the time (50% would be a coin flip), so "
-            "the line is a weak tendency, not a verdict on any single clip.")
+    return (f"The typical line is the middle of the library at each second, so an average clip is above it about half "
+            f"the time. Clips that did great are above it in {m['great']:.0f}% of seconds, typical clips in "
+            f"{m['typical']:.0f}% and clips that did badly in {m['bad']:.0f}%. Pick one great and one bad clip at "
+            f"random and the great one has more seconds above the line {100 * c['point']:.0f}% of the time (50% "
+            "would be a coin flip). So a line well below the middle leans slightly towards a weaker clip, but being "
+            "above it does not mean a clip will do well: it is a weak tendency, not a verdict on any single clip.")
 
 
 # ── demo picks ───────────────────────────────────────────────────────────

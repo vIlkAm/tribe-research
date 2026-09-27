@@ -60,8 +60,9 @@ def tier_plain(c: dict) -> str:
     side = "More" if x > 1 else "Fewer"
     poss = "'" if c["deal_label"].endswith("s") else "'s"
     xs = f"{x:.0f}" if x >= 10 else f"{x:.2g}"
-    return (f"{side} views than this account's recent usual ({xs}×): better than {c['views_pct']:.0f}% of "
-            f"{c['deal_label']}{poss} {PLATFORM.get(c['platform'], c['platform'])} posts ({c['n_ref']:,} posts).")
+    return (f"{side} views than this account's recent usual ({xs}×). That jump over its usual is bigger than "
+            f"{c['views_pct']:.0f}% of {c['deal_label']}{poss} {PLATFORM.get(c['platform'], c['platform'])} posts "
+            f"({c['n_ref']:,} posts).")
 
 
 def render(vid: str, batch: str, roots: list[Path], work: Path, reason: str) -> Path:
@@ -138,7 +139,10 @@ def main(argv=None) -> int:
     for c in clips:
         vid = c["video_id"]
         shutil.copyfile(ROOT / f"results/library/{vid}.library.json", pub / vid / "library.json")
-        obs = dict(c["observed"]) | {
+        obs = dict(c["observed"])
+        if not obs.get("shares"):
+            obs["shares"] = None  # 0 = not reported (YouTube 100%, Instagram 99.9% zero in the export)
+        obs = obs | {
             "schema": "nvi.observed.v0", "internal_only": True, "label": "observed on platform",
             "caption": CAPTION_OBS, "caption_null": CAPTION_NULL, "tier": c["role"],
             "tier_label": TIER_LABEL[c["role"]], "tier_plain": tier_plain(c),

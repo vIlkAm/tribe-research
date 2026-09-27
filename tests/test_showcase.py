@@ -80,8 +80,8 @@ def test_plan_tier_order_and_duplicates():
 
 def test_tier_plain_wording():
     assert sdl.tier_plain({**_tier_pick("g", 2.4, 85.2, "Enhanced Games")}) == (
-        "More views than this account's recent usual (2.4×): better than 85% of Enhanced Games' TikTok posts "
-        "(1,234 posts).")
+        "More views than this account's recent usual (2.4×). That jump over its usual is bigger than 85% of "
+        "Enhanced Games' TikTok posts (1,234 posts).")
     assert sdl.tier_plain(_tier_pick("g", 105.6, 97)).startswith("More views than this account's recent usual (106×)")
     assert sdl.tier_plain(_tier_pick("b", 0.34, 16, "Stan")).startswith("Fewer views") and "Stan's TikTok" in \
         sdl.tier_plain(_tier_pick("b", 0.34, 16, "Stan"))
