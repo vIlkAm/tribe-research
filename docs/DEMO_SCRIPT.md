@@ -60,6 +60,9 @@ with Meta. Thanks."
 - **"Does it hold across the whole library?"** Across all clips, a higher share of seconds above the typical line
   went with more views (r +0.14, 95% range +0.06 to +0.22) and with beating the account's usual (r +0.11). Our
   strict split-half check hasn't confirmed it yet. It's on the Library page.
+- **"Results says it holds, the Library says not yet confirmed. Which is it?"** Results checks the views gap by
+  resampling whole accounts, and it holds. The Library adds a stricter test, found on half the accounts and
+  re-checked on the other half, and an effect this small needs more clips to pass it.
 - **"Why is the bad clip's line high at the end?"** One clip is one draw. The whole-library groups are what count,
   and they're on the Results page.
 - **"Whose brain is that?"** Nobody's. It's the model's prediction for an average viewer.

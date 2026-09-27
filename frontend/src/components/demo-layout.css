@@ -43,6 +43,13 @@
 .topbar-button.is-secondary{background:transparent;color:#9aa6b6}
 .topbar-button.is-results{border-color:#6b5738;background:#251f17;color:#f1d3a6}
 .topbar-button.is-results:hover{border-color:#dfb67c;background:#2e261b}
+.evidence-chip{display:flex;flex-direction:column;gap:1px;min-width:0;flex:0 0 auto;margin-left:auto;padding:5px 11px;border:1px solid #3a3226;border-left:3px solid #dfb67c;border-radius:0 7px 7px 0;background:#13171e;color:#cfd7e2;text-decoration:none;line-height:1.25;overflow:hidden}
+.evidence-chip span{font-size:10px;letter-spacing:.3px;text-transform:uppercase;color:#98a3b3;overflow:hidden;text-overflow:ellipsis}
+.evidence-chip strong{font-size:12.5px;font-weight:600;color:#f1d3a6;overflow:hidden;text-overflow:ellipsis}
+.evidence-chip small{font:10.5px var(--mono);font-weight:400;color:#a9b4c3}
+.evidence-chip:hover{border-color:#6b5738;border-left-color:#f1d3a6;background:#191e27}
+.evidence-chip + .demo-topbar-actions{margin-left:0}
+@media (max-width:1399px){.evidence-chip{display:none}.evidence-chip + .demo-topbar-actions{margin-left:auto}}
 .topbar-icon{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border:1px solid transparent;border-radius:7px;background:none;color:#9aa6b6}
 .topbar-icon:hover{border-color:#2c3441;color:#e3e8ef}
 .research-chip{font-size:10.5px;letter-spacing:.3px;padding:3px 8px;border-radius:999px;border:1px solid #6b5738;color:#e0c18e;background:#251f17}

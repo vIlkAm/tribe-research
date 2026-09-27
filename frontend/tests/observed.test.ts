@@ -179,3 +179,15 @@ test('library table labels an unconfirmed all-clips range apart from no link, br
   const { formatEnd } = await import('../src/lib/theory.ts');
   assert.deepEqual([formatEnd(0.004), formatEnd(-0.001), formatEnd(0.06), formatEnd(0)], ['+0.004', '−0.001', '+0.06', '+0.00']);
 });
+
+test('home evidence chip links to the results with the account-resampled range and no forecast wording', async () => {
+  const { EvidenceChip } = await import('../src/components/evidence-chip.ts');
+  // Synthetic interval: display strings only.
+  const interval = { diff: 0.5, lo: 0.1, hi: 0.9, text: { diff: '+0.50', lo: '+0.10', hi: '+0.90' } };
+  const html = renderToStaticMarkup(createElement(EvidenceChip, { interval, onOpen: () => {} }));
+  assert.match(html, /class="evidence-chip" href="\?view=learned"/);
+  assert.match(html, /views had<\/span><strong>\+0\.50 sd higher predicted response <small>\(95% \+0\.10 to \+0\.90\)<\/small>/);
+  assert.match(html, /whole accounts resampled/);
+  assert.match(html, /no-GO/);
+  assert.doesNotMatch(html, /predicts|forecast|edge/i);
+});

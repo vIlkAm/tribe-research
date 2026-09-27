@@ -25,7 +25,8 @@ import LibraryView from './components/LibraryView';
 import { ObservedRow } from './components/observed-row';
 import { fetchOptionalJson } from './lib/real-bundle';
 import { parseRealBundleIndex, type RealBundleIndex } from './lib/real-analysis-index';
-import { parseLearned, parseLibrary, verdictLabel, type Learned, type Library, type LibraryMoment } from './lib/library';
+import { parseLearned, parseLibrary, verdictLabel, type Learned, type LearnedInterval, type Library, type LibraryMoment } from './lib/library';
+import { EvidenceChip } from './components/evidence-chip';
 import { chooseDemoClip, clipParam, demoClips, momentStopMs, parseDemoMoment, type DemoClip, type DemoMoment } from './lib/demo';
 import { openRealBundle } from './lib/real-bundle';
 import { DemoClipPicker, DemoShell } from './components/demo-layout';
@@ -69,11 +70,11 @@ function MethodDialog({ open, onClose, analysis }: { open: boolean; onClose: () 
 
 interface WorkspaceProps {
   analysis: Analysis; localBundle: LocalBundle | null; onOpen: () => void; onReset: () => void; onComparison: () => void; onAnalyze: () => void;
-  learnedAvailable: boolean; onLearned: () => void; compareAvailable: boolean; onCompare: () => void; libraryAvailable: boolean; onLibrary: () => void; interpreterLine?: string;
+  learnedAvailable: boolean; onLearned: () => void; compareAvailable: boolean; onCompare: () => void; libraryAvailable: boolean; onLibrary: () => void; interpreterLine?: string; evidence?: LearnedInterval | null;
   clips: DemoClip[]; currentClip: string | null; clipBusy: string | null; onChooseClip: (clip: DemoClip) => void; demoMoment: DemoMoment | null;
 }
 
-function Workspace({ analysis, localBundle, onOpen, onReset, onComparison, onAnalyze, learnedAvailable, onLearned, compareAvailable, onCompare, libraryAvailable, onLibrary, interpreterLine, clips, currentClip, clipBusy, onChooseClip, demoMoment }: WorkspaceProps) {
+function Workspace({ analysis, localBundle, onOpen, onReset, onComparison, onAnalyze, learnedAvailable, onLearned, compareAvailable, onCompare, libraryAvailable, onLibrary, interpreterLine, evidence, clips, currentClip, clipBusy, onChooseClip, demoMoment }: WorkspaceProps) {
   const demoCompatible = supportsBrain3d(analysis);
   const [timeMs, setTimeMs] = useState(localBundle ? 0 : Math.min(4200, analysis.duration_ms - 1));
   const [playing, setPlaying] = useState(() => !matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -248,6 +249,7 @@ function Workspace({ analysis, localBundle, onOpen, onReset, onComparison, onAna
     <DemoClipPicker clips={clips} current={currentClip} busy={clipBusy} onChoose={onChooseClip} />
     {localBundle && !currentClip && <span className="demo-current" title={localBundle.filename}><FolderOpen size={13} /><span>{localBundle.filename}</span><button type="button" onClick={onReset} aria-label="Close this analysis"><X size={12} /></button></span>}
     {analysis.synthetic && <span className="synthetic-tag">SYNTHETIC SAMPLE</span>}
+    {learnedAvailable && evidence && <EvidenceChip interval={evidence} onOpen={onLearned} />}
     <div className="demo-topbar-actions">
       {learnedAvailable && <a className="topbar-button is-results" href="?view=learned" title="What the study found across the library" onClick={event => { event.preventDefault(); onLearned(); }}><Brain size={14} /> Results</a>}
       {compareAvailable && <a className="topbar-button" href="?view=compare" onClick={event => { event.preventDefault(); onCompare(); }}><Columns2 size={14} /> Compare</a>}
@@ -436,5 +438,5 @@ export default function App() {
   if (!demoReady && !localBundle) return <div className="loading-screen"><Brand /><LoaderCircle size={24} className="spin" /><p>Opening the demo clip</p></div>;
   if (!analysis) return <><div className="loading-screen"><Brand />{error ? <><h1>Couldn’t load the analysis.</h1><p>{error}</p><button className="retry-button" onClick={() => setAttempt(v => v + 1)}><RotateCcw size={17} /> Try again</button><button className="open-analysis-button" onClick={openPicker}><FolderOpen size={15} /> Open analysis</button></> : <><LoaderCircle size={24} className="spin" /><p>Preparing your research workspace</p></>}</div>{picker}{intake}</>;
   if (analysis.status !== 'complete') return <><div className="loading-screen"><Brand /><h1>{analysis.status === 'failed' ? 'Analysis failed.' : analysis.status === 'queued' ? 'Analysis queued.' : 'Analysis is processing.'}</h1><p>{analysis.analysis_id} · {localBundle ? 'Open a completed export when it is available.' : 'Results appear when a completed bundle is available.'}</p>{analysis.synthetic && <span className="synthetic-tag">SYNTHETIC SAMPLE</span>}{analysis.quality.warnings.map((warning, i) => <p key={i}>{warning}</p>)}<div className="analysis-state-actions"><button className="open-analysis-button" onClick={openPicker}><FolderOpen size={15} /> Open analysis</button>{localBundle ? <button className="retry-button" onClick={reset}>Back to demo</button> : <button className="retry-button" onClick={() => { setSample(null); setAttempt(v => v + 1); }}>Check again</button>}</div></div>{picker}{intake}</>;
-  return <><Workspace key={revision} analysis={analysis} localBundle={localBundle} onOpen={openPicker} onReset={reset} onComparison={() => showComparison(true)} onAnalyze={() => setIntakeOpen(true)} learnedAvailable={!!learned} onLearned={() => showLearned(true)} compareAvailable={compareAvailable} onCompare={() => showView('compare')} libraryAvailable={!!patterns} onLibrary={() => showView('library')} interpreterLine={theory?.interpreter_line || patterns?.interpreter_line || undefined} clips={clips} currentClip={currentClip?.video_id ?? null} clipBusy={clipBusy} onChooseClip={clip => void openDemoClip(clip)} demoMoment={demoMoment} />{picker}{intake}</>;
+  return <><Workspace key={revision} analysis={analysis} localBundle={localBundle} onOpen={openPicker} onReset={reset} onComparison={() => showComparison(true)} onAnalyze={() => setIntakeOpen(true)} learnedAvailable={!!learned} onLearned={() => showLearned(true)} evidence={learned?.views_vs_usual?.signals?.index_accounts.whole ?? null} compareAvailable={compareAvailable} onCompare={() => showView('compare')} libraryAvailable={!!patterns} onLibrary={() => showView('library')} interpreterLine={theory?.interpreter_line || patterns?.interpreter_line || undefined} clips={clips} currentClip={currentClip?.video_id ?? null} clipBusy={clipBusy} onChooseClip={clip => void openDemoClip(clip)} demoMoment={demoMoment} />{picker}{intake}</>;
 }
