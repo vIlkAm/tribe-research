@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
-"""Stage the INTERNAL tailnet demo set under frontend/public/ (git-ignored): showcase + example pair.
+"""Stage the INTERNAL tailnet demo set under frontend/public/ (git-ignored): 9 clips, 3 per performance tier.
 
-    .venv/bin/python tools/stage_demo_local.py            # uses results/demo/showcase.json + example_pair.json
+    .venv/bin/python tools/stage_demo_local.py      # uses results/demo/library_demo.json (tools/library_tiers.py)
 
-Writes ``frontend/public/demo-stage1/`` (index.json in demo order: spike, flat, beat_expectations, fell_short;
-per clip analysis.json, performance.json = not_trained, library.json; observed.json for the pair only;
-examples.json) and ``frontend/public/clips/<id>.mp4`` (full-resolution source). Bundle dirs and clips not in the
-new index are removed from public/ so they cannot be picked on stage. The release ``data-demo-stage1-v1``
-tarball is not touched. Observed numbers only for the pair (train split), never a lockbox clip; nothing here is
-ever published.
+Writes ``frontend/public/demo-stage1/`` (index.json ordered great, typical, bad; per clip analysis.json,
+performance.json = not_trained, library.json, observed.json with the tier; examples.json = default compare pair)
+plus ``frontend/public/library_patterns.json`` and ``frontend/public/clips/<id>.mp4`` (full-resolution source).
+Bundle dirs and clips not in the new index are removed from public/ so they cannot be picked on stage. The release
+``data-demo-stage1-v1`` tarball is not touched. Training clips only, never a lockbox clip; never published.
 """
 
 from __future__ import annotations
@@ -27,40 +26,42 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import build_demo_release as bdr  # noqa: E402
 import bundle_performance  # noqa: E402
 
-ORDER = ("spike", "flat", "beat_expectations", "fell_short")
+ORDER = ("great", "typical", "bad")
+TIER_LABEL = {"great": "Did great", "typical": "Typical", "bad": "Did badly"}
+PLATFORM = {"youtube": "YouTube", "tiktok": "TikTok", "instagram": "Instagram"}
 CAPTION_OBS = ("Observed on platform (the post's own numbers, last snapshot). Internal view only; never shown for "
                "sealed test clips or in a release.")
-CAPTION_NULL = "The response scores above did not predict these numbers: stage 1 found no reliable link (no-GO)."
-PLAIN = {
-    "fell_short": ("Fell short of what the metadata-only model expected for this account and platform (bottom third "
-                   "of interactions, fewer views than the account's recent usual)."),
-    "beat_expectations": ("Beat what the metadata-only model expected for this account and platform (top third of "
-                          "interactions, more views than the account's recent usual)."),
-}
-CAVEAT = ("One illustrative pair picked by a fixed rule, not evidence. Across 1,155 training clips, those that beat "
-          "expectations and those that fell short show the same predicted brain response on average (see What the "
-          "model learned). Any difference between these two clips is a property of these two clips.")
+CAPTION_NULL = ("The predicted brain response is not a views forecast: in the pre-registered test it did not improve "
+                "predictions beyond basic information (no-GO).")
+CAVEAT = ("Two clips from the library, picked at random within their performance group by a fixed rule. What they "
+          "show is a property of these two clips; see Library for what holds across all clips.")
 
 
-def plan(showcase: dict, pair: dict) -> list[dict]:
-    """Ordered demo clips: first spike, first flat, then the pair (beat, fell short); one entry per video."""
-    by_role = {"spike": showcase["spike"][0], "flat": showcase["flat"][0]}
-    by_role.update({p["role"]: p for p in pair["picks"]})
-    missing = [r for r in ORDER if r not in by_role]
-    if missing:
-        raise SystemExit(f"no pick for {missing}")
-    out = []
-    for role in ORDER:
-        p = by_role[role]
-        if any(o["video_id"] == p["video_id"] for o in out):
-            raise SystemExit(f"{p['video_id']} would fill two demo roles")
-        m = None
-        if "window_ms" in p:
-            m = {"start_ms": int(p["window_ms"][0]), "end_ms": int(p["window_ms"][1]), "label": p["label"]}
-        out.append({"role": role, "video_id": p["video_id"], "batch": p["batch"], "source_path": p["source_path"],
-                    "source_file": p["source_file"], "demo_moment": m, "observed": p.get("observed"),
-                    "residual_pct_in_stratum": p.get("residual_pct_in_stratum")})
+def plan(demo: dict) -> list[dict]:
+    """Ordered demo clips (great, typical, bad; hash order within each); one entry per video."""
+    out, seen = [], set()
+    for tier in ORDER:
+        for p in demo["picks"].get(tier, []):
+            if p["video_id"] in seen:
+                raise SystemExit(f"{p['video_id']} is in two tiers")
+            seen.add(p["video_id"])
+            m = p.get("demo_moment")
+            out.append({"role": tier, "video_id": p["video_id"], "batch": p["batch"],
+                        "source_path": p["source_path"], "source_file": p["source_file"], "demo_moment": m,
+                        "observed": p["observed"], "deal_label": p["deal_label"], "platform": p["platform"],
+                        "views_pct": p["views_pct"], "n_ref": p["n_ref"]})
+    if not out:
+        raise SystemExit("no demo picks")
     return out
+
+
+def tier_plain(c: dict) -> str:
+    x = c["observed"]["views_vs_account_usual_x"]
+    side = "More" if x > 1 else "Fewer"
+    poss = "'" if c["deal_label"].endswith("s") else "'s"
+    xs = f"{x:.0f}" if x >= 10 else f"{x:.2g}"
+    return (f"{side} views than this account's recent usual ({xs}×): better than {c['views_pct']:.0f}% of "
+            f"{c['deal_label']}{poss} {PLATFORM.get(c['platform'], c['platform'])} posts ({c['n_ref']:,} posts).")
 
 
 def render(vid: str, batch: str, roots: list[Path], work: Path, reason: str) -> Path:
@@ -86,32 +87,32 @@ def render(vid: str, batch: str, roots: list[Path], work: Path, reason: str) -> 
     return dest
 
 
-def index_entry(pub: Path, c: dict, link: str | None, platform: str | None) -> dict:
+def index_entry(pub: Path, c: dict) -> dict:
     a = json.loads((pub / c["video_id"] / "analysis.json").read_text())
     e = {"video_id": c["video_id"], "analysis_id": a.get("analysis_id"), "path": f"{c['video_id']}/analysis.json",
          "duration_ms": a.get("duration_ms"), "status": a.get("status"), "synthetic": False,
          "n_channels": len(a.get("channels") or []), "n_moments": len(a.get("moments") or []),
-         "has_words": bool((a.get("events") or {}).get("words")), "n_warnings": len((a.get("quality") or {}).get("warnings") or []),
+         "has_words": bool((a.get("events") or {}).get("words")),
+         "n_warnings": len((a.get("quality") or {}).get("warnings") or []),
          "performance_path": f"{c['video_id']}/performance.json",
          "performance": {"model_status": "not_trained", "validated": False, "clip_in_training": "no"},
-         "platform": platform, "video_link": link, "is_lockbox": False, "demo_role": c["role"]}
+         "platform": c["platform"], "video_link": c["observed"]["video_link"], "is_lockbox": False,
+         "demo_role": c["role"], "deal_label": c["deal_label"]}
     if c["demo_moment"]:
         e["demo_moment"] = c["demo_moment"]
-    if c["role"] in ("fell_short", "beat_expectations"):
-        e["internal_example"] = c["role"]
     return e
 
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--showcase", type=Path, default=ROOT / "results/demo/showcase.json")
-    ap.add_argument("--pair", type=Path, default=ROOT / "results/demo/example_pair.json")
+    ap.add_argument("--demo", type=Path, default=ROOT / "results/demo/library_demo.json")
+    ap.add_argument("--patterns", type=Path, default=ROOT / "results/library/patterns.json")
     ap.add_argument("--demo-selection", type=Path, default=ROOT / "results/demo/selection.json")
     ap.add_argument("--public", type=Path, default=ROOT / "frontend/public")
     ap.add_argument("--work", type=Path, default=Path("/tmp/stage_demo_local"))
     args = ap.parse_args(argv)
 
-    clips = plan(json.loads(args.showcase.read_text()), json.loads(args.pair.read_text()))
+    clips = plan(json.loads(args.demo.read_text()))
     roots = [Path(b["out_root"]) for b in json.loads(args.demo_selection.read_text())["batches_used"]]
     pub, clip_dir = args.public / "demo-stage1", args.public / "clips"
     old_idx = json.loads((pub / "index.json").read_text())
@@ -127,50 +128,34 @@ def main(argv=None) -> int:
             shutil.copytree(dest / vid, pub / vid)
             if not (pub / "_static").exists():
                 shutil.copytree(dest / "_static", pub / "_static")
-        (pub / vid / "observed.json").unlink(missing_ok=True)
         if not (clip_dir / f"{vid}.mp4").exists():
             shutil.copyfile(c["source_file"], clip_dir / f"{vid}.mp4")
 
     ids = [c["video_id"] for c in clips]
     subprocess.run([sys.executable, str(ROOT / "tools/build_library_profile.py"), "--clips", *ids], check=True,
                    cwd=ROOT, stdout=subprocess.DEVNULL)
-    for vid in ids:
-        shutil.copyfile(ROOT / f"results/library/{vid}.library.json", pub / vid / "library.json")
-
-    import pandas as pd
-    posts = pd.read_parquet(ROOT / "results/outcomes.parquet", columns=["id", "video_link", "platform"])
-    members = pd.read_csv(ROOT / "results/run_full/members.csv", dtype=str)
     entries = []
     for c in clips:
-        link = platform = None
-        if c["observed"]:
-            link, platform = c["observed"]["video_link"], c["observed"]["platform"]
-            obs = dict(c["observed"]) | {
-                "schema": "nvi.observed.v0", "internal_only": True, "label": "observed on platform",
-                "caption": CAPTION_OBS, "caption_null": CAPTION_NULL,
-                "vs_expectation": {"role": c["role"], "plain": PLAIN[c["role"]],
-                                   "residual_pct_in_stratum": round(c["residual_pct_in_stratum"], 3)}}
-            (pub / c["video_id"] / "observed.json").write_text(json.dumps(obs, indent=1) + "\n")
-        else:
-            vp = members[(members["video_id"] == c["video_id"])]
-            rep = vp[vp["representative"].astype(str) == "True"] if "representative" in vp else vp
-            row = posts[posts["id"].isin((rep if len(rep) else vp)["vp_id"])]
-            if len(row):
-                link, platform = row.iloc[0]["video_link"], row.iloc[0]["platform"]
-        entries.append(index_entry(pub, c, link, platform))
+        vid = c["video_id"]
+        shutil.copyfile(ROOT / f"results/library/{vid}.library.json", pub / vid / "library.json")
+        obs = dict(c["observed"]) | {
+            "schema": "nvi.observed.v0", "internal_only": True, "label": "observed on platform",
+            "caption": CAPTION_OBS, "caption_null": CAPTION_NULL, "tier": c["role"],
+            "tier_label": TIER_LABEL[c["role"]], "tier_plain": tier_plain(c),
+            "views_pct_in_deal_platform": round(c["views_pct"], 1), "n_ref_posts": c["n_ref"]}
+        (pub / vid / "observed.json").write_text(json.dumps(obs, indent=1) + "\n")
+        entries.append(index_entry(pub, c))
 
-    pair = {c["role"]: c["video_id"] for c in clips if c["role"] in PLAIN}
+    first = {t: next((c["video_id"] for c in clips if c["role"] == t), None) for t in ORDER}
     (pub / "examples.json").write_text(json.dumps({
-        "schema": "nvi.examples.v0", "internal_only": True,
-        "title": "A clip that fell short vs one that beat expectations",
-        "pairs": [{"fell_short": pair["fell_short"], "beat_expectations": pair["beat_expectations"],
-                   "same": "same account group and platform"}],
-        "rule": json.loads(args.pair.read_text())["rule"], "caveat": CAVEAT, "caption_null": CAPTION_NULL},
+        "schema": "nvi.examples.v1", "internal_only": True,
+        "default_pair": {"a": first["great"], "b": first["bad"]}, "caveat": CAVEAT, "caption_null": CAPTION_NULL},
         indent=1) + "\n")
+    shutil.copyfile(args.patterns, args.public / "library_patterns.json")
     idx = {k: v for k, v in old_idx.items() if k not in ("bundles", "count", "performance_status_counts")}
     idx.update({"count": len(entries), "performance_status_counts": {"not_trained": len(entries)}, "bundles": entries,
-                "local_note": ("Local internal demo set (showcase + example pair); the data-demo-stage1-v1 release "
-                               "tarball is unchanged.")})
+                "local_note": ("Local internal demo set (3 clips per performance tier, tools/library_tiers.py); the "
+                               "data-demo-stage1-v1 release tarball is unchanged.")})
     (pub / "index.json").write_text(json.dumps(idx, indent=1) + "\n")
 
     keep = set(ids) | {"_static"}
@@ -180,7 +165,7 @@ def main(argv=None) -> int:
     for f in clip_dir.glob("*.mp4"):
         if f.stem not in ids:
             f.unlink()
-    print(json.dumps([{k: e.get(k) for k in ("demo_role", "video_id", "duration_ms", "demo_moment", "platform")}
+    print(json.dumps([{k: e.get(k) for k in ("demo_role", "video_id", "deal_label", "platform", "duration_ms")}
                       for e in entries], indent=1))
     return 0
 

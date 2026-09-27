@@ -61,15 +61,27 @@ def _pick(vid, **kw):
     return {"video_id": vid, "batch": "b", "source_path": f"x/{vid}.mp4", "source_file": f"/s/{vid}.mp4", **kw}
 
 
-def test_plan_order_and_duplicates():
-    show = {"spike": [_pick("s", window_ms=[0, 5000], label="Spike")],
-            "flat": [_pick("f", window_ms=[2000, 8000], label="Flat")]}
-    pair = {"picks": [_pick("bad", role="fell_short", observed={}, residual_pct_in_stratum=0.1),
-                      _pick("good", role="beat_expectations", observed={}, residual_pct_in_stratum=0.9)]}
-    plan = sdl.plan(show, pair)
-    assert [c["role"] for c in plan] == ["spike", "flat", "beat_expectations", "fell_short"]
-    assert plan[0]["demo_moment"] == {"start_ms": 0, "end_ms": 5000, "label": "Spike"}
-    assert plan[2]["demo_moment"] is None
-    show["flat"] = [_pick("good", window_ms=[0, 1000], label="Flat")]
-    with pytest.raises(SystemExit, match="two demo roles"):
-        sdl.plan(show, pair)
+def _tier_pick(vid, x, pct, deal="Deal"):
+    return {"video_id": vid, "batch": "b", "source_path": "p", "source_file": "f", "deal_label": deal,
+            "platform": "tiktok", "views_pct": pct, "n_ref": 1234,
+            "observed": {"views_vs_account_usual_x": x, "video_link": "https://example.invalid"}}
+
+
+def test_plan_tier_order_and_duplicates():
+    demo = {"picks": {"bad": [_tier_pick("b1", 0.3, 10)], "great": [_tier_pick("g1", 2.4, 85)],
+                      "typical": [_tier_pick("t1", 0.99, 49)]}}
+    plan = sdl.plan(demo)
+    assert [c["role"] for c in plan] == ["great", "typical", "bad"]
+    assert plan[0]["demo_moment"] is None
+    demo["picks"]["bad"].append(_tier_pick("g1", 0.3, 10))
+    with pytest.raises(SystemExit, match="two tiers"):
+        sdl.plan(demo)
+
+
+def test_tier_plain_wording():
+    assert sdl.tier_plain({**_tier_pick("g", 2.4, 85.2, "Enhanced Games")}) == (
+        "More views than this account's recent usual (2.4×): better than 85% of Enhanced Games' TikTok posts "
+        "(1,234 posts).")
+    assert sdl.tier_plain(_tier_pick("g", 105.6, 97)).startswith("More views than this account's recent usual (106×)")
+    assert sdl.tier_plain(_tier_pick("b", 0.34, 16, "Stan")).startswith("Fewer views") and "Stan's TikTok" in \
+        sdl.tier_plain(_tier_pick("b", 0.34, 16, "Stan"))

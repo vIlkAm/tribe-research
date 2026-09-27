@@ -2,9 +2,9 @@
 """Independent audit of the served INTERNAL demo set (frontend/dist): clip identity and length, per-second
 percentiles recomputed by brute force, observed numbers vs the raw DB export, lockbox, selection independence.
 
-    .venv/bin/python tools/audit_demo_local.py
+    .venv/bin/python tools/audit_demo_local.py [dist|public]
 """
-import sys, json, hashlib, pickle
+import sys, json, hashlib, pickle, inspect
 from pathlib import Path
 import numpy as np, pandas as pd
 ROOT = Path(__file__).resolve().parents[1]; sys.path[:0] = [str(ROOT/'tools'), str(ROOT)]
@@ -12,7 +12,7 @@ import make_manifest as mm
 import build_library_profile as blp
 from tribe_research.brain import moments_pop as mp
 
-PUB = ROOT/'frontend/dist'
+PUB = ROOT/'frontend'/(sys.argv[1] if len(sys.argv) > 1 else 'dist')
 idx = json.load(open(PUB/'demo-stage1/index.json'))
 ids = [b['video_id'] for b in idx['bundles']]
 ok = True
@@ -54,26 +54,51 @@ for v in ids:
     rg = np.full(len(r_served), np.nan); rg[e.sec] = np.nanmean(e.u, 0)
     check(np.nanmax(np.abs(rg - r_served)) < 0.002, f'{v}: response index = plain mean of the 7 channels')
 
-# C/D. observed numbers vs the raw DB export, and post <-> clip mapping
+# C/D. observed numbers vs the raw DB export, post <-> clip mapping, tier recomputed from the outcomes table
 vp = pd.read_csv(ROOT/'results/metrics/video_performances.csv', dtype=str).set_index('id')
 mem = pd.read_csv(ROOT/'results/run_full/members.csv', dtype=str)
-pair = json.load(open(ROOT/'results/demo/example_pair.json'))
-for p in pair['picks']:
-    v, sn = p['video_id'], p['source_name']
+man = {r['video_id']: r for r in map(json.loads, open(ROOT/'results/run_full/manifest.jsonl'))} \
+    if (ROOT/'results/run_full/manifest.jsonl').exists() else {}
+demo = json.load(open(ROOT/'results/demo/library_demo.json'))
+picks = {p['video_id']: p for ps in demo['picks'].values() for p in ps}
+check(set(picks) == set(ids), 'served clips == the tier picks (nothing extra, nothing missing)')
+oc = pd.read_parquet(ROOT/'results/outcomes.parquet', columns=['id', 'deal_id', 'platform', 'reach_rel_local', 'dq_flags'])
+oc = oc[oc.reach_rel_local.notna() & oc.dq_flags.isna() & oc.deal_id.notna()]
+for b in idx['bundles']:
+    v = b['video_id']; p = picks[v]; sn = p['source_name']
     o = json.load(open(PUB/f'demo-stage1/{v}/observed.json')); raw = vp.loc[sn]
     check(sn in set(mem[mem.video_id == v].vp_id), f'{v}: shown post is one of this clip\'s own posts')
-    check(o['video_link'] == raw['video_link'], f'{v}: link matches raw export')
-    for k, rk in (('views','views'), ('likes','likes'), ('comments','comments')):
-        check(float(o[k]) == float(raw[rk]), f'{v}: {k} {o[k]:.0f} == raw export {float(raw[rk]):.0f}')
+    if man:
+        check(man[v].get('source_name') == sn, f'{v}: shown post is the manifest representative post')
+    check(o['video_link'] == raw['video_link'] and b['video_link'] == raw['video_link'], f'{v}: link matches raw export')
+    for k in ('views', 'likes', 'comments'):
+        check(float(o[k]) == float(raw[k]), f'{v}: {k} {o[k]:.0f} == raw export {float(raw[k]):.0f}')
+    # tier from scratch: plain percentile of this post's reach_rel_local among its deal x platform posts
+    me = oc[oc.id.astype(str) == sn].iloc[0]
+    ref = oc[(oc.deal_id == me.deal_id) & (oc.platform == me.platform)].reach_rel_local.to_numpy()
+    x = me.reach_rel_local; pct = 100 * ((ref < x).sum() + 0.5 * (ref == x).sum()) / len(ref)
+    lo, hi = {'great': (80, 100), 'typical': (40, 60), 'bad': (0, 20)}[o['tier']]
+    check(o['tier'] == b['demo_role'] and lo <= pct <= hi and len(ref) >= 100 and len(ref) == o['n_ref_posts']
+          and abs(pct - o['views_pct_in_deal_platform']) < 0.1,
+          f'{v}: tier {o["tier"]} ok (recomputed {pct:.1f}th pct of {len(ref)} posts)')
+    xx = np.exp(x)
+    check(abs(o['views_vs_account_usual_x'] - xx) < 1e-6 and (o['tier'] != 'great' or xx > 1)
+          and (o['tier'] != 'bad' or xx < 1), f'{v}: {xx:.2f}x usual agrees with tier {o["tier"]}')
 
 # E. lockbox + selection independence
 sel = pd.read_csv(ROOT/'results/study/selection.csv', dtype=str); ext = pd.read_csv(ROOT/'results/study/lockbox_ext.csv', dtype=str)
 lock = set(sel[sel.split == 'lockbox'].video_id) | set(ext.video_id)
 check(not (set(ids) & lock), 'no demo clip is a sealed lockbox clip')
-src = (ROOT/'tools/select_example_pair.py').read_text()
-check('library' not in src and 'npz' not in src, 'pair rule never reads brain data')
-src = (ROOT/'tools/select_showcase.py').read_text()
-check('outcomes' not in src.replace('No outcome is read', '').replace('never reads outcomes', '').replace('never an\noutcome', ''), 'showcase rule never reads outcomes')
+import library_tiers as lt
+src = inspect.getsource(lt.demo_picks)
+check(not any(w in src for w in ('brain', 'library', 'pct[', 'npz', 'FEATURES')), 'tier picks never read brain data')
+for t, ps in demo['picks'].items():
+    keys = [p['rank_key'] for p in ps]
+    check(keys == sorted(keys) and len({p['deal_id'] for p in ps}) == len(ps), f'{t}: picks in hash order, one per deal')
+pat = json.load(open(PUB/'library_patterns.json'))
+f = next(r for r in pat['features'] if r['key'] == 'brain_above_typical')
+check(f"{f['mean']['great']:.0f}%" in pat['interpreter_line'] and f"{100*f['coin_flip']['point']:.0f}%" in pat['interpreter_line'],
+      'interpreter line quotes the computed numbers')
 
 # F. learned.json headline numbers vs the stage-1 metrics file
 L = json.load(open(PUB/'learned.json')); s1 = L['stage1']
