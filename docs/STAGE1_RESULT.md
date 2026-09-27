@@ -72,7 +72,21 @@ no reach.
   signal is the thing worth testing if anything is scaled.
 - **Proof-of-concept holdout** (`results/study/poc_holdout.csv`, prereg 2026-09-27) is
   unaffected and stays exploratory.
-- **Still to run (secondary family 6, exploratory):** M4 good-vs-bad contrast and arm X on the
-  stage-1 out-of-fold predictions.
+- **Still to run (secondary family 6, exploratory):** arm X (A + editing covariates).
+
+## Secondary: M4 "good vs bad clip" (family 6, exploratory)
+
+Within each deal, the top and bottom thirds of clips by `log_interactions_rate` residual (after the
+arm-A out-of-fold prediction) were compared on each channel's population-normed brain curve. There
+are three views: seconds since onset, fraction of the clip, and the M3 residual. The test is a
+cluster permutation (2,000, labels shuffled within deal) with BH q = 0.10 over 21 tests (prereg
+900001b, moments state `state_v1`).
+
+- **Sample:** 1,155 contents in 12 deals. 2 contents posted in two deals were refused, as the
+  prereg requires.
+- **Result: no cluster survives.** The smallest FWE p is 0.13, and every q is 0.77.
+- **Reading:** the predicted brain time course does not separate clips that did better than
+  expected from those that did worse. This agrees with the null BE − E above.
+- **Report:** `results/moments_pop/m4_v1.json` (local).
 
 Full tables: `results/models/stage1-eval/report.md` and `metrics.json` (local, not in git).
