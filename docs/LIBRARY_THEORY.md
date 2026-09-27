@@ -82,6 +82,17 @@ is a bug fix, dated here with its reason, not a new rule.
   than 100% without the negative overlap (-11%). It now states which part is larger and shows all three shares. No
   number, rule or verdict changed.
 
+- **2026-09-27, Learned chart by views (decided before it was computed):** the owner asked for the Learned page's
+  "good vs bad" curves to group clips by views. Fixed before the run: raw `reach_rel_local` (views against the
+  account's usual; the "video" outcome above and the stage-1 secondary endpoint), content-scheme train rows of
+  `results/models/stage1-eval/oof_predictions.csv`, the same M4 handling (multi-deal contents refused, one row per
+  content, w-weighted mean) and the same within-deal thirds (`tertile_labels`). Curves are unweighted means of the
+  response index for seconds 0-29 with 1,000-draw bootstrap bands, like the engagement chart. Two summaries, both
+  reported whatever they show: top minus bottom third in the clip-mean index over its seconds 0-29, and in the
+  opening (first 4 s), each with a bootstrap 95% interval, plus the count of seconds whose interval excludes 0 (out
+  of 30; some expected by chance). Descriptive and exploratory, not a pre-registered test; the engagement (M4) chart
+  stays on the page below it.
+
 ## Result (2026-09-27, run once: `tools/library_theory.py`, `results/library/theory.json`)
 
 - 1,143 library clips from 182 accounts. Discovery half: 699 clips, 103 accounts. Confirmation half: 444 clips,
