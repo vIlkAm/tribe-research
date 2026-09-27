@@ -5,7 +5,7 @@ from a person or an agent. The newest update is at the top. Details live in the
 linked docs; this page only says where things stand. Agents on either side: when
 you change the state of something below, update this file in the same commit.
 
-_Last updated: 2026-09-26 22:25 UTC (research/backend side). All times UTC._
+_Last updated: 2026-09-27 00:20 UTC. All times UTC._
 
 ## One-paragraph summary
 
@@ -100,6 +100,15 @@ End product, gaps to a business and the demo plan: [`VISION_AND_DEMO.md`](VISION
 
 ## Log
 
+- **2026-09-27 00:20 UTC (frontend handoff):** The complete self-hostable
+  ViralBrain frontend is available under `frontend/` on the frontend handoff
+  branch/PR. It includes source, package lock, tests, static assets and
+  [takeover instructions](../frontend/FRONTEND_HANDOFF.md), but no credentials,
+  private data releases, model artifacts or source footage. Baseline frontend
+  source `6a69665` passed 48/48 tests and the TypeScript/Vite production build;
+  the following documentation-only source commit is `fdf0ca2`. The backend
+  worker can run and self-host it independently of the existing Sites
+  deployment.
 - **2026-09-26 23:30 UTC (tyler-fb, cost/throughput check):** Study set: pulled b02, b05, b06, b08, b09 and the pilot; on pods now b03 156/200 (L40S), b07 107/200 (A100), b04 66/200 (4090), so ~600 clips remain in flight. Measured: L40S 2 workers ~150 clips/h ($1.09/h, ~$0.007/clip); A100 2 workers ~152/h ($1.59/h, ~$0.010/clip), 3 workers ~170/h (~$0.009/clip, marginal gain); 4090 1 worker ~150/h early ($0.74/h, ~$0.005/clip, cheapest). L40S stock is none; 4090 is the cheap scale-out. Balance $7.34, spend $3.46/h, runway ~2.1 h, enough for b03/b04/b07 but not for stage 2 (~$50 top-up is an owner decision). Spot check of 10 pilot outputs: shapes (T,20484), no NaN, T ~ 1.01-1.05 x duration. Technical parity gates passed (L40S, A100); validity as a performance predictor is untested until stage 1.
 - **2026-09-26 22:25 UTC:** b02 (200) and b09 (50) pulled, all clean. The A100 runs b08 at ~170 clips/h on 3 workers; b03, b05 and b06 are on the other pods, and b04/b07 are unclaimed. Pre-scaling of the remaining ~6,000 clips (r00–r15) is done. 4 clips are excluded by TRIBE's own transcript-alignment check (too little speech; 3 are adam-yu), which is 0.7 % and under the 2 % flag.
 

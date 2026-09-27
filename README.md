@@ -24,7 +24,9 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 
 - **Frontend work:** build against `docs/analysis.schema.json`, use
   `docs/sample_analysis/` (synthetic) as fixture data, and read the spec in
-  `docs/frontend_spec/`. The HTML there is the source of the PDF.
+  `docs/frontend_spec/`. The complete self-hostable frontend handoff now lives
+  in `frontend/`; start with
+  [`frontend/FRONTEND_HANDOFF.md`](frontend/FRONTEND_HANDOFF.md).
 - **ROI map:** `tribe_research/assets/roi_map_roi_groups_v0.npz` is gitignored
   (like all `.npz`). Build it from the HCP-MMP1 annotation mirror:
   ```bash

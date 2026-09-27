@@ -1,0 +1,49 @@
+.contract-timeline{padding-bottom:14px}
+.contract-channel-toggles{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:11px}
+.contract-channel-toggles button{display:inline-flex;align-items:center;gap:7px;padding:6px 9px;border:1px solid #33404f;border-radius:5px;font-size:11px;color:#9aa8ba;background:#101720}
+.contract-channel-toggles button[aria-pressed=true]{color:#e4eaf3;background:#25303e;border-color:#63758a}
+.contract-channel-toggles button:disabled{opacity:.65}
+.contract-channel-toggles button:disabled[aria-pressed=true]{opacity:1}
+.contract-channel-toggles i{height:6px;width:6px;border-radius:50%;flex:none}
+.contract-timeline-note{font-size:10px;line-height:1.6;color:#96a4b7;margin:5px 0 17px}
+.contract-timeline .timeline-chart{height:164px;gap:12px}
+.contract-timeline .y-axis{width:62px}
+.contract-timeline .x-axis{top:calc(100% + 11px)}
+.contract-timeline .x-axis .contract-first-tick{transform:none}
+.contract-timeline .x-axis .contract-last-tick{transform:translateX(-100%)}
+.contract-event-lanes{margin-right:9px;display:grid;gap:7px}
+.contract-event-lane{display:grid;grid-template-columns:62px minmax(0,1fr);gap:12px;align-items:center;font-size:10px;color:#96a4b7}
+.contract-event-track{min-height:24px;border-bottom:1px solid #27313e;position:relative}
+.contract-empty-lane{display:block;font-size:10px;color:#7f91a7;line-height:1.5;padding:4px 0;overflow-wrap:anywhere}
+.contract-event-track button{position:absolute;top:5px;height:13px;min-width:3px;padding:0;border-radius:2px}
+.contract-event-track .contract-moment{border:1px solid #bda573;background:transparent;height:14px}
+.contract-event-track .contract-moment.is-hypothesis{border:1px dashed #e4b66e;background:#c3954920;z-index:1}
+.contract-event-track .contract-shot{width:8px;background:transparent;border-left:2px solid #91a4b7;border-radius:0}
+.contract-event-track .contract-speech{background:#7890aa75;border:1px solid #8da4be}
+.contract-lane-playhead,.contract-lane-hover{position:absolute;top:0;bottom:0;width:1px;background:#d9c29a;pointer-events:none;z-index:2}
+.contract-lane-hover{background:transparent;border-left:1px dashed #a6b6c266}
+.contract-moment-key{display:flex;flex-wrap:wrap;gap:9px 17px;font-size:10px;color:#91a1b5;margin:11px 0}
+.contract-moment-key span{display:inline-flex;align-items:center;gap:6px}
+.contract-moment-key i{display:inline-block;width:15px;height:7px;border:1px solid #bda573;border-radius:2px}
+.contract-moment-key i.is-hypothesis{border-style:dashed;background:#c3954920}
+.contract-unavailable{font-size:11px;color:#91a1b5;margin-top:13px}
+.contract-unavailable summary{cursor:pointer;padding:5px 0}
+.contract-unavailable ul{list-style:none;padding:0;margin:8px 0 0;display:grid;gap:8px}
+.contract-unavailable li{display:flex;gap:10px;align-items:baseline;line-height:1.5}
+.contract-unavailable button{border:1px solid #344152;border-radius:4px;padding:3px 7px;flex:0 0 140px;text-align:left;text-transform:capitalize;font-size:10px}
+.atlas-wrap.atlas-wrap.contract-atlas{gap:7px;inset:103px 50px 111px}
+.contract-atlas-surface{position:relative;width:100%;min-height:0;flex:1;display:flex;align-items:center;justify-content:center}
+.contract-atlas-canvas{width:100%;height:100%;max-width:460px;overflow:hidden;border-radius:6px}
+.contract-atlas-status{position:absolute;inset:0;display:grid;place-items:center;text-align:center;font-size:12px;color:#9cacc0;pointer-events:none;background:#0b1018b0}
+.contract-atlas-tooltip{position:absolute;left:0;bottom:5px;max-width:285px;background:#101a27f5;border:1px solid #3d5068;border-radius:6px;padding:10px 12px;pointer-events:none;z-index:4;box-shadow:0 5px 22px #0006}
+.contract-atlas-tooltip strong{font-size:12px;font-weight:550;display:flex;gap:8px;flex-wrap:wrap}
+.contract-atlas-tooltip strong span{color:#e3eaf4}
+.contract-atlas-tooltip small{font-size:9px;line-height:1.4;color:#a6b5c8;display:block;margin-top:3px}
+.contract-atlas-tooltip p{font-size:10px;color:#c4cfdd;line-height:1.4;margin-top:4px}
+.contract-atlas-tools{display:flex;align-items:center;justify-content:center;gap:12px;width:100%;font-size:9px;color:#9eacc0;text-align:center;line-height:1.4}
+.contract-atlas-legend{position:relative;flex:none;font-size:10px}
+.contract-atlas-legend summary{cursor:pointer;color:#d8c29d;padding:4px;border:1px solid #40506a;border-radius:4px;list-style:none}
+.contract-atlas-legend>div{position:absolute;bottom:calc(100% + 8px);right:0;z-index:6;padding:8px;background:#f4f6f9;border:1px solid #52627a;border-radius:5px;color:#253145;width:min(330px,65vw)}
+.contract-atlas-legend img{display:block;width:100%;max-height:230px;object-fit:contain}
+.contract-atlas-caption{font-size:9px;color:#99a9be;line-height:1.4;text-align:center;max-width:420px}
+@media(max-width:600px){.contract-channel-toggles{gap:6px}.contract-channel-toggles button{font-size:10px;padding:6px 7px}.contract-timeline .timeline-chart{gap:8px}.contract-timeline .y-axis{width:44px}.contract-event-lane{grid-template-columns:44px minmax(0,1fr);gap:8px;font-size:9px}.contract-timeline-note{font-size:9px}.contract-empty-lane{font-size:9px}.contract-event-lanes{margin-right:0}.contract-moment-key{font-size:9px}.contract-unavailable li{display:block}.contract-unavailable li>span{display:block;margin-top:4px}.atlas-wrap.atlas-wrap.contract-atlas{inset:104px 20px 126px;gap:5px}.contract-atlas-tools{font-size:8px;gap:6px}.contract-atlas-caption{font-size:8px}.contract-atlas-tooltip{max-width:230px;padding:8px 10px}.contract-atlas-tooltip p{font-size:9px}}
