@@ -24,7 +24,8 @@ small server above. It only listens on your own computer.
   same second of the library clips.
 - **Compare:** two clips side by side (starts with a clip that did great and one that did badly).
 - **Library:** all demo clips with their real views, and what holds across the whole library (see below).
-- **Learned:** the pre-registered test and its result.
+- **Learned:** the pre-registered test and its result, and the predicted response of clips above vs below their
+  account's usual views.
 
 The **Analyze video** / upload flow needs the GPU backend, so it does not run in this offline copy.
 
@@ -54,9 +55,12 @@ Some TikTok clips were re-encoded from HEVC to H.264 only so that every browser 
   up. One pattern held: longer clips get more interactions per view within the same account (small, and not a
   cause: longer clips also get fewer views).
 - **Grouped by views against the account's usual** (Learned page; exploratory, grouping fixed before it was
-  computed): the third of clips above their account's usual had a higher predicted brain response over the first
-  30 seconds than the third below it, including the opening (+0.09 library standard deviations, 95% range +0.03 to
-  +0.15; it also holds when whole accounts are resampled). Small, but in the direction you would expect.
+  computed): within each client, the third of clips above their account's usual had a higher predicted brain
+  response than the third below it, over the first 30 seconds (+0.09 library standard deviations, 95% range +0.03
+  to +0.15) and in the opening 4 seconds (+0.10, +0.02 to +0.17); both hold when whole accounts are resampled.
+  Small, but in the direction you would expect. The stricter Library test (rank correlation within the same
+  account, confirmed on held-out accounts) does not confirm the opening on its own, so this is a lead, not a
+  finding.
 - So the tool shows *where* attention is predicted to rise and fall inside a clip, which is useful for editing
   review. It does not tell you whether a clip will go viral.
 
