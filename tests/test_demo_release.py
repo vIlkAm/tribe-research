@@ -233,6 +233,7 @@ def test_build_not_trained_release_end_to_end(tmp_path, monkeypatch):
         blk = json.load(tar.extractfile(f"data-demo-stage1-v1/{b['performance_path']}"))
         assert blk["engagement"] is None and blk["reach"] is None and blk["drivers"] == []
         assert "views" not in json.dumps(blk) and blk["context"]["account_id"] is None
+        assert json.load(tar.extractfile(f"data-demo-stage1-v1/{b['path']}"))["source_name"] is None
     assert (out / "data-demo-stage1-v1.RELEASE_MANIFEST.json").exists() and not (out / "work").exists()
     # exactly one of --model-dir / --not-trained
     with pytest.raises(SystemExit):

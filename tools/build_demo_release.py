@@ -72,7 +72,7 @@ def videos_root_for(pick: dict, batches_dir: Path | None) -> Path | None:
 
 
 def scrub_blocks(dest: Path, ids: list[str], reason: str | None) -> None:
-    """Browser-facing blocks carry no account ID; a not_trained reason carries no digits (no CV numbers)."""
+    """Browser-facing files carry no account or post ID; a not_trained reason carries no digits (no CV numbers)."""
     if reason is not None and any(c.isdigit() for c in reason):
         raise SystemExit(f"--not-trained-reason must not contain numbers: {reason!r}")
     for vid in ids:
@@ -85,6 +85,11 @@ def scrub_blocks(dest: Path, ids: list[str], reason: str | None) -> None:
             if any(c.isdigit() for c in blk["reason"]):
                 raise SystemExit(f"{vid}: not_trained reason carries numbers: {blk['reason']!r}")
         f.write_text(json.dumps(blk, indent=2, ensure_ascii=False) + "\n")
+        a = dest / vid / "analysis.json"
+        if a.exists():  # source_name is the internal post id used for the outcome join; nullable in the contract
+            ana = json.loads(a.read_text())
+            ana["source_name"] = None
+            a.write_text(json.dumps(ana, ensure_ascii=False) + "\n")
 
 
 def check_blocks(dest: Path, ids: list[str], not_trained: bool) -> dict:
