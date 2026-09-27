@@ -6,3 +6,4 @@ release/
 *.tsbuildinfo
 .env*
 !.env.example
+public/demo-stage1/
