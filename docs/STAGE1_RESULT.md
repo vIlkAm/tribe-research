@@ -72,7 +72,6 @@ no reach.
   signal is the thing worth testing if anything is scaled.
 - **Proof-of-concept holdout** (`results/study/poc_holdout.csv`, prereg 2026-09-27) is
   unaffected and stays exploratory.
-- **Still to run (secondary family 6, exploratory):** arm X (A + editing covariates).
 
 ## Secondary: M4 "good vs bad clip" (family 6, exploratory)
 
@@ -90,3 +89,22 @@ cluster permutation (2,000, labels shuffled within deal) with BH q = 0.10 over 2
 - **Report:** `results/moments_pop/m4_v1.json` (local).
 
 Full tables: `results/models/stage1-eval/report.md` and `metrics.json` (local, not in git).
+
+## Secondary: arm X, editing covariates (family 6, exploratory)
+
+X = A + `edit_*` (cuts per minute, first cut, speech onset, speech onsets per minute). It uses
+the same folds and stack model, with the lockbox not scored (f8e2409,
+`results/models/stage1-armx-eval`, local). The A/B/E/BE results reproduce stage 1 exactly.
+
+| `log_interactions_rate` | X − A | B − X | E − X |
+|---|---|---|---|
+| content | +0.006 [−0.010, +0.021] | −0.002 [−0.019, +0.017] | +0.003 [−0.019, +0.024] |
+| account | +0.009 [−0.014, +0.025] | −0.025 [−0.044, +0.013] | −0.010 [−0.038, +0.015] |
+| leave-one-deal-out | −0.009 [−0.031, +0.029] | +0.004 [−0.023, +0.017] | +0.014 [−0.022, +0.036] |
+
+- **Result: null.** The editing covariates add nothing reliable.
+- **Caveat:** A already holds near-duplicates of them (shots per second, first shot, first word,
+  word rate). So the reading is "nothing beyond A's own shot and speech terms", not "editing
+  doesn't matter".
+- **Reach:** on `reach_rel_local`, only E − X excludes zero (content +0.070 [+0.013, +0.122]).
+  That restates the E − A reach signal above; it is not a new finding.
