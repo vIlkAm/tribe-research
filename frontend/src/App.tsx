@@ -1,5 +1,5 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowUpRight, AudioLines, Box, Brain, ChevronDown, CircleHelp, Crosshair, Expand, ExternalLink, Focus, FolderOpen, GitBranch, Info, Layers3, LoaderCircle, MousePointer2, Pause, Play, Repeat2, RotateCcw, Rotate3D, Scan, SkipBack, Sparkles, Upload, X } from 'lucide-react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowUpRight, AudioLines, Box, Brain, Columns2, ChevronDown, CircleHelp, Crosshair, Expand, ExternalLink, Focus, FolderOpen, GitBranch, Info, Layers3, LoaderCircle, MousePointer2, Pause, Play, Repeat2, RotateCcw, Rotate3D, Scan, SkipBack, Sparkles, Upload, X } from 'lucide-react';
 import type { Analysis, Channel, Moment } from './data/analysis.types';
 import { assertAnalysis, BUNDLE_PATH, formatTime, isGap, sampleAt, signalText, stepPath } from './lib/analysis';
 import BrainAtlas from './components/BrainAtlas';
@@ -17,6 +17,11 @@ import ClipScorecard from './components/ClipScorecard';
 import ResponseStrip from './components/ResponseStrip';
 import StandoutMoments from './components/StandoutMoments';
 import LearnedView from './components/LearnedView';
+import CompareView from './components/CompareView';
+import ObservedPanel from './components/ObservedPanel';
+import { compareModel, parseExamples, parseObserved, siblingUrl, type Examples, type Observed } from './lib/observed';
+import { fetchOptionalJson } from './lib/real-bundle';
+import { parseRealBundleIndex, type RealBundleIndex } from './lib/real-analysis-index';
 import { parseLearned, parseLibrary, verdictLabel, type Learned, type Library, type LibraryMoment } from './lib/library';
 import './components/comparison-demo.css';
 import './components/library.css';
@@ -52,7 +57,7 @@ function MethodDialog({ open, onClose, analysis }: { open: boolean; onClose: () 
   </dialog>;
 }
 
-function Workspace({ analysis, localBundle, onOpen, onReset, onComparison, onAnalyze, learnedAvailable, onLearned }: { analysis: Analysis; localBundle: LocalBundle | null; onOpen: () => void; onReset: () => void; onComparison: () => void; onAnalyze: () => void; learnedAvailable: boolean; onLearned: () => void }) {
+function Workspace({ analysis, localBundle, onOpen, onReset, onComparison, onAnalyze, learnedAvailable, onLearned, compareAvailable, onCompare }: { analysis: Analysis; localBundle: LocalBundle | null; onOpen: () => void; onReset: () => void; onComparison: () => void; onAnalyze: () => void; learnedAvailable: boolean; onLearned: () => void; compareAvailable: boolean; onCompare: () => void }) {
   const demoCompatible = supportsBrain3d(analysis);
   const [timeMs, setTimeMs] = useState(Math.min(4200, analysis.duration_ms - 1));
   const [playing, setPlaying] = useState(() => !matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -96,6 +101,16 @@ function Workspace({ analysis, localBundle, onOpen, onReset, onComparison, onAna
       .catch(() => undefined);
     return () => controller.abort();
   }, [libraryUrl, analysis.video_id]);
+  const [observed, setObserved] = useState<Observed | null>(null);
+  const observedUrl = localBundle?.lockbox ? undefined : localBundle?.observedUrl;
+  const lockbox = !!localBundle?.lockbox;
+  useEffect(() => {
+    setObserved(null);
+    if (!observedUrl || lockbox) return;
+    const controller = new AbortController();
+    void fetchOptionalJson(observedUrl, controller.signal).then(value => { if (!controller.signal.aborted) setObserved(parseObserved(value, { lockbox })); });
+    return () => controller.abort();
+  }, [observedUrl, lockbox]);
   const plainChannels = new Map((library?.channels ?? []).map(channel => [channel.key, channel]));
   const playbackRef = useRef({ timeMs, speed, loop, duration: analysis.duration_ms });
   playbackRef.current = { timeMs, speed, loop, duration: analysis.duration_ms };
@@ -182,7 +197,7 @@ function Workspace({ analysis, localBundle, onOpen, onReset, onComparison, onAna
   const performanceCard = <PerformanceCard performance={analysis.performance} synthetic={analysis.synthetic} />;
 
   return <>
-    <header className="topbar"><div className="header-main"><Brand /><span className="header-divider" /><span className="product-name">Neural video intelligence</span></div><div className="header-actions"><button className="analyze-video-button" onClick={onAnalyze}><Upload size={14} /><span>Analyze video</span></button><a className="watch-comparison-button" href="?demo=comparison" onClick={event => { event.preventDefault(); onComparison(); }}><Play size={14} /> Watch video preview</a><button className="open-analysis-button" onClick={onOpen}><FolderOpen size={15} /> Open analysis</button><a className="repo-link" href={REPO} target="_blank" rel="noreferrer"><GitBranch size={15} /> Research source <ExternalLink size={12} /></a>{learnedAvailable && <a className="learned-link" href="?view=learned" onClick={event => { event.preventDefault(); onLearned(); }}><Brain size={14} /> What the model learned</a>}<button className="help-button" aria-label="About the demo" onClick={() => setMethodOpen(true)}><CircleHelp size={17} /><span>About the demo</span></button></div></header>
+    <header className="topbar"><div className="header-main"><Brand /><span className="header-divider" /><span className="product-name">Neural video intelligence</span></div><div className="header-actions"><button className="analyze-video-button" onClick={onAnalyze}><Upload size={14} /><span>Analyze video</span></button><a className="watch-comparison-button" href="?demo=comparison" onClick={event => { event.preventDefault(); onComparison(); }}><Play size={14} /> Watch video preview</a><button className="open-analysis-button" onClick={onOpen}><FolderOpen size={15} /> Open analysis</button><a className="repo-link" href={REPO} target="_blank" rel="noreferrer"><GitBranch size={15} /> Research source <ExternalLink size={12} /></a>{compareAvailable && <a className="learned-link" href="?view=compare" onClick={event => { event.preventDefault(); onCompare(); }}><Columns2 size={14} /> Compare examples</a>}{learnedAvailable && <a className="learned-link" href="?view=learned" onClick={event => { event.preventDefault(); onLearned(); }}><Brain size={14} /> What the model learned</a>}<button className="help-button" aria-label="About the demo" onClick={() => setMethodOpen(true)}><CircleHelp size={17} /><span>About the demo</span></button></div></header>
     <main>
       <div className="page-heading"><div><h1>How a viewer’s brain is predicted to respond<span>, second by second.</span></h1><p>A research model (TRIBE v2) predicts an average viewer’s brain response to this clip. It is a prediction, not a measurement, and not a views forecast.</p></div><div className="analysis-badge"><span className="tiny-orbit"><Scan size={17} /></span><div><strong>{analysis.model_versions.neural}</strong><span>Research use · {analysis.status}</span></div><span className="version">{analysis.schema_version.replace('nvi.analysis.', '')}</span></div></div>
       {localBundle && <div className="local-analysis-strip"><FolderOpen size={19} /><div><span className="eyebrow">{localBundle.origin === 'remote' ? 'COMPLETED RESEARCH ANALYSIS' : 'LOCAL ANALYSIS · IN THIS TAB ONLY'}</span><strong>{localBundle.filename}</strong></div><button onClick={onReset}>Back to demo</button></div>}
@@ -219,6 +234,7 @@ function Workspace({ analysis, localBundle, onOpen, onReset, onComparison, onAna
       </div>
 
       {library && <ClipScorecard library={library} onSeek={seek} />}
+      {observed && <ObservedPanel observed={observed} />}
       {library && <ResponseStrip library={library} durationMs={analysis.duration_ms} timeMs={timeMs} onSeek={seek} />}
       <section className="timeline-panel" aria-label="Response timeline"><div className="timeline-header"><div><h2>Signals over time</h2></div><div className="timeline-meta"><span><i className="zone-key" /> Moments</span><span>Time (seconds) · within-clip z-score (0 = this clip’s average)</span></div></div><Timeline analysis={analysis} timeMs={timeMs} selected={selected} onSeek={seek} visibleKeys={visibleKeys} onToggleChannel={key => setVisibleKeys(keys => keys.includes(key) ? keys.filter(value => value !== key) : [...keys, key])} />{!clip.source && <ClipPreview analysis={analysis} player={clip} timeMs={timeMs} playing={playing} selected={selected} visibleKeys={visibleKeys} onTogglePlay={togglePlay} onSeek={seek} />}<div className="transport"><div className="playback-controls"><button className="icon-button" aria-label="Restart sample" title="Restart sample" onClick={() => { seek(0); }}><SkipBack size={17} /></button><button className="play-button" disabled={clip.active && !clip.ready} onClick={togglePlay} aria-label={playing ? 'Pause sample' : 'Play sample'}>{playing ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}</button><span className="playback-time mono">{formatTime(timeMs)}<span> / {formatTime(analysis.duration_ms)}</span></span><button className={`icon-button loop-button ${loop ? 'active' : ''}`} onClick={() => setLoop(v => !v)} aria-label="Loop playback" title="Loop playback" aria-pressed={loop}><Repeat2 size={17} /></button><button className="speed-button mono" onClick={() => setSpeed(v => v === 0.5 ? 1 : v === 1 ? 2 : 0.5)} aria-label={`Playback speed ${speed} times. Click to change.`}>{speed}×</button></div><span className="sample-duration">{clip.active ? 'Clip + analysis playback' : 'Analysis playback'}<span>{clip.active ? 'Video drives the shared timeline' : 'Attach a clip to watch in sync'}</span></span></div></section>
 
@@ -234,7 +250,13 @@ function Workspace({ analysis, localBundle, onOpen, onReset, onComparison, onAna
 
 export default function App() {
   const [comparison, setComparison] = useState(() => new URLSearchParams(window.location.search).get('demo') === 'comparison');
-  const [learnedView, setLearnedView] = useState(() => new URLSearchParams(window.location.search).get('view') === 'learned');
+  const [view, setView] = useState<string | null>(() => new URLSearchParams(window.location.search).get('view'));
+  const learnedView = view === 'learned';
+  const realIndexUrl = import.meta.env.VITE_REAL_ANALYSIS_INDEX as string | undefined;
+  const [realIndex, setRealIndex] = useState<RealBundleIndex | null>(null);
+  const [examples, setExamples] = useState<Examples | null>(null);
+  const [examplesChecked, setExamplesChecked] = useState(!realIndexUrl);
+  const compare = useMemo(() => compareModel(examples, realIndex), [examples, realIndex]);
   const [learned, setLearned] = useState<Learned | null>(null);
   const [learnedChecked, setLearnedChecked] = useState(false);
   const [sample, setSample] = useState<Analysis | null>(null);
@@ -264,13 +286,28 @@ export default function App() {
       .finally(() => { if (!controller.signal.aborted) setLearnedChecked(true); });
     return () => controller.abort();
   }, []);
-  function showLearned(show: boolean) {
+  useEffect(() => {
+    // Optional internal example pair next to the approved index; absent → no button.
+    if (!realIndexUrl) return;
+    const controller = new AbortController();
+    const examplesUrl = siblingUrl(realIndexUrl, 'examples.json');
+    void Promise.all([fetchOptionalJson(realIndexUrl, controller.signal), examplesUrl ? fetchOptionalJson(examplesUrl, controller.signal) : null])
+      .then(([indexValue, examplesValue]) => {
+        if (controller.signal.aborted) return;
+        try { setRealIndex(parseRealBundleIndex(indexValue)); } catch { setRealIndex(null); }
+        setExamples(parseExamples(examplesValue));
+      })
+      .finally(() => { if (!controller.signal.aborted) setExamplesChecked(true); });
+    return () => controller.abort();
+  }, [realIndexUrl]);
+  function showView(next: 'learned' | 'compare' | null) {
     const url = new URL(window.location.href);
-    if (show) url.searchParams.set('view', 'learned'); else url.searchParams.delete('view');
+    if (next) url.searchParams.set('view', next); else url.searchParams.delete('view');
     history.replaceState(null, '', url);
-    setLearnedView(show);
+    setView(next);
     window.scrollTo({ top: 0 });
   }
+  const showLearned = (show: boolean) => showView(show ? 'learned' : null);
   function showComparison(show: boolean) {
     const url = new URL(window.location.href);
     if (show) url.searchParams.set('demo', 'comparison'); else url.searchParams.delete('demo');
@@ -284,8 +321,13 @@ export default function App() {
   const picker = <AnalysisPicker open={pickerOpen} onClose={() => setPickerOpen(false)} onOpen={bundle => { setLocalBundle(bundle); setRevision(value => value + 1); }} />;
   const intake = <AnalysisIntake open={intakeOpen} onClose={() => setIntakeOpen(false)} onOpen={bundle => { setLocalBundle(bundle); setRevision(value => value + 1); }} onOpenExport={() => setPickerOpen(true)} />;
   if (learnedView) return learned || learnedChecked ? <LearnedView learned={learned} onBack={() => showLearned(false)} /> : <div className="loading-screen"><LoaderCircle className="spin" /><p>Loading the research summary</p></div>;
+  if (view === 'compare') {
+    if (compare && realIndexUrl) return <CompareView indexUrl={realIndexUrl} model={compare} onBack={() => showView(null)} onLearned={() => showView('learned')} />;
+    if (!examplesChecked) return <div className="loading-screen"><LoaderCircle className="spin" /><p>Loading the example pair</p></div>;
+    return <div className="learned-page"><header className="learned-top"><button type="button" className="learned-back" onClick={() => showView(null)}>← Back to the analysis</button><span className="internal-badge">Internal research view</span></header><main className="learned-main"><p className="learned-empty">The example pair is not available on this server.</p></main></div>;
+  }
   if (comparison) return <Suspense fallback={<div className="loading-screen"><LoaderCircle className="spin" /><p>Preparing the comparison</p></div>}><ComparisonDemo onBack={() => showComparison(false)} /></Suspense>;
   if (!analysis) return <><div className="loading-screen"><Brand />{error ? <><h1>Couldn’t load the analysis.</h1><p>{error}</p><button className="retry-button" onClick={() => setAttempt(v => v + 1)}><RotateCcw size={17} /> Try again</button><button className="open-analysis-button" onClick={openPicker}><FolderOpen size={15} /> Open analysis</button></> : <><LoaderCircle size={24} className="spin" /><p>Preparing your research workspace</p></>}</div>{picker}{intake}</>;
   if (analysis.status !== 'complete') return <><div className="loading-screen"><Brand /><h1>{analysis.status === 'failed' ? 'Analysis failed.' : analysis.status === 'queued' ? 'Analysis queued.' : 'Analysis is processing.'}</h1><p>{analysis.analysis_id} · {localBundle ? 'Open a completed export when it is available.' : 'Results appear when a completed bundle is available.'}</p>{analysis.synthetic && <span className="synthetic-tag">SYNTHETIC SAMPLE</span>}{analysis.quality.warnings.map((warning, i) => <p key={i}>{warning}</p>)}<div className="analysis-state-actions"><button className="open-analysis-button" onClick={openPicker}><FolderOpen size={15} /> Open analysis</button>{localBundle ? <button className="retry-button" onClick={reset}>Back to demo</button> : <button className="retry-button" onClick={() => { setSample(null); setAttempt(v => v + 1); }}>Check again</button>}</div></div>{picker}{intake}</>;
-  return <><Workspace key={revision} analysis={analysis} localBundle={localBundle} onOpen={openPicker} onReset={reset} onComparison={() => showComparison(true)} onAnalyze={() => setIntakeOpen(true)} learnedAvailable={!!learned} onLearned={() => showLearned(true)} />{picker}{intake}</>;
+  return <><Workspace key={revision} analysis={analysis} localBundle={localBundle} onOpen={openPicker} onReset={reset} onComparison={() => showComparison(true)} onAnalyze={() => setIntakeOpen(true)} learnedAvailable={!!learned} onLearned={() => showLearned(true)} compareAvailable={!!compare} onCompare={() => showView('compare')} />{picker}{intake}</>;
 }

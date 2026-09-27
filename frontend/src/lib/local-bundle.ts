@@ -15,6 +15,10 @@ export interface LocalBundle {
   sourceClipUrl?: string;
   /** Optional `library.json` next to the analysis (nvi.library.v0); ignored when absent or invalid. */
   libraryUrl?: string;
+  /** Optional internal `observed.json`; never set for a sealed lockbox clip. */
+  observedUrl?: string;
+  /** True when any metadata marks this clip as a sealed lockbox clip. */
+  lockbox?: boolean;
   warnings: string[];
   resolveAsset: (relative: string) => string | null;
   dispose: () => void;

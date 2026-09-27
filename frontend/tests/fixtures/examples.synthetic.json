@@ -1,0 +1,21 @@
+{
+ "schema": "nvi.examples.v0",
+ "synthetic": true,
+ "internal_only": true,
+ "title": "SYNTHETIC pair title",
+ "pairs": [
+  {
+   "fell_short": "synthetic-fell",
+   "beat_expectations": "synthetic-beat",
+   "same": "same synthetic group"
+  },
+  {
+   "fell_short": "bad id/..",
+   "beat_expectations": "x",
+   "same": ""
+  }
+ ],
+ "rule": "SYNTHETIC rule.",
+ "caveat": "SYNTHETIC caveat: one illustrative pair, not evidence.",
+ "caption_null": "SYNTHETIC caption_null."
+}

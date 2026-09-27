@@ -1,0 +1,26 @@
+{
+ "schema": "nvi.observed.v0",
+ "synthetic": true,
+ "internal_only": true,
+ "platform": "youtube",
+ "video_link": "https://example.invalid/shorts/synthetic",
+ "upload_date": "2020-01-02",
+ "views": 12345.0,
+ "likes": 321.0,
+ "comments": 12.0,
+ "shares": 3.0,
+ "saves": null,
+ "engagement_rate_pct": 2.75,
+ "views_vs_account_usual_log": -0.3,
+ "views_vs_account_usual_x": 0.5,
+ "account_usual_n_posts": 8.0,
+ "age_days_at_last_obs": 50.0,
+ "label": "observed on platform",
+ "caption": "SYNTHETIC caption shown verbatim.",
+ "caption_null": "SYNTHETIC null-result caption shown verbatim.",
+ "vs_expectation": {
+  "role": "fell_short",
+  "residual_pct_in_stratum": 0.2,
+  "plain": "SYNTHETIC: fell short of expectation."
+ }
+}

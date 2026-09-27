@@ -22,6 +22,8 @@ export interface RealBundleIndexEntry {
   platform?: string;
   video_link?: string | null;
   is_lockbox?: boolean;
+  /** Local internal copy only: role in the fell-short / beat-expectations example pair. */
+  internal_example?: string | null;
 }
 
 export interface RealBundleIndex {

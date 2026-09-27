@@ -1,10 +1,8 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { ArrowUpRight, FileJson, FolderOpen, LoaderCircle, X } from 'lucide-react';
 import { analysisFiles, filePath, openLocalBundle, type LocalBundle } from '../lib/local-bundle';
-import { openRemoteAnalysis } from '../lib/analysis-api';
-import { parseRealBundleIndex, resolveRealBundleUrls, type RealBundleIndex, type RealBundleIndexEntry } from '../lib/real-analysis-index';
-import { resolveSourceClipUrl } from '../lib/source-clip';
-import { libraryUrlFor } from '../lib/library';
+import { parseRealBundleIndex, type RealBundleIndex, type RealBundleIndexEntry } from '../lib/real-analysis-index';
+import { openRealBundle } from '../lib/real-bundle';
 import './analysis-picker.css';
 
 export default function AnalysisPicker({ open, onClose, onOpen }: {
@@ -74,12 +72,9 @@ export default function AnalysisPicker({ open, onClose, onOpen }: {
     const id = ++operation.current;
     setBusy(entry.path); setError(null);
     try {
-      const urls = resolveRealBundleUrls(realIndexUrl!, entry);
-      const bundle = await openRemoteAnalysis(urls.analysisUrl, { performanceUrl: urls.performanceUrl, expectedPerformance: entry.performance });
+      const bundle = await openRealBundle(realIndexUrl!, entry);
       if (id !== operation.current) return;
-      let sourceClipUrl: string | undefined;
-      try { sourceClipUrl = resolveSourceClipUrl(realIndexUrl!, entry.video_id); } catch { sourceClipUrl = undefined; }
-      onOpen({ ...bundle, sourceClipUrl, libraryUrl: libraryUrlFor(urls.analysisUrl) }); onClose();
+      onOpen(bundle); onClose();
     } catch (error) {
       if (id === operation.current) setError(error instanceof Error ? error.message : 'The real analysis could not be opened.');
     } finally { if (id === operation.current) setBusy(null); }
