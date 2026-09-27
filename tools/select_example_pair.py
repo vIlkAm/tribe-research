@@ -13,8 +13,8 @@ Rule (RULE below): the eligible clips of ``tools/select_demo_clips.py`` (train o
 Each clip is labelled by its own post (the manifest ``source_name``): the ``log_interactions_rate`` residual after
 the arm-A out-of-fold prediction (content scheme), cut into thirds over every OOF post in that stratum.
 "Fell short": bottom third and ``reach_rel_local`` < 0; "beat expectations": top third and ``reach_rel_local``
-> 0, so the views panel agrees with the label. Both need empty ``dq_flags`` and a full-resolution source file on
-this server. Order: sha256("20260926:<video_id>"), first of each; the most extreme residual is not used.
+> 0, so the views panel agrees with the label. Both need empty ``dq_flags``, a clean transcript
+(``tools/language_screen.py``) and a full-resolution source file on this server. Order: sha256("20260926:<video_id>"), first of each; the most extreme residual is not used.
 """
 
 from __future__ import annotations
@@ -32,6 +32,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import build_moments_pop as bmp  # noqa: E402
+import language_screen  # noqa: E402
 import select_demo_clips as sdc  # noqa: E402
 
 TARGET = "log_interactions_rate"
@@ -39,7 +41,8 @@ RULE = (
     "Eligible as in tools/select_demo_clips.py; own post (manifest source_name) in the hero's deal|platform "
     "stratum. Residual = y - pred_A_stack for log_interactions_rate (content-scheme OOF), thirds over every OOF "
     "post in that stratum. fell_short: bottom third and reach_rel_local < 0; beat_expectations: top third and "
-    "reach_rel_local > 0; both with empty dq_flags and a full-resolution source file present. Order: "
+    "reach_rel_local > 0; both with empty dq_flags, a clean transcript (tools/language_screen.py: no strict or "
+    "mild word) and a full-resolution source file present. Order: "
     "sha256('20260926:<video_id>') ascending, first of each. Internal only: reads observed outcomes.")
 OBSERVED_COLS = ["id", "platform", "video_link", "upload_date", "views_final", "likes", "comments", "shares",
                  "saves", "engagement_rate_reported", "reach_rel_local", "local_baseline_n", "age_days_at_last_obs",
@@ -81,7 +84,7 @@ def observed_block(row: pd.Series) -> dict:
 
 
 def pick(elig: list[dict], hero: dict, posts: pd.DataFrame, outcomes: pd.DataFrame, lockbox: set[str],
-         staging: Path) -> dict:
+         staging: Path, language: dict[str, dict] | None = None) -> dict:
     stratum = f"{hero['deal_id']}|{hero['platform']}"
     cands, counts = [], {"eligible_in_stratum": 0}
     for e in elig:
@@ -90,6 +93,9 @@ def pick(elig: list[dict], hero: dict, posts: pd.DataFrame, outcomes: pd.DataFra
         counts["eligible_in_stratum"] += 1
         if e["video_id"] in lockbox:
             raise SystemExit(f"{e['video_id']}: lockbox clip among the eligible clips")
+        if language is not None and not language.get(e["video_id"], {}).get("clean", False):
+            counts["language"] = counts.get("language", 0) + 1
+            continue
         vp = e["source_name"]
         if vp not in posts.index or vp not in outcomes.index:
             counts["no_label"] = counts.get("no_label", 0) + 1
@@ -144,7 +150,10 @@ def main(argv=None) -> int:
         lockbox |= set(pd.read_csv(args.lockbox_ext, usecols=["video_id"], dtype=str)["video_id"])
     posts = label_posts(args.oof, f"{hero['deal_id']}|{hero['platform']}")
     outcomes = pd.read_parquet(args.outcomes, columns=OBSERVED_COLS).astype({"id": str}).set_index("id")
-    res = pick(elig, hero, posts, outcomes, lockbox, args.staging)
+    found = bmp.discover(roots)
+    language = {e["video_id"]: language_screen.screen(json.loads(found[e["video_id"]][0].read_text()).get("words") or [])
+                for e in elig if e["video_id"] in found}
+    res = pick(elig, hero, posts, outcomes, lockbox, args.staging, language)
     res.update({"rule": RULE, "internal_only": True, "hero": hero["video_id"],
                 "created_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 "complete": len(res["picks"]) == 2})
