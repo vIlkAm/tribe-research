@@ -126,7 +126,9 @@ test('learned summary accepts the producer layout: curves under index, channel c
   assert.deepEqual(parsed.statements.map(s => s.text), ['Line A.', 'Line B.']);
   assert.equal(parsed.decision, 'no-GO');
   assert.equal(parsed.caveat, 'Synthetic caveat.');
-  assert.deepEqual(parsed.key_numbers.map(k => k.value), ['≈ 0.34', '≈ 0.00', '+0.07']);
+  // Reach is left out of the headline numbers (its metadata base is below chance); each number names its measure.
+  assert.deepEqual(parsed.key_numbers.map(k => k.value), ['≈ 0.34', '≈ 0.00']);
+  assert.ok(parsed.key_numbers.every(k => /likes & comments per view|that measure/.test(k.text)));
   const gvb = parsed.good_vs_bad!;
   assert.deepEqual(gvb.top.mean, [0, 1, 0]);
   assert.deepEqual(gvb.bottom.hi, [1.1, 2.1, 1.1]);
@@ -136,6 +138,33 @@ test('learned summary accepts the producer layout: curves under index, channel c
   assert.ok(views && !views.good_vs_bad);
   assert.deepEqual(views.views_vs_usual?.top.mean, [0.2, 1.2, 0.2]);
   assert.equal(views.views_vs_usual?.result_plain, 'Higher.');
+  assert.deepEqual(views.views_vs_usual?.summary, { whole: null, opening: null });
+  assert.equal(views.views_vs_usual?.signals, null);
+});
+
+test('views chart: summary and per-signal numbers keep the producer display strings', () => {
+  // Synthetic values; 0.095 would print +0.10 if the browser re-rounded it, so the producer's text wins.
+  const curve = (offset: number) => ({ mean: [offset, offset, offset] });
+  const win = (diff: number, verdict: string, text?: string) => ({ diff, lo: diff - 0.1, hi: diff + 0.1, p_boot: 0.01, q: 0.02, verdict, ...(text ? { text: { diff: text, lo: 'L', hi: 'H' } } : {}) });
+  const parsed = parseLearned({ schema_version: 'nvi.learned.v0', views_vs_usual: {
+    seconds: [0, 1, 2], n_top: 4, n_bottom: 4, n_deals: 2, index: { top: curve(0.2), bottom: curve(0) }, channels: {},
+    summary: { whole_0_29: { diff: 0.091, lo: 0.028, hi: 0.155 }, opening_0_4: { diff: 0.095, lo: 0.018, hi: 0.175, text: { diff: '+0.09', lo: '+0.02', hi: '+0.17' } } },
+    signal_windows: { n_accounts: 3, n_tests: 21, definition: 'Synthetic.',
+      channels: { social: { opening: win(0.19, 'holds', '+0.19'), whole: win(0.18, 'holds'), ending: win(-0.04, 'none') }, junk: { opening: win(0.1, 'maybe') }, bad: 'x' },
+      index_accounts_resampled: { whole: { diff: 0.091, lo: 0.025, hi: 0.16 } } },
+  } });
+  const v = parsed?.views_vs_usual;
+  assert.ok(v);
+  assert.equal(v.n_deals, 2);
+  assert.deepEqual(v.summary.opening?.text, { diff: '+0.09', lo: '+0.02', hi: '+0.17' });
+  assert.deepEqual(v.summary.whole?.text, { diff: '+0.09', lo: '+0.03', hi: '+0.15' }); // fallback formatting when text is absent
+  assert.deepEqual(Object.keys(v.signals!.channels), ['social']);
+  assert.equal(v.signals!.channels.social.opening?.text.diff, '+0.19');
+  assert.equal(v.signals!.channels.social.whole?.verdict, 'holds');
+  assert.equal(v.signals!.channels.social.ending?.text.diff, '−0.04');
+  assert.equal(v.signals!.n_tests, 21);
+  assert.equal(v.signals!.index_accounts.whole?.lo, 0.025);
+  assert.equal(v.signals!.index_accounts.opening, null);
 });
 
 test('learned object fallback ignores non-prose fields', () => {

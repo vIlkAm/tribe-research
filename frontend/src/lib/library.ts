@@ -197,14 +197,35 @@ export function seriesPaths(values: (number | null)[], width: number, height: nu
 
 export interface LearnedStatement { text: string; value: string }
 export interface LearnedSeries { mean: (number | null)[]; lo: (number | null)[]; hi: (number | null)[] }
+/** Top minus bottom third, library sd. `text` holds display strings rounded once from the unrounded values. */
+export interface LearnedInterval { diff: number; lo: number; hi: number; text: { diff: string; lo: string; hi: string } }
+export type SignalVerdict = 'holds' | 'leans' | 'none';
+export interface LearnedWindow extends LearnedInterval { verdict: SignalVerdict }
+export const SIGNAL_WINDOW_ORDER = ['opening', 'whole', 'ending'] as const;
+export type SignalWindowKey = typeof SIGNAL_WINDOW_ORDER[number];
+export const SIGNAL_WINDOW_LABEL: Record<SignalWindowKey, string> = { opening: 'Opening', whole: 'Average', ending: 'Ending' };
+export interface LearnedSignals {
+  definition: string;
+  n_accounts: number | null;
+  n_tests: number | null;
+  /** channel key -> window -> result; a missing window is null. */
+  channels: Record<string, Record<SignalWindowKey, LearnedWindow | null>>;
+  /** The chart's two summaries again, resampling whole accounts. */
+  index_accounts: { whole: LearnedInterval | null; opening: LearnedInterval | null };
+}
 export interface LearnedGoodVsBad {
   seconds: number[];
   top: LearnedSeries;
   bottom: LearnedSeries;
   n_top: number | null;
   n_bottom: number | null;
+  n_deals: number | null;
   channels: { key: string; label: string; top: (number | null)[]; bottom: (number | null)[] }[];
   result_plain: string;
+  /** `summary.whole_0_29` / `summary.opening_0_4` (views chart only). */
+  summary: { whole: LearnedInterval | null; opening: LearnedInterval | null };
+  /** `signal_windows` (views chart only). */
+  signals: LearnedSignals | null;
 }
 export interface Learned {
   statements: LearnedStatement[];
@@ -253,16 +274,17 @@ function parseStatements(stage1: unknown): LearnedStatement[] {
 const signed = (n: number) => Math.abs(n) < 0.005 ? '0.00' : `${n > 0 ? '+' : '−'}${Math.abs(n).toFixed(2)}`;
 const point = (value: unknown): number | null => isObj(value) ? num(value.point) : num(value);
 
-/** Known stage-1 fields → short headline numbers. Unknown or missing fields are skipped. */
+/**
+ * Known stage-1 fields → short headline numbers, each naming what it measures. Only the strict test's measure
+ * (likes and comments per view) is headlined; the reach numbers stay in the statements with their base.
+ */
 function parseKeyNumbers(stage1: unknown): LearnedStatement[] {
   if (!isObj(stage1)) return [];
   const out: LearnedStatement[] = [];
   const rhoA = num(stage1.rho_A_metadata);
-  if (rhoA !== null) out.push({ value: `≈ ${rhoA.toFixed(2)}`, text: 'How well metadata alone ranks clips' });
+  if (rhoA !== null) out.push({ value: `≈ ${rhoA.toFixed(2)}`, text: 'Basic information alone ranks likes & comments per view' });
   const brain = point(stage1.BE_minus_E_content);
-  if (brain !== null) out.push({ value: `≈ ${signed(brain)}`, text: 'What predicted brain response adds' });
-  const reach = point(stage1.reach_E_minus_A_content);
-  if (reach !== null) out.push({ value: signed(reach), text: 'What video features add for reach' });
+  if (brain !== null) out.push({ value: `≈ ${signed(brain)}`, text: 'What the brain response adds on that measure' });
   return out;
 }
 
@@ -282,6 +304,33 @@ function parseSeries(value: unknown, n: number): LearnedSeries | null {
   return { mean, lo: lo.length === mean.length ? lo : [], hi: hi.length === mean.length ? hi : [] };
 }
 
+function parseInterval(value: unknown): LearnedInterval | null {
+  if (!isObj(value)) return null;
+  const diff = num(value.diff), lo = num(value.lo), hi = num(value.hi);
+  if (diff === null || lo === null || hi === null) return null;
+  const text = isObj(value.text) ? value.text : {};
+  const shown = (key: 'diff' | 'lo' | 'hi', n: number) => str(text[key]) || signed(n);
+  return { diff, lo, hi, text: { diff: shown('diff', diff), lo: shown('lo', lo), hi: shown('hi', hi) } };
+}
+
+function parseSignals(value: unknown): LearnedSignals | null {
+  if (!isObj(value) || !isObj(value.channels)) return null;
+  const channels: LearnedSignals['channels'] = {};
+  for (const [key, entry] of Object.entries(value.channels)) {
+    if (!isObj(entry)) continue;
+    const windows = Object.fromEntries(SIGNAL_WINDOW_ORDER.map(w => {
+      const interval = parseInterval(entry[w]);
+      const verdict = isObj(entry[w]) ? str(entry[w].verdict) : '';
+      return [w, interval && (verdict === 'holds' || verdict === 'leans' || verdict === 'none') ? { ...interval, verdict } : null];
+    })) as Record<SignalWindowKey, LearnedWindow | null>;
+    if (SIGNAL_WINDOW_ORDER.some(w => windows[w])) channels[key] = windows;
+  }
+  if (!Object.keys(channels).length) return null;
+  const idx = isObj(value.index_accounts_resampled) ? value.index_accounts_resampled : {};
+  return { definition: str(value.definition), n_accounts: num(value.n_accounts), n_tests: num(value.n_tests), channels,
+    index_accounts: { whole: parseInterval(idx.whole), opening: parseInterval(idx.opening) } };
+}
+
 function parseGoodVsBad(value: unknown): LearnedGoodVsBad | null {
   if (!isObj(value)) return null;
   const seconds = Array.isArray(value.seconds) ? value.seconds.map(num).filter((s): s is number => s !== null) : [];
@@ -296,7 +345,11 @@ function parseGoodVsBad(value: unknown): LearnedGoodVsBad | null {
     if (!hasNumber(t) || !hasNumber(b)) return [];
     return [{ key, label: str(entry.label_plain) || str(entry.label) || key.replaceAll('_', ' '), top: t, bottom: b }];
   }) : [];
-  return { seconds, top, bottom, n_top: num(value.n_top), n_bottom: num(value.n_bottom), channels, result_plain: str(value.result_plain) };
+  const summary = isObj(value.summary) ? value.summary : {};
+  return { seconds, top, bottom, n_top: num(value.n_top), n_bottom: num(value.n_bottom), n_deals: num(value.n_deals), channels,
+    result_plain: str(value.result_plain),
+    summary: { whole: parseInterval(summary.whole_0_29), opening: parseInterval(summary.opening_0_4) },
+    signals: parseSignals(value.signal_windows) };
 }
 
 export function parseLearned(value: unknown): Learned | null {

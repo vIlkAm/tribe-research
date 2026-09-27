@@ -54,6 +54,7 @@ LEARNED_SCHEMA = "nvi.learned.v0"
 DEFAULT_STATE = ROOT / "results/moments_pop/state_v1"
 DEFAULT_OUT = ROOT / "results/library"
 DEFAULT_OOF = ROOT / "results/models/stage1-eval/oof_predictions.csv"
+DEFAULT_OUTCOMES = ROOT / "results/outcomes.parquet"
 FINISH_S = 3
 PEAK_S = 3
 DEAD_PCT = 20.0
@@ -63,6 +64,7 @@ MAX_MOMENTS = 3
 STRONG, WEAK = 67.0, 33.0
 GVB_HORIZON_S = 30
 N_BOOT = 1000
+N_BOOT_ACCOUNTS = 2000
 
 CAVEAT = ("Describes how an average viewer's brain is predicted to respond, compared with your library. "
           "In our pre-registered test on 1,486 clips this did not predict views.")
@@ -533,6 +535,17 @@ def good_vs_bad(lib: Library, oof: Path, train_ids: set[str]) -> dict:
 
 
 
+def sd_text(x: float) -> str:
+    """Two-decimal signed text from the unrounded value, typographic minus ("+0.09", "−0.02", "0.00")."""
+    t = f"{x:+.2f}"
+    return "0.00" if t in ("+0.00", "-0.00") else t.replace("-", "\u2212")
+
+
+def with_text(d: dict) -> dict:
+    """Adds `text` {diff, lo, hi}: display strings rounded once, from the unrounded numbers."""
+    return {**d, "text": {k: sd_text(d[k]) for k in ("diff", "lo", "hi")}}
+
+
 def _group_diff(Xt: np.ndarray, Xb: np.ndarray, rng: np.random.Generator, n_boot: int = N_BOOT) -> dict:
     """Top minus bottom in the per-clip mean over the given seconds, bootstrap 95% interval over clips."""
     with _quiet():
@@ -540,11 +553,98 @@ def _group_diff(Xt: np.ndarray, Xb: np.ndarray, rng: np.random.Generator, n_boot
     t, b = t[np.isfinite(t)], b[np.isfinite(b)]
     draws = np.array([rng.choice(t, len(t)).mean() - rng.choice(b, len(b)).mean() for _ in range(n_boot)])
     lo, hi = np.percentile(draws, [2.5, 97.5])
-    return {"diff": float(t.mean() - b.mean()), "lo": float(lo), "hi": float(hi), "top_mean": float(t.mean()),
-            "bottom_mean": float(b.mean())}
+    return with_text({"diff": float(t.mean() - b.mean()), "lo": float(lo), "hi": float(hi),
+                      "top_mean": float(t.mean()), "bottom_mean": float(b.mean())})
 
 
-def views_vs_usual(lib: Library, oof: Path, train_ids: set[str]) -> dict:
+def content_accounts(oof: Path, target: str, outcomes: Path) -> dict[str, str]:
+    """video_id -> account of most of its content-scheme posts for `target` (ties: sorted account id)."""
+    import pandas as pd
+    o = pd.read_csv(oof, usecols=["target", "scheme", "vp_id", "video_id"], dtype=str)
+    o = o[(o["scheme"] == "content") & (o["target"] == target)]
+    acc = pd.read_parquet(outcomes, columns=["id", "social_account_id"]).astype(str).set_index("id")["social_account_id"]
+    o = o.assign(account=o["vp_id"].map(acc)).dropna(subset=["account"])
+    out = {}
+    for vid, g in o.groupby("video_id"):
+        c = g["account"].value_counts()
+        out[vid] = sorted(c[c == c.max()].index)[0]
+    return out
+
+
+def window_values(e: Entry) -> dict[str, np.ndarray]:
+    """Per-clip [channels..., index] means in the opening, seconds 0-29 and the clip's own last seconds."""
+    X = np.vstack([to_grid(e, e.u), to_grid(e, e.r)[None]])
+    n = X.shape[1]
+    with _quiet():
+        return {"opening": np.nanmean(X[:, :int(mp.HOOK_S)], 1), "whole": np.nanmean(X[:, :GVB_HORIZON_S], 1),
+                "ending": np.nanmean(X[:, max(n - FINISH_S, 0):], 1)}
+
+
+def cluster_diff(v: np.ndarray, grp: np.ndarray, acc: np.ndarray, rng: np.random.Generator,
+                 n_boot: int = N_BOOT_ACCOUNTS) -> dict:
+    """Top (grp 1) minus bottom (grp -1) mean of v; 95% interval and two-sided p from resampling accounts."""
+    ok = np.isfinite(v) & (grp != 0)
+    v, grp, acc = v[ok], grp[ok], acc[ok]
+    n_acc = int(acc.max()) + 1
+    sums = {g: np.bincount(acc, weights=np.where(grp == g, v, 0.0), minlength=n_acc) for g in (1, -1)}
+    cnts = {g: np.bincount(acc, weights=(grp == g).astype(float), minlength=n_acc) for g in (1, -1)}
+    mult = np.stack([np.bincount(rng.integers(0, n_acc, n_acc), minlength=n_acc) for _ in range(n_boot)])
+    with np.errstate(invalid="ignore", divide="ignore"):
+        draws = mult @ sums[1] / (mult @ cnts[1]) - mult @ sums[-1] / (mult @ cnts[-1])
+    draws = draws[np.isfinite(draws)]
+    lo, hi = np.percentile(draws, [2.5, 97.5])
+    return with_text({"diff": float(v[grp == 1].mean() - v[grp == -1].mean()), "lo": float(lo), "hi": float(hi),
+                      "p_boot": float(min(1.0, 2 * min((draws <= 0).mean(), (draws >= 0).mean())))})
+
+
+def bh(p: np.ndarray) -> np.ndarray:
+    """Benjamini-Hochberg q-values."""
+    n = len(p)
+    order = np.argsort(p)
+    q = np.empty(n)
+    q[order] = np.minimum.accumulate((p[order] * n / np.arange(1, n + 1))[::-1])[::-1]
+    return np.minimum(q, 1.0)
+
+
+SIGNAL_WINDOWS = {"opening": "first 4 s", "whole": "seconds 0-29 (clip average)", "ending": "the clip's last 3 s"}
+
+
+def signal_windows(lib: Library, lab, tl: np.ndarray, accounts: dict[str, str]) -> dict:
+    """Per-signal top-minus-bottom numbers for the views chart (design: LIBRARY_THEORY.md, 2026-09-27)."""
+    import pandas as pd
+    rng = np.random.default_rng(mp.SEED)  # separate generator: the curves and summaries above do not move
+    vids = lab["video_id"].tolist()
+    acc = pd.factorize(np.array([accounts.get(v, f"content:{v}") for v in vids]))[0]
+    wins = [window_values(lib.entries[lib.index[v]]) for v in vids]
+    rows = {w: np.stack([x[w] for x in wins]) for w in SIGNAL_WINDOWS}           # [n, C+1]
+    C = len(lib.keys)
+    res = {k: {w: cluster_diff(rows[w][:, c], tl, acc, rng) for w in SIGNAL_WINDOWS} for c, k in enumerate(lib.keys)}
+    tests = [(k, w) for k in lib.keys for w in SIGNAL_WINDOWS]
+    q = bh(np.array([res[k][w]["p_boot"] for k, w in tests]))
+    for (k, w), qq in zip(tests, q):
+        x = res[k][w]
+        x["q"] = float(qq)
+        excl = x["lo"] > 0 or x["hi"] < 0
+        x["verdict"] = "holds" if qq < 0.05 and excl else "leans" if x["diff"] > 0 else "none"
+    index_ending = cluster_diff(rows["ending"][:, C], tl, acc, rng)
+    # Re-check of the chart's two summaries with this account mapping (drawn after the tests, so they do not move).
+    index_accounts = {w: cluster_diff(rows[w][:, C], tl, acc, rng) for w in ("whole", "opening")}
+    n_mapped = sum(v in accounts for v in vids)
+    return {
+        "definition": ("Top minus bottom third (the same thirds as the chart) in each signal's per-clip average over "
+                       "three fixed windows: the opening (first 4 s), seconds 0-29 (the area under the curve per "
+                       "second) and the clip's own last 3 s. 95% intervals resample whole accounts (2,000 draws, "
+                       "seed 20260926); Benjamini-Hochberg across the 21 signal tests. \"holds\": q < 0.05 and the "
+                       "interval excludes 0; \"leans\": top is higher but it does not hold; \"none\": top is not higher. Post hoc and "
+                       "exploratory: windows fixed before computing, after the per-second curves were seen "
+                       "(docs/LIBRARY_THEORY.md, 2026-09-27)."),
+        "windows": SIGNAL_WINDOWS, "n_boot": N_BOOT_ACCOUNTS, "seed": mp.SEED, "n_tests": len(tests),
+        "n_accounts": int(acc.max()) + 1, "n_contents_mapped_to_account": int(n_mapped),
+        "channels": res, "index_ending": index_ending, "index_accounts_resampled": index_accounts,
+    }
+
+
+def views_vs_usual(lib: Library, oof: Path, train_ids: set[str], outcomes: Path = DEFAULT_OUTCOMES) -> dict:
     """Learned chart grouped by views against the account's usual (design: LIBRARY_THEORY.md, 2026-09-27)."""
     lab, n0 = _labels(oof, train_ids, lib, "reach_rel_local", residual=False)
     S = GVB_HORIZON_S
@@ -578,17 +678,21 @@ def views_vs_usual(lib: Library, oof: Path, train_ids: set[str]) -> dict:
         "summary": {"whole_0_29": whole, "opening_0_4": opening, "seconds_ci_excludes_0": sig,
                     "n_seconds": S},
         "result_plain": result,
+        "signal_windows": signal_windows(lib, lab, tl, content_accounts(oof, "reach_rel_local", outcomes)),
     }
 
 STAGE1 = {
     "result": "no-GO",
     "lines": [
-        "Metadata alone (platform, account, timing, length) ranks clips within each deal and platform at about "
-        "0.34 (Spearman correlation with interactions rate).",
-        "Adding the predicted brain features adds about nothing (+0.004; brain on top of video features +0.0004).",
-        "Video features (the model's audio/visual/text embeddings) add a small real signal for reach (+0.07).",
-        "The pre-registered rule needed +0.02 on the primary endpoint and a non-negative account check; both "
-        "failed, so the result is no-GO and the product shows no performance number.",
+        "The strict test, written down before the fit was run, asked one question: does the predicted brain "
+        "response rank clips by likes and comments per view better than basic information (platform, account, "
+        "timing, length)? Basic information alone ranks them at about 0.34 within each client and platform.",
+        "The brain response added about nothing on that measure (+0.009; on top of the video features TRIBE reads, "
+        "+0.0004). The rule needed +0.02 and a non-negative check on new accounts, so the result is no-GO and the "
+        "app shows no performance score.",
+        "On views against the account's usual (a secondary measure), basic information ranks clips at about chance "
+        "(\u22120.08); the video features TRIBE reads bring that to about zero (+0.07), and the brain response adds "
+        "nothing on top. Not a usable ranking yet.",
     ],
     "primary_target": "log_interactions_rate",
     "rho_A_metadata": 0.335, "rho_B_brain": 0.339, "rho_E_video": 0.343, "rho_BE_brain_video": 0.344,
@@ -596,17 +700,18 @@ STAGE1 = {
     "BE_minus_A_account": {"point": -0.012, "ci95": [-0.030, 0.015]},
     "BE_minus_E_content": {"point": 0.0004, "ci95": [-0.010, 0.010]},
     "reach_E_minus_A_content": {"point": 0.073, "ci95": [0.025, 0.117]},
+    "reach_rho_A_metadata": {"point": -0.077, "ci95": [-0.150, -0.007]},
     "go_rule": "BE - A point >= +0.02 and CI lower > -0.03 (content), and account-scheme point >= 0",
     "n_clips_ok": 1486, "n_train_clips": 1264, "n_contents_primary": 1157, "kish_n_eff": 470,
     "source": "docs/STAGE1_RESULT.md",
 }
 
 
-def learned(lib: Library, state: dict, oof: Path, train_ids: set[str]) -> dict:
+def learned(lib: Library, state: dict, oof: Path, train_ids: set[str], outcomes: Path = DEFAULT_OUTCOMES) -> dict:
     pc = pc1(lib)
     gvb = good_vs_bad(lib, oof, train_ids)
     gvb["pc1_loadings"] = pc
-    vvu = views_vs_usual(lib, oof, train_ids)
+    vvu = views_vs_usual(lib, oof, train_ids, outcomes)
     return clean({
         "schema_version": LEARNED_SCHEMA, "internal": True,
         "caveat": CAVEAT + " This file is an internal walkthrough of what the study found.",
@@ -664,6 +769,7 @@ def main(argv=None) -> int:
     ap.add_argument("--sanity", type=int, default=0, help="score N random library clips (self-excluded)")
     ap.add_argument("--state", type=Path, default=DEFAULT_STATE)
     ap.add_argument("--oof", type=Path, default=DEFAULT_OOF)
+    ap.add_argument("--outcomes", type=Path, default=DEFAULT_OUTCOMES, help="account per content for --learned")
     ap.add_argument("--roi-map", type=Path, default=bmp.DEFAULT_ROI_MAP)
     ap.add_argument("--out-dir", type=Path, default=DEFAULT_OUT)
     ap.add_argument("--jobs", type=int, default=8)
@@ -705,7 +811,7 @@ def main(argv=None) -> int:
                           "moments": [m["plain"] for m in prof["moments"]]}, indent=1), flush=True)
     if a.learned:
         ids = {x for x in a.state.with_suffix(".train_ids.txt").read_text().split() if x}
-        out = learned(lib, state, a.oof, ids)
+        out = learned(lib, state, a.oof, ids, a.outcomes)
         write_json(out, a.out_dir / "learned.json")
         g = out["good_vs_bad"]
         print(json.dumps({"n_top": g["n_top"], "n_bottom": g["n_bottom"], "n_contents": g["n_contents"],

@@ -136,3 +136,12 @@ is a bug fix, dated here with its reason, not a new rule.
   Everything is reported, whatever it shows. Exploratory and post hoc: the windows are fixed, but the channels were
   looked at first. The 25-29 s part of the chart has about a third of the clips (only clips that long), which is why
   the ending uses each clip's own last seconds.
+- **2026-09-27, per-signal numbers: result** (`tools/build_library_profile.py --learned`, run once with the design
+  above; 1,254 contents, 176 accounts, BH over 21). Holds: social / people, opening +0.19 [+0.06, +0.33] and average
+  +0.18 [+0.06, +0.29]; personal relevance, opening +0.18 [+0.05, +0.31]. Leans higher, not reliable: visual & sound
+  intensity opening +0.14 [+0.02, +0.27] (q 0.14), personal relevance average +0.12, speech & meaning average +0.10,
+  attention +0.06, mental effort average +0.05, reward average +0.03. Ending (each clip's own last 3 s): no signal
+  differs, index -0.00 [-0.10, +0.09]; the "bottom third rises at the end" look in the chart comes from only the
+  longer clips reaching 25-29 s. Index re-check with this account mapping: whole +0.09 [+0.02, +0.16], opening +0.09
+  [+0.01, +0.18]. Existing learned.json numbers are byte-identical; stage-1 lines now name their measure, and the
+  reach line gives its below-chance metadata base (-0.08). Exploratory; stage 1 stays no-GO.
