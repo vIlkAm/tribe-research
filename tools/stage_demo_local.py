@@ -57,8 +57,16 @@ def plan(demo: dict) -> list[dict]:
     return out
 
 
-def tier_plain(c: dict) -> str:
+VIEWS_RULE_PLAIN = {"great": "300,000+ views", "typical": "5,000-15,000 views",
+                    "bad": "under 700 views and below this account's usual"}
+
+
+def tier_plain(c: dict, basis: str = "relative") -> str:
     x = c["observed"]["views_vs_account_usual_x"]
+    if basis == "views":
+        v = c["observed"]["views"]
+        return (f"{v:,.0f} views ({VIEWS_RULE_PLAIN[c['role']]}); {x:.2g}× this account's recent usual."
+                if x < 10 else f"{v:,.0f} views ({VIEWS_RULE_PLAIN[c['role']]}); {x:.0f}× this account's recent usual.")
     side = "More" if x > 1 else "Fewer"
     poss = "'" if c["deal_label"].endswith("s") else "'s"
     xs = f"{x:.0f}" if x >= 10 else f"{x:.2g}"
@@ -117,7 +125,8 @@ def main(argv=None) -> int:
 
     demo = json.loads(args.demo.read_text())
     clips = plan(demo)
-    owner = demo.get("selection") == "owner"
+    selection = demo.get("selection", "rule")
+    owner = selection in ("owner", "candidates")
     roots = [Path(b["out_root"]) for b in json.loads(args.demo_selection.read_text())["batches_used"]]
     pub, clip_dir = args.public / "demo-stage1", args.public / "clips"
     old_idx = json.loads((pub / "index.json").read_text())
@@ -149,7 +158,8 @@ def main(argv=None) -> int:
         obs = obs | {
             "schema": "nvi.observed.v0", "internal_only": True, "label": "observed on platform",
             "caption": CAPTION_OBS, "caption_null": CAPTION_NULL, "tier": c["role"],
-            "tier_label": TIER_LABEL[c["role"]], "tier_plain": tier_plain(c),
+            "tier_label": TIER_LABEL[c["role"]], "tier_plain": tier_plain(c, demo.get("tier_basis", "relative")),
+            "tier_basis": demo.get("tier_basis", "relative"),
             "views_pct_in_deal_platform": round(c["views_pct"], 1), "n_ref_posts": c["n_ref"]}
         (pub / vid / "observed.json").write_text(json.dumps(obs, indent=1) + "\n")
         entries.append(index_entry(pub, c))
@@ -158,14 +168,16 @@ def main(argv=None) -> int:
     (pub / "examples.json").write_text(json.dumps({
         "schema": "nvi.examples.v1", "internal_only": True,
         "default_pair": {"a": first["great"], "b": first["bad"]}, "caveat": CAVEAT_OWNER if owner else CAVEAT,
-        "selection": "owner" if owner else "rule", "caption_null": CAPTION_NULL},
+        "selection": selection, "caption_null": CAPTION_NULL},
         indent=1) + "\n")
     shutil.copyfile(args.patterns, args.public / "library_patterns.json")
     idx = {k: v for k, v in old_idx.items() if k not in ("bundles", "count", "performance_status_counts")}
     idx.update({"count": len(entries), "performance_status_counts": {"not_trained": len(entries)}, "bundles": entries,
-                "selection": "owner" if owner else "rule",
+                "selection": selection,
                 "demo_source": str(args.demo.resolve().relative_to(ROOT)),
-                "local_note": (("Local internal demo set, hand-picked by the owner" if owner else
+                "local_note": (({"owner": "Local internal demo set, hand-picked by the owner",
+                                 "candidates": "Local internal browse set: every demo-eligible clip per tier"}[selection]
+                                if owner else
                                 "Local internal demo set (3 clips per performance tier, hash order)")
                                + " (tools/library_tiers.py); the data-demo-stage1-v1 release tarball is unchanged.")})
     (pub / "index.json").write_text(json.dumps(idx, indent=1) + "\n")

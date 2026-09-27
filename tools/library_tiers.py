@@ -60,7 +60,10 @@ TIER_RULE = (
 # the proposed display rule; "relative" and "absolute" are reported alongside it as sensitivity checks, whatever
 # they show. Absolute = 7-day views (reach_basis views_7d only, so every post is compared at the same age) as a
 # percentile among the same deal x platform's 7-day posts.
-TIER_BASES = ("relative", "absolute", "both")
+TIER_BASES = ("relative", "absolute", "both", "views")
+# Owner rule, 2026-09-27 (hackathon demo): the views the post actually got (views_final, the number the metrics row
+# shows), with "below its account's usual" on bad so a bad video is not just a small account.
+VIEWS_GREAT, VIEWS_TYPICAL, VIEWS_BAD = 300_000, (5_000, 15_000), 700
 TIER_RULES = {
     "relative": TIER_RULE,
     "absolute": ("Post percentile of 7-day views among the same deal and platform's posts with 7-day views and empty "
@@ -68,6 +71,9 @@ TIER_RULES = {
     "both": ("great: top 20% on views vs the account's usual (and above usual) AND top half on 7-day views; bad: "
              "bottom 20% vs usual (and below usual) AND bottom half on 7-day views; typical: 40-60 vs usual AND "
              "25-75 on 7-day views. Percentiles within the same deal and platform; 7-day views only."),
+    "views": (f"Owner rule (2026-09-27), on the views the post got (last snapshot, empty dq_flags): great >= "
+              f"{VIEWS_GREAT:,}; typical {VIEWS_TYPICAL[0]:,}-{VIEWS_TYPICAL[1]:,}; bad < {VIEWS_BAD:,} and below "
+              "the account's recent usual."),
 }
 TIER_PLAIN = {
     "relative": {"great": "Top 20% of this deal's posts on this platform, above the account's usual",
@@ -78,7 +84,12 @@ TIER_PLAIN = {
     "both": {"great": "Well above the account's usual (top 20%) and in the top half of the deal's posts by 7-day views",
              "typical": "Around the account's usual and in the middle of the deal's posts by 7-day views",
              "bad": "Well below the account's usual (bottom 20%) and in the bottom half by 7-day views"},
+    "views": {"great": f"{VIEWS_GREAT:,}+ views", "typical": f"{VIEWS_TYPICAL[0]:,}-{VIEWS_TYPICAL[1]:,} views",
+              "bad": f"Under {VIEWS_BAD:,} views and below the account's usual"},
 }
+CANDIDATES_RULE = ("Every demo-eligible clip in a tier (eligible as in tools/select_demo_clips.py, clean transcript, "
+                   "<= 45 s, source file present), most views first: a browse set for the owner to choose from, "
+                   "not a sample.")
 OWNER_RULE = ("Hand-picked by the owner for the demo (2026-09-27), not by a rule. Each clip still passes the demo "
               "eligibility, transcript language, lockbox and tier checks, and its tier is its own computed tier. The "
               "library statistics are computed over every library clip, not these.")
@@ -130,8 +141,10 @@ def post_tiers(o: pd.DataFrame, basis: str = "relative") -> pd.DataFrame:
           "bad": ok_a & (a <= TIERS["bad"][1])}
     both = {"great": rel["great"] & ok_a & (a >= 50), "typical": rel["typical"] & ok_a & a.between(25, 75),
             "bad": rel["bad"] & ok_a & (a <= 50)}
+    v = ref["views_final"] if "views_final" in ref else pd.Series(np.nan, index=ref.index)
+    views = {"great": v >= VIEWS_GREAT, "typical": v.between(*VIEWS_TYPICAL), "bad": (v < VIEWS_BAD) & (x < 0)}
     tier = pd.Series(None, index=ref.index, dtype=object)
-    for t, m in {"relative": rel, "absolute": ab, "both": both}[basis].items():
+    for t, m in {"relative": rel, "absolute": ab, "both": both, "views": views}[basis].items():
         tier[m] = t
     ref["tier"] = tier
     return ref.set_index("id")[["stratum", "n_ref", "views_pct", "n_abs", "abs_pct", "views_7d_abs", "tier",
@@ -264,12 +277,16 @@ def account_check(tab: pd.DataFrame, rng: np.random.Generator, n_boot: int = 100
 def interpreter_line(f: dict) -> str:
     """Stated from the numbers, whatever they are: where each tier sits against the typical line."""
     m, c = f["mean"], f["coin_flip"]
-    return (f"The typical line is the middle of the library at each second, so an average clip is above it about half "
+    head = (f"The typical line is the middle of the library at each second, so an average clip is above it about half "
             f"the time. Clips that did great are above it in {m['great']:.0f}% of seconds, typical clips in "
-            f"{m['typical']:.0f}% and clips that did badly in {m['bad']:.0f}%. Pick one great and one bad clip at "
-            f"random and the great one has more seconds above the line {100 * c['point']:.0f}% of the time (50% "
-            "would be a coin flip). So a line well below the middle leans slightly towards a weaker clip, but being "
-            "above it does not mean a clip will do well: it is a weak tendency, not a verdict on any single clip.")
+            f"{m['typical']:.0f}% and clips that did badly in {m['bad']:.0f}%. ")
+    if f["verdict"] == "weak_tendency":
+        return head + (f"Pick one great and one bad clip at random and the great one has more seconds above the line "
+                       f"{100 * c['point']:.0f}% of the time (50% would be a coin flip). So a line well below the "
+                       "middle leans slightly towards a weaker clip, but being above it does not mean a clip will do "
+                       "well: it is a weak tendency, not a verdict on any single clip.")
+    return head + ("That is no reliable difference between clips that did great and clips that did badly, so the line "
+                   "shows where attention is predicted to rise and fall in this clip, not whether it will do well.")
 
 
 # ── demo picks ───────────────────────────────────────────────────────────
@@ -354,6 +371,10 @@ def main(argv=None) -> int:
     ap.add_argument("--owner-picks", nargs="*", default=[], metavar="TIER=VIDEO_ID",
                     help="hand-picked demo clips (owner selection) instead of the hash-order rule; same eligibility, "
                          "language, lockbox and tier checks")
+    ap.add_argument("--candidates", type=Path, default=None,
+                    help="write every demo-eligible tiered clip (clean transcript, <= DEMO_MAX_S, source file) as CSV")
+    ap.add_argument("--all-candidates", action="store_true",
+                    help="demo picks = every demo-eligible tiered clip (a browse set for the owner), most views first")
     ap.add_argument("--table", type=Path, default=None, help="also write the per-clip feature table (parquet)")
     ap.add_argument("--veto", nargs="*", default=[], help="video IDs vetoed after viewing (recorded)")
     ap.add_argument("--demo-selection", type=Path, default=ROOT / "results/demo/selection.json")
@@ -451,7 +472,40 @@ def main(argv=None) -> int:
                                  [ROOT / "results/runs/study-bf16/study2-logs"])
     lang = {e["video_id"]: language_screen.screen(json.loads(found[e["video_id"]][0].read_text()).get("words") or [])
             for e in elig if e["video_id"] in found}
-    if args.owner_picks:
+    cand, cand_e = [], []
+    if args.candidates or args.all_candidates:
+        feat = tab.set_index("video_id")
+        for e in elig:
+            vid, vp = e["video_id"], e["source_name"]
+            if vid in lockbox or e["duration_s"] > DEMO_MAX_S or not lang.get(vid, {}).get("clean"):
+                continue
+            if vp not in tiers.index or not isinstance(tiers.loc[vp, "tier"], str) or vid not in feat.index:
+                continue
+            if sep.source_file(args.staging, e["source_path"]) is None:
+                continue
+            row = obs.loc[vp]
+            f = feat.loc[vid]
+            cand_e.append(e)
+            cand.append({"tier": tiers.loc[vp, "tier"], "source_file": str(sep.source_file(args.staging, e["source_path"])), "video_id": vid, "rank_key": e["rank_key"],
+                         "deal": str(row["deal_name"]).replace(" X Clipping Cartel", ""), "platform": e["platform"],
+                         "duration_s": round(e["duration_s"], 1), "views": row["views_final"],
+                         "x_usual": round(float(np.exp(row["reach_rel_local"])), 2),
+                         "engagement_pct": sep.engagement_pct(row), "video_link": row["video_link"],
+                         **{k: round(float(f[k]), 1) for k in ("brain_opening", "brain_above_typical",
+                                                               "brain_low_share", "brain_ending", "brain_peak",
+                                                               "first_cut_s", "cuts_per_min")}})
+        if args.candidates:
+            pd.DataFrame(cand).sort_values(["tier", "rank_key"]).to_csv(args.candidates, index=False)
+    if args.all_candidates:
+        by_tier = {t: [] for t in TIERS}
+        for e, c in sorted(zip(cand_e, cand), key=lambda ec: -float(ec[1]["views"])):
+            vp = e["source_name"]
+            by_tier[c["tier"]].append({**e, "tier": c["tier"], "source_file": c["source_file"], "selection": "candidates",
+                                       "views_pct": float(tiers.loc[vp, "views_pct"]), "n_ref": int(tiers.loc[vp, "n_ref"]),
+                                       "reach_rel_local": float(tiers.loc[vp, "reach_rel_local"]),
+                                       **abs_block(tiers.loc[vp])})
+        counts = {t: len(v) for t, v in by_tier.items()}
+    elif args.owner_picks:
         by_tier, counts = owner_picks(args.owner_picks, elig, tiers, lang, args.staging, lockbox)
     else:
         by_tier, counts = demo_picks(elig, tiers, lang, args.staging, lockbox, set(args.veto))
@@ -461,10 +515,12 @@ def main(argv=None) -> int:
             p["deal_label"] = str(row["deal_name"]).replace(" X Clipping Cartel", "").replace(" x Clipping Cartel", "")
             p["observed"] = sep.observed_block(row)
     owner = bool(args.owner_picks)
-    res = {"rule": OWNER_RULE if owner else DEMO_RULE, "selection": "owner" if owner else "rule",
+    selection = "candidates" if args.all_candidates else "owner" if owner else "rule"
+    res = {"rule": {"candidates": CANDIDATES_RULE, "owner": OWNER_RULE, "rule": DEMO_RULE}[selection],
+           "selection": selection,
            "tier_basis": args.tier_basis, "tier_rule": TIER_RULES[args.tier_basis], "internal_only": True, "veto": sorted(args.veto),
            "created_utc": pat["created_utc"], "counts": counts, "picks": by_tier,
-           "complete": all(len(v) >= 1 for v in by_tier.values()) if owner
+           "complete": all(len(v) >= 1 for v in by_tier.values()) if selection != "rule"
            else all(len(v) == DEMO_PER_TIER for v in by_tier.values())}
     args.demo.parent.mkdir(parents=True, exist_ok=True)
     args.demo.write_text(json.dumps(res, indent=1, default=str) + "\n")

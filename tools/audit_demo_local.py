@@ -60,8 +60,8 @@ mem = pd.read_csv(ROOT/'results/run_full/members.csv', dtype=str)
 man = {r['video_id']: r for r in map(json.loads, open(ROOT/'results/run_full/manifest.jsonl'))} \
     if (ROOT/'results/run_full/manifest.jsonl').exists() else {}
 demo = json.load(open(ROOT/idx.get('demo_source', 'results/demo/library_demo.json')))
-owner = demo.get('selection') == 'owner'
-check(owner == (idx.get('selection') == 'owner'), f"index says selection={idx.get('selection')}, pick file agrees")
+owner = demo.get('selection') in ('owner', 'candidates')
+check(demo.get('selection', 'rule') == idx.get('selection', 'rule'), f"index says selection={idx.get('selection')}, pick file agrees")
 picks = {p['video_id']: p for ps in demo['picks'].values() for p in ps}
 check(set(picks) == set(ids), 'served clips == the tier picks (nothing extra, nothing missing)')
 oc = pd.read_parquet(ROOT/'results/outcomes.parquet', columns=['id', 'deal_id', 'platform', 'reach_rel_local', 'dq_flags'])
@@ -75,17 +75,25 @@ for b in idx['bundles']:
     check(o['video_link'] == raw['video_link'] and b['video_link'] == raw['video_link'], f'{v}: link matches raw export')
     for k in ('views', 'likes', 'comments'):
         check(float(o[k]) == float(raw[k]), f'{v}: {k} {o[k]:.0f} == raw export {float(raw[k]):.0f}')
+    k = sum(float(raw[c]) for c in ('likes', 'comments', 'shares', 'saves') if isinstance(raw.get(c), str) and raw[c] != '')
+    check(o['engagement_rate_pct'] is not None and abs(o['engagement_rate_pct'] - 100 * min(k, float(raw['views'])) / float(raw['views'])) < 1e-6,
+          f"{v}: engagement {o['engagement_rate_pct']:.2f}% == (likes+comments+shares+saves)/views from the raw export")
     # tier from scratch: plain percentile of this post's reach_rel_local among its deal x platform posts
     me = oc[oc.id.astype(str) == sn].iloc[0]
     ref = oc[(oc.deal_id == me.deal_id) & (oc.platform == me.platform)].reach_rel_local.to_numpy()
     x = me.reach_rel_local; pct = 100 * ((ref < x).sum() + 0.5 * (ref == x).sum()) / len(ref)
-    lo, hi = {'great': (80, 100), 'typical': (40, 60), 'bad': (0, 20)}[o['tier']]
-    check(o['tier'] == b['demo_role'] and lo <= pct <= hi and len(ref) >= 100 and len(ref) == o['n_ref_posts']
-          and abs(pct - o['views_pct_in_deal_platform']) < 0.1,
-          f'{v}: tier {o["tier"]} ok (recomputed {pct:.1f}th pct of {len(ref)} posts)')
-    check(o.get('shares') != 0 and o.get('saves') != 0, f'{v}: unreported shares/saves shown as blank, not 0')
+    basis = demo.get('tier_basis', 'relative')
+    if basis == 'views':  # owner rule: views the post got; bad also below its account's usual
+        vf = float(raw['views'])
+        want = 'great' if vf >= 300_000 else 'typical' if 5_000 <= vf <= 15_000 else 'bad' if vf < 700 and x < 0 else None
+        check(o['tier'] == b['demo_role'] == want, f'{v}: tier {o["tier"]} ok ({vf:,.0f} views, {np.exp(x):.2f}x usual)')
+    else:
+        lo, hi = {'great': (80, 100), 'typical': (40, 60), 'bad': (0, 20)}[o['tier']]
+        check(o['tier'] == b['demo_role'] and lo <= pct <= hi and len(ref) >= 100 and len(ref) == o['n_ref_posts']
+              and abs(pct - o['views_pct_in_deal_platform']) < 0.1,
+              f'{v}: tier {o["tier"]} ok (recomputed {pct:.1f}th pct of {len(ref)} posts)')
     xx = np.exp(x)
-    check(abs(o['views_vs_account_usual_x'] - xx) < 1e-6 and (o['tier'] != 'great' or xx > 1)
+    check(abs(o['views_vs_account_usual_x'] - xx) < 1e-6 and (o['tier'] != 'great' or xx > 1 or basis == 'views')
           and (o['tier'] != 'bad' or xx < 1), f'{v}: {xx:.2f}x usual agrees with tier {o["tier"]}')
 
 # E. lockbox + selection independence

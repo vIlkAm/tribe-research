@@ -57,7 +57,15 @@ def test_post_tiers_absolute_and_both():
     assert b.loc[p.loc[:49, "id"], "tier"].isna().all() and b["n_abs"].max() == 150
     assert lt.post_tiers(p, "relative").loc[p.loc[:49, "id"], "tier"].notna().any()
     with pytest.raises(SystemExit, match="tier basis"):
-        lt.post_tiers(p, "views")
+        lt.post_tiers(p, "likes")
+
+
+def test_post_tiers_views_owner_rule():
+    p = _posts(n=6)
+    p["views_final"] = [400_000, 300_000, 10_000, 4_999, 600, 600]
+    p["reach_rel_local"] = [-1.0, 1.0, 0.0, 0.0, 1.0, -0.5]  # the 5th is small but above its own usual: not "bad"
+    t = lt.post_tiers(p, "views")
+    assert [x if isinstance(x, str) else None for x in t["tier"]] == ["great", "great", "typical", None, None, "bad"]
 
 
 def test_wauc_coin_flip_and_weights():
@@ -140,3 +148,18 @@ def test_owner_picks_keep_every_check(tmp_path, monkeypatch):
                             (["best=a"], set(), "tier must be")):
         with pytest.raises(SystemExit, match=msg):
             lt.owner_picks(spec, elig, tiers, lang, tmp_path, lockbox=lock)
+
+
+def test_engagement_from_counts_not_reported_field():
+    row = pd.Series({"views_final": 1000.0, "likes": 40.0, "comments": 5.0, "shares": 0.0, "saves": np.nan,
+                     "engagement_rate_reported": 0.0})
+    assert lt.sep.engagement_pct(row) == pytest.approx(4.5)
+    assert lt.sep.engagement_pct(pd.Series({"views_final": 0.0, "likes": 3.0})) is None
+    assert lt.sep.engagement_pct(pd.Series({"views_final": 2.0, "likes": 9.0})) == 100.0
+
+
+def test_interpreter_line_without_a_difference_says_so():
+    f = {"mean": {"great": 53.0, "typical": 42.0, "bad": 48.0}, "coin_flip": {"point": 0.58},
+         "verdict": "no_reliable_difference"}
+    line = lt.interpreter_line(f)
+    assert "no reliable difference" in line and "leans" not in line

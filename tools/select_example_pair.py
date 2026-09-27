@@ -67,6 +67,16 @@ def source_file(staging: Path, source_path: str) -> Path | None:
     return hit[0] if hit else None
 
 
+def engagement_pct(row: pd.Series) -> float | None:
+    """Interactions over views from the counts themselves. The export's ``engagement_rate_reported`` is not used: it
+    is 0 on many posts with thousands of likes (15% of YouTube rows)."""
+    v = row.get("views_final")
+    if v is None or pd.isna(v) or v <= 0:
+        return None
+    k = sum(float(row[c]) for c in ("likes", "comments", "shares", "saves") if c in row and pd.notna(row[c]))
+    return 100.0 * min(k, float(v)) / float(v)
+
+
 def observed_block(row: pd.Series) -> dict:
     """What the clip got on the platform (observed), for the internal view only. No account or post id."""
     def num(k):
@@ -76,7 +86,8 @@ def observed_block(row: pd.Series) -> dict:
         "platform": row["platform"], "video_link": row["video_link"],
         "upload_date": None if pd.isna(row["upload_date"]) else str(pd.Timestamp(row["upload_date"]).date()),
         "views": num("views_final"), "likes": num("likes"), "comments": num("comments"), "shares": num("shares"),
-        "saves": num("saves"), "engagement_rate_pct": num("engagement_rate_reported"),
+        "saves": num("saves"), "engagement_rate_pct": engagement_pct(row),
+        "engagement_basis": "(likes + comments + shares + saves) / views, counts the platform reports",
         "views_vs_account_usual_log": num("reach_rel_local"),
         "views_vs_account_usual_x": None if pd.isna(row["reach_rel_local"]) else float(np.exp(row["reach_rel_local"])),
         "account_usual_n_posts": num("local_baseline_n"), "age_days_at_last_obs": num("age_days_at_last_obs"),
