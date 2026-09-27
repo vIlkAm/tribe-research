@@ -217,6 +217,15 @@ def labels_from_oof(path: Path, target: str = PRIMARY_TARGET):
                          "stratum": o["stratum"].str.split("|").str[0], "weight": o["w"]})
 
 
+def refuse_multi_deal(lab):
+    """Prereg M4: a content spanning deals is refused, i.e. excluded from the contrast (reported, not re-assigned)."""
+    mixed = lab.groupby("video_id")["stratum"].nunique()
+    bad = mixed.index[mixed > 1]
+    if len(bad):
+        print(f"contrast: refused {len(bad)} contents that span several deals: {sorted(bad)}")
+    return lab[~lab["video_id"].isin(bad)]
+
+
 def one_row_per_content(lab):
     """Post-level labels -> one row per content: w-weighted mean y, mean weight; the stratum (deal) must be shared.
 
@@ -242,7 +251,7 @@ def cmd_contrast(a) -> int:
     if (a.labels is None) == (a.oof is None):
         raise SystemExit("pass exactly one of --oof (fit_models oof_predictions.csv) or --labels")
     if a.oof is not None:
-        lab = labels_from_oof(a.oof, a.target)
+        lab = refuse_multi_deal(labels_from_oof(a.oof, a.target))
     else:
         lab = pd.read_csv(a.labels, dtype={"video_id": str})
         need = {"video_id", "y", "stratum"}

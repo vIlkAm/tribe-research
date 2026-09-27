@@ -310,3 +310,12 @@ def test_cli_fit_features_contrast(tmp_path):
     r = json.loads(rep.read_text())
     assert r["n_clips"] == 50 and r["n_deals"] == 4 and set(r["views"]) >= {"onset_s", "fraction"}
     assert r["n_tests"] == 3 * C and all("test_q_bh" in v for view in r["views"].values() for v in view.values())
+
+
+def test_contents_spanning_deals_are_refused_not_fatal():
+    import pandas as pd
+
+    lab = pd.DataFrame({"video_id": ["a", "a", "b"], "y": [1.0, 2.0, 3.0], "stratum": ["d1", "d2", "d1"],
+                        "weight": [1.0, 1.0, 1.0]})
+    out = build_moments_pop.one_row_per_content(build_moments_pop.refuse_multi_deal(lab))
+    assert out["video_id"].tolist() == ["b"]
