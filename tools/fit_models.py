@@ -111,7 +111,8 @@ SELECTION_BASE = {"audio_mean_db": "base_audio_mean_db"}  # + base_aspect from h
 
 SCHEMES = ("content", "account", "lodo")
 # (new, reference) feature-set pairs whose paired delta every bootstrap reports, when both sets were fit
-PAIRS = (("B", "A"), ("E", "A"), ("BE", "E"), ("B", "E"), ("BE", "A"))  # docs/PREREGISTRATION.md: BE − E primary, BE − A go/no-go
+PAIRS = (("B", "A"), ("E", "A"), ("BE", "E"), ("B", "E"), ("BE", "A"),  # docs/PREREGISTRATION.md: BE − E primary, BE − A go/no-go
+         ("X", "A"), ("B", "X"), ("E", "X"))  # arm X (secondary, only with --extra-features): A + editing covariates
 MODELS = ("stack", "ridge", "hgb")  # stack: pre-registered primary (docs/PREREGISTRATION.md)
 BLOCK_PREFIXES = (("brain", "brain_"), ("emb", "emb_"))  # wide clip-feature blocks the stack compresses to one score
 MIN_STRATUM_N = 10
@@ -251,8 +252,11 @@ def aspect(height, width) -> pd.Series:
 def build_dataset(features: pd.DataFrame, members: pd.DataFrame, outcomes: pd.DataFrame,
                   targets: list[str], selection: pd.DataFrame | None = None,
                   exclude_cols: list[str] | None = None,
-                  exclude_non_english: bool = True) -> tuple[pd.DataFrame, dict, pd.DataFrame]:
-    """-> (post rows with features + design columns, info, all quality-filtered posts for ICCs)."""
+                  exclude_non_english: bool = True,
+                  extra_prefix: str | None = None) -> tuple[pd.DataFrame, dict, pd.DataFrame]:
+    """-> (post rows with features + design columns, info, all quality-filtered posts for ICCs).
+
+    ``extra_prefix`` keeps the arm-X columns (merged into ``features`` by merge_extra_features) as well."""
     posts, info = load_posts(members, outcomes, targets, exclude_cols)
     info["n_features_rows"] = int(len(features))
     df = posts
@@ -281,7 +285,8 @@ def build_dataset(features: pd.DataFrame, members: pd.DataFrame, outcomes: pd.Da
         non_en = pd.to_numeric(f["qc_non_english"], errors="coerce").fillna(0) > 0
         info["clips_excluded_non_english"] = int(non_en.sum())
         f = f[~non_en]
-    fcols = ["video_id"] + [c for c in f.columns if c.startswith(("base_", "brain_", "emb_"))]
+    keep = ("base_", "brain_", "emb_") + ((extra_prefix,) if extra_prefix else ())
+    fcols = ["video_id"] + [c for c in f.columns if c.startswith(keep)]
     info["synthetic_clips"] = int(f["synthetic"].fillna(False).astype(bool).sum()) if "synthetic" in f else 0
     df = df.merge(f[fcols], on="video_id", how="inner").copy()
     info["n_posts_with_features"] = int(len(df))
@@ -655,7 +660,8 @@ def fit_predict(kind, cols, train: pd.DataFrame, y, w, test: pd.DataFrame, seed=
 BRAIN_EXCLUDED = ("brain_moments_",)
 
 
-def feature_sets(df: pd.DataFrame, moment_cols: bool = False) -> dict[str, tuple[list[str], list[str]]]:
+def feature_sets(df: pd.DataFrame, moment_cols: bool = False,
+                 extra_prefix: str | None = None) -> dict[str, tuple[list[str], list[str]]]:
     def usable(c):
         s = df[c]
         return s.notna().any() and s.nunique(dropna=True) > 1
@@ -670,7 +676,36 @@ def feature_sets(df: pd.DataFrame, moment_cols: bool = False) -> dict[str, tuple
     sets = {"A": (cat, base), "B": (cat, base + brain)}
     if emb:  # the control arm: the brain mapping's inputs without the mapping
         sets.update({"E": (cat, base + emb), "BE": (cat, base + brain + emb)})
+    extra = [c for c in df.columns if c.startswith(extra_prefix) and usable(c)] if extra_prefix else []
+    if extra:  # arm X (prereg secondary): A + extra covariates as plain A-level columns (no stack block)
+        sets["X"] = (cat, base + extra)
     return sets
+
+
+EXTRA_RESERVED = ("base_", "brain_", "emb_", "te_", "stack_", "y_", "_")
+
+
+def merge_extra_features(features: pd.DataFrame, extra: pd.DataFrame, prefix: str) -> tuple[pd.DataFrame, dict]:
+    """Left-join ``extra``'s ``prefix`` columns onto the clip features by ``video_id`` (arm X).
+
+    Every clip row is kept (a clip missing from ``extra`` gets NaN, median-imputed inside each fit), so every arm
+    scores the same rows with the same folds."""
+    if not prefix or prefix.startswith(EXTRA_RESERVED):
+        raise SystemExit(f"--extra-prefix {prefix!r} is empty or collides with a reserved feature prefix")
+    cols = [c for c in extra.columns if c.startswith(prefix)]
+    if not cols or "video_id" not in extra:
+        raise SystemExit(f"extra features need video_id and at least one {prefix}* column")
+    if extra["video_id"].duplicated().any():
+        raise SystemExit("extra features: duplicate video_id rows")
+    if set(cols) & set(features.columns):
+        raise SystemExit(f"extra features: columns already in the features table: {sorted(set(cols) & set(features.columns))}")
+    e = extra[["video_id"] + cols].assign(video_id=extra["video_id"].astype(str))
+    out = features.assign(video_id=features["video_id"].astype(str)).merge(e, on="video_id", how="left")
+    assert len(out) == len(features)
+    ok = out["status"] == "ok" if "status" in out else pd.Series(True, index=out.index)
+    info = {"prefix": prefix, "columns": cols, "n_rows": int(len(extra)),
+            "ok_clips_missing": int((ok & out[cols].isna().all(axis=1)).sum())}
+    return out, info
 
 
 def profile_columns(cols: list[str]) -> list[str]:
@@ -1378,6 +1413,9 @@ def _control_table(L, pooled, models):
     L.append("Control arm: E = A + the extractor features TRIBE's brain mapping reads; BE = A + brain + those "
              "features. **BE − E** is what the brain mapping adds beyond its own inputs (the pre-registered primary); "
              "BE − A is what all content features add (the scale-up go/no-go).\n")
+    if any("X" in (a, b) for _, a, b in rows):
+        L.append("Arm X (exploratory secondary) = A + the editing covariates from --extra-features: X − A is what they "
+                 "add to A; B − X and E − X ask whether brain or embeddings carry more than plain editing structure.\n")
     L.append("| model | comparison | Δ within-stratum ρ | Δ pooled ρ | Δ R² | verdict (within-stratum ρ) |")
     L.append("|---|---|---|---|---|---|")
     for m, a, b in rows:
@@ -1706,7 +1744,7 @@ def run(features, members, outcomes, *, targets=DEFAULT_TARGETS, out_dir: Path, 
         schemes=SCHEMES, models=MODELS, n_splits=5, n_boot=1000, seed=0, min_deal_n=30, perm_repeats=3,
         perm_model="hgb", perm_per_feature=True, exclude_cols=None, fit_weighted=False, niche_base=None,
         niche=True, min_account_n=40, score_lockbox=False, threads=8, exclude_non_english=True, moment_cols=False,
-        log=print) -> dict:
+        log=print, extra: dict | None = None) -> dict:
     from threadpoolctl import threadpool_limits
 
     t0 = time.perf_counter()
@@ -1717,7 +1755,7 @@ def run(features, members, outcomes, *, targets=DEFAULT_TARGETS, out_dir: Path, 
         res = _run(features, members, outcomes, targets, out_dir, selection, schemes, models,
                    n_splits, n_boot, seed, min_deal_n, perm_repeats, perm_model, perm_per_feature, exclude_cols,
                    fit_weighted, niche_base, niche, min_account_n, score_lockbox, exclude_non_english, log,
-                   moment_cols=moment_cols)
+                   moment_cols=moment_cols, extra=extra)
     res["runtime_s"] = round(time.perf_counter() - t0, 1)
     (out_dir / "metrics.json").write_text(json.dumps(res, indent=2, default=_json_default) + "\n")
     text = write_report(out_dir / "report.md", res)
@@ -1731,15 +1769,18 @@ def run(features, members, outcomes, *, targets=DEFAULT_TARGETS, out_dir: Path, 
 
 def _run(features, members, outcomes, targets, out_dir, selection, schemes, models, n_splits, n_boot, seed,
          min_deal_n, perm_repeats, perm_model, perm_per_feature, exclude_cols, fit_weighted, niche_base, niche,
-         min_account_n, score_lockbox, exclude_non_english, log, moment_cols=False):
+         min_account_n, score_lockbox, exclude_non_english, log, moment_cols=False, extra=None):
+    extra_prefix = extra["prefix"] if extra else None
     df_all, info, posts = build_dataset(features, members, outcomes, targets, selection, exclude_cols,
-                                        exclude_non_english=exclude_non_english)
+                                        exclude_non_english=exclude_non_english, extra_prefix=extra_prefix)
     res: dict = {"data": info, "models": models, "targets": {}, "features": {}, "profile_columns": {},
                  "config": {"n_splits": n_splits, "n_boot": n_boot, "seed": seed, "min_deal_n": min_deal_n,
                             "schemes": list(schemes), "perm_repeats": perm_repeats, "perm_model": perm_model,
                             "fit_weighted": fit_weighted, "niche_base": niche_base, "min_account_n": min_account_n,
                             "score_lockbox": score_lockbox, "moment_cols": moment_cols},
                  "notes": NOTES}
+    if extra:  # only with --extra-features, so the default outputs are unchanged
+        res["config"]["extra_features"] = extra
     sub_boot = min(n_boot, max(200, n_boot // 5))
     oof_frames = []
     for t in info["targets"]:
@@ -1748,7 +1789,7 @@ def _run(features, members, outcomes, targets, out_dir, selection, schemes, mode
         df = dfl[dfl["split"] == "train"].reset_index(drop=True)
         lb = dfl[dfl["split"] == "lockbox"].reset_index(drop=True)
         y, w = df[ycol].to_numpy(float), df["_w"].to_numpy(float)
-        fsets = feature_sets(df, moment_cols)
+        fsets = feature_sets(df, moment_cols, extra_prefix)
         res["features"][t] = {k: v[0] + v[1] for k, v in fsets.items()}  # usable columns differ by target rows
         res["profile_columns"][t] = profile_columns(fsets["B"][1])
         tr: dict = {"column": info["targets"][t]["column"], "transform": info["targets"][t]["transform"],
@@ -2194,6 +2235,10 @@ def main() -> int:
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--keep-non-english", action="store_true",
                     help="keep clips whisperx confidently detected as non-English (their text features are garbage)")
+    ap.add_argument("--extra-features", type=Path, default=None, metavar="PATH",
+                    help="secondary arm X: clip table (video_id + --extra-prefix columns, e.g. build_moments_pop.py "
+                         "features) left-joined onto --features; X = A + those columns, reported as X − A, B − X, E − X")
+    ap.add_argument("--extra-prefix", default="edit_", help="column prefix taken from --extra-features")
     ap.add_argument("--save-model", type=Path, default=None, metavar="DIR",
                     help="after the evaluation: refit the served model on all non-lockbox train rows and write it "
                          "with its manifest and reference tables (tools/predict.py)")
@@ -2205,6 +2250,12 @@ def main() -> int:
     args = ap.parse_args()
     features, members, outcomes = read_table(args.features), read_table(args.members), read_table(args.outcomes)
     selection = read_table(args.selection) if args.selection else None
+    extra = None
+    if args.extra_features:
+        features, extra = merge_extra_features(features, read_table(args.extra_features), args.extra_prefix)
+        extra["path"] = str(args.extra_features)
+        print(f"arm X: {len(extra['columns'])} {args.extra_prefix}* columns, "
+              f"{extra['ok_clips_missing']} ok clips without them (median-imputed)")
     ext = read_lockbox_ext(args.lockbox_ext) if args.save_model else set()
     if args.save_model and ext and selection is not None and "video_id" in selection:  # fail before a long run
         tr_ids = set(selection.loc[selection.get("split", pd.Series("train", index=selection.index)).astype(str)
@@ -2218,7 +2269,7 @@ def main() -> int:
         perm_per_feature=not args.no_perm_per_feature, exclude_cols=args.exclude_if_true,
         fit_weighted=args.fit_weighted, niche_base=args.niche_base, niche=not args.no_niche,
         min_account_n=args.min_account_n, score_lockbox=args.score_lockbox, threads=args.threads,
-        exclude_non_english=not args.keep_non_english, moment_cols=args.with_moment_cols)
+        exclude_non_english=not args.keep_non_english, moment_cols=args.with_moment_cols, extra=extra)
     if args.save_model:
         from threadpoolctl import threadpool_limits
 
