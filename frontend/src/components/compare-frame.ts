@@ -27,7 +27,7 @@ export default function CompareFrame({ model, groups, onChoose, onBack, onLearne
           h('span', { className: 'internal-badge' }, 'Internal research view'))),
       h('div', { className: 'compare-caveat', role: 'note' },
         h('p', null, model.caveat),
-        h('a', { href: '?view=learned', onClick: (event: { preventDefault: () => void }) => { event.preventDefault(); onLearned(); } }, 'What the model learned →')),
+        h('a', { href: '?view=learned', onClick: (event: { preventDefault: () => void }) => { event.preventDefault(); onLearned(); } }, 'See the results →')),
       h('div', { className: 'compare-grid' }, model.columns.map(column =>
         h('section', { key: column.slot, className: `compare-column is-${column.tier ?? 'untiered'}`, 'aria-label': column.title },
           h('div', { className: 'compare-column-head' },

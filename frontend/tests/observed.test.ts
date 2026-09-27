@@ -114,7 +114,7 @@ test('compare view: caveat verbatim, tier column heads, dropdowns grouped by tie
   assert.match(html, /<div class="compare-caveat" role="note"><p>SYNTHETIC caveat: two clips, not evidence\.<\/p>/, 'caveat verbatim, alone in its note');
   assert.ok(html.indexOf('SYNTHETIC caveat') < html.indexOf('class="compare-grid"'), 'caveat on top');
   assert.match(html, /Internal research view/);
-  assert.match(html, /href="\?view=learned"[^>]*>What the model learned/);
+  assert.match(html, /href="\?view=learned"[^>]*>See the results/);
   const a = html.indexOf('>Did great · Deal Alpha</h2>'), b = html.indexOf('>Did badly · Deal Alpha</h2>');
   assert.ok(a > 0 && b > a, 'great column first');
   assert.match(html, /<section class="compare-column is-great"/);

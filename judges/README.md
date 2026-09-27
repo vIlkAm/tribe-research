@@ -4,6 +4,21 @@ ViralBrain runs Meta's **TRIBE v2** brain-encoding model over short-form videos 
 YouTube Shorts). It shows, second by second, how strongly an average viewer's brain is predicted to respond,
 and compares that with a library of about 1,264 real clips and their real platform numbers.
 
+## Key results
+
+- **1,486 real clips** from 12 clients on TikTok, Instagram Reels and YouTube Shorts were run through TRIBE v2.
+  Every second of a clip is compared with the same second of 1,264 library clips of similar length.
+- **Clips that beat their account's usual views had a higher predicted brain response** than clips below it:
+  +0.09 library standard deviations over the first 30 seconds (95% range +0.03 to +0.15), and +0.09 in the
+  opening 4 seconds (+0.02 to +0.17). That is 415 vs 415 clips within 12 clients, with the grouping fixed before
+  it was computed. It still holds when whole accounts are resampled. Small, and in the direction you would expect
+  (Results page).
+- Across all 1,143 library clips, those with more seconds above the typical line got more views within the same
+  client and platform (rank correlation +0.14, 95% range +0.06 to +0.22). Exploratory: our stricter split-half
+  check on the Library page does not confirm it on its own.
+- The pre-registered test was a **no-GO**, so the app shows no performance score (see Honest results). The brain
+  line is a perception lens for editing, not a views forecast.
+
 ## How to open it (no GPU or internet needed)
 
 Everything is precomputed. TRIBE v2 needs a large GPU (we used rented cloud GPUs), so the analyses were run in
@@ -24,8 +39,8 @@ small server above. It only listens on your own computer.
   same second of the library clips.
 - **Compare:** two clips side by side (starts with a clip that did great and one that did badly).
 - **Library:** all demo clips with their real views, and what holds across the whole library (see below).
-- **Learned:** the pre-registered test and its result, and the predicted response of clips above vs below their
-  account's usual views.
+- **Results:** start here for the evidence: the predicted response of clips above vs below their account's usual
+  views, and the pre-registered test and its result.
 
 The **Analyze video** / upload flow needs the GPU backend, so it does not run in this offline copy.
 
@@ -48,13 +63,14 @@ Some TikTok clips were re-encoded from HEVC to H.264 only so that every browser 
 ## Honest results
 
 - **The pre-registered test was a no-GO.** Adding the predicted brain response to basic information about the clip
-  and its account did not predict views any better. The brain line is **not a views forecast**.
+  and its account did not rank clips any better on the pre-registered target (likes and comments per view). The
+  brain line is **not a views forecast**.
 - **Library statistics** (Library page): each pattern was looked for on half of the accounts and checked once on
   the other half. Most of the differences in views within a client and platform are a clip's swing around its
   own account's usual (luck, timing and the algorithm included), not account size. No brain-line summary held
   up. One pattern held: longer clips get more interactions per view within the same account (small, and not a
   cause: longer clips also get fewer views).
-- **Grouped by views against the account's usual** (Learned page; exploratory, grouping fixed before it was
+- **Grouped by views against the account's usual** (Results page; exploratory, grouping fixed before it was
   computed): within each client, the third of clips above their account's usual had a higher predicted brain
   response than the third below it, over the first 30 seconds (+0.09 library standard deviations, 95% range +0.03
   to +0.15) and in the opening 4 seconds (+0.09, +0.02 to +0.17); both hold when whole accounts are resampled.

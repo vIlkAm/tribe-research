@@ -249,7 +249,7 @@ function Workspace({ analysis, localBundle, onOpen, onReset, onComparison, onAna
     {localBundle && !currentClip && <span className="demo-current" title={localBundle.filename}><FolderOpen size={13} /><span>{localBundle.filename}</span><button type="button" onClick={onReset} aria-label="Close this analysis"><X size={12} /></button></span>}
     {analysis.synthetic && <span className="synthetic-tag">SYNTHETIC SAMPLE</span>}
     <div className="demo-topbar-actions">
-      {learnedAvailable && <a className="topbar-button" href="?view=learned" onClick={event => { event.preventDefault(); onLearned(); }}><Brain size={14} /> Learned</a>}
+      {learnedAvailable && <a className="topbar-button is-results" href="?view=learned" title="What the study found across the library" onClick={event => { event.preventDefault(); onLearned(); }}><Brain size={14} /> Results</a>}
       {compareAvailable && <a className="topbar-button" href="?view=compare" onClick={event => { event.preventDefault(); onCompare(); }}><Columns2 size={14} /> Compare</a>}
       {libraryAvailable && <a className="topbar-button" href="?view=library" onClick={event => { event.preventDefault(); onLibrary(); }}><BarChart3 size={14} /> Library</a>}
       <span className="research-chip" title="TRIBE v2 is CC-BY-NC: research use only">Research preview</span>
