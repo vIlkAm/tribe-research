@@ -288,10 +288,10 @@ def score_plain(key: str, v: str | None, p: float | None, pooled: bool, value=No
         return f"A typical number of low-response seconds for {ref}{tail}."
     noun = SCORE_NOUNS[key]
     if v == "strong":
-        return f"Stronger {noun} than {pi}% of {ref}."
+        return f"Higher predicted response in the {noun} than {pi}% of {ref}."
     if v == "weak":
-        return f"Weaker {noun} than {100 - pi}% of {ref}."
-    return f"Typical {noun}: stronger than {pi}% of {ref}."
+        return f"Lower predicted response in the {noun} than {100 - pi}% of {ref}."
+    return f"Typical predicted response in the {noun}: higher than {pi}% of {ref}."
 
 
 def mmss(ms: int) -> str:

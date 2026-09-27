@@ -15,7 +15,7 @@ export default function StandoutMoments({ library, timeMs, labelFor, onChoose }:
       return <button key={i} type="button" className={`lib-moment ${high ? 'is-above' : 'is-below'} ${current ? 'current' : ''}`} onClick={() => onChoose(moment)}>
         <span className="lib-moment-meta"><span className="mono">{clockTime(moment.start_ms)}–{clockTime(moment.end_ms)}</span><span className={`verdict-chip ${high ? 'strong' : 'weak'}`}>{high ? 'Above similar clips' : 'Below similar clips'}</span><ArrowUpRight size={16} /></span>
         <p>{momentText(moment.plain)}</p>
-        {(channels.length > 0 || moment.percentile !== null) && <small>{[channels.join(' · '), moment.percentile !== null ? `Stronger than ${Math.round(moment.percentile)}% of similar clips` : ''].filter(Boolean).join(' — ')}</small>}
+        {(channels.length > 0 || moment.percentile !== null) && <small>{[channels.join(' · '), moment.percentile !== null ? `Higher than ${Math.round(moment.percentile)}% of similar clips` : ''].filter(Boolean).join(' — ')}</small>}
       </button>;
     })}</div>
   </section>;

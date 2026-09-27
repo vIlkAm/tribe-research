@@ -13,7 +13,7 @@ export const LEARNED_SCHEMA = 'nvi.learned.v0';
 export type Verdict = 'strong' | 'typical' | 'weak';
 export type ScoreKey = 'hook' | 'hold' | 'peak' | 'dead_zones' | 'finish';
 export const SCORE_ORDER: readonly ScoreKey[] = ['hook', 'hold', 'peak', 'dead_zones', 'finish'];
-const SCORE_FALLBACK_LABEL: Record<ScoreKey, string> = { hook: 'Hook', hold: 'Hold', peak: 'Peak', dead_zones: 'Dead zones', finish: 'Finish' };
+const SCORE_FALLBACK_LABEL: Record<ScoreKey, string> = { hook: 'Opening', hold: 'Middle', peak: 'Best 3 s', dead_zones: 'Low seconds', finish: 'Ending' };
 
 export interface LibraryScore {
   key: ScoreKey;
@@ -159,7 +159,7 @@ export function momentText(plain: string): string {
 }
 
 export function verdictLabel(value: Verdict | null): string {
-  return value === 'strong' ? 'Strong' : value === 'weak' ? 'Weak' : value === 'typical' ? 'Typical' : '';
+  return value === 'strong' ? 'Above library' : value === 'weak' ? 'Below library' : value === 'typical' ? 'Typical' : '';
 }
 
 export function referenceLine(reference: LibraryReference | null): string {

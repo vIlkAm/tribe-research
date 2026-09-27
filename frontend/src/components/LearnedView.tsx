@@ -13,7 +13,7 @@ function GoodVsBadChart({ data }: { data: LearnedGoodVsBad }) {
   const n = (value: number | null) => value === null ? '' : ` (${Math.round(value).toLocaleString('en-US')} clips)`;
   return <figure className="learned-chart">
     <div className="learned-plot">
-      <div className="learned-y" aria-hidden="true"><span>Stronger response</span><span>Weaker response</span></div>
+      <div className="learned-y" aria-hidden="true"><span>Higher response</span><span>Lower response</span></div>
       <div className="learned-svg">
         <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label="Average predicted response over the first seconds for clips that beat expectations and clips that fell short">
           {data.top.lo.length > 0 && <path className="band-above" d={bandPath(data.top.lo, data.top.hi, W, H, range)} />}

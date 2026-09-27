@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { DemoClip } from '../lib/demo';
 import type { Patterns } from '../lib/patterns';
+import type { Theory } from '../lib/theory';
 import { fetchOptionalJson } from '../lib/real-bundle';
 import LibraryFrame, { loadLibraryRow, type LibraryRow } from './library-frame';
 import './library.css';
@@ -9,7 +10,7 @@ import './demo-layout.css';
 const emptyRows = (clips: DemoClip[]): LibraryRow[] => clips.map(clip => ({ clip, observed: null, library: null }));
 
 /** Internal, exploratory library view (`?view=library`). */
-export default function LibraryView({ indexUrl, clips, patterns, onBack, onOpenClip }: { indexUrl?: string; clips: DemoClip[]; patterns: Patterns; onBack: () => void; onOpenClip: (clip: DemoClip) => void }) {
+export default function LibraryView({ indexUrl, clips, patterns, theory = null, onBack, onOpenClip }: { indexUrl?: string; clips: DemoClip[]; patterns: Patterns; theory?: Theory | null; onBack: () => void; onOpenClip: (clip: DemoClip) => void }) {
   const [rows, setRows] = useState<LibraryRow[]>(() => emptyRows(clips));
   useEffect(() => {
     setRows(emptyRows(clips));
@@ -19,5 +20,5 @@ export default function LibraryView({ indexUrl, clips, patterns, onBack, onOpenC
       .then(loaded => { if (!controller.signal.aborted) setRows(loaded); });
     return () => controller.abort();
   }, [indexUrl, clips]);
-  return <LibraryFrame patterns={patterns} rows={rows} onBack={onBack} onOpenClip={onOpenClip} />;
+  return <LibraryFrame patterns={patterns} theory={theory} rows={rows} onBack={onBack} onOpenClip={onOpenClip} />;
 }

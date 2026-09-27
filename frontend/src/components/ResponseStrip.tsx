@@ -58,7 +58,7 @@ export default function ResponseStrip({ library, durationMs, timeMs, onSeek, com
       {readout}
     </div>}
     <div className="strip-chart">
-      <div className="strip-y" aria-hidden="true"><span>Stronger</span><span>Typical</span><span>Weaker</span></div>
+      <div className="strip-y" aria-hidden="true"><span>Higher</span><span>Typical</span><span>Lower</span></div>
       <div className="strip-plot" ref={wrap} role="slider" tabIndex={0} aria-label="Response compared with similar clips" aria-valuemin={0} aria-valuemax={durationMs / 1000} aria-valuenow={Math.round(timeMs / 1000)} aria-valuetext={percentileReadout(current, timeMs)} onKeyDown={keydown}
         onPointerDown={e => { e.currentTarget.setPointerCapture(e.pointerId); onSeek(getTime(e)); }}
         onPointerMove={e => { const t = getTime(e); setHover(t); if (e.buttons === 1) onSeek(t); }}

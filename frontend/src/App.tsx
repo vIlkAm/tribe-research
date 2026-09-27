@@ -20,6 +20,7 @@ import CompareView from './components/CompareView';
 import ObservedPanel from './components/ObservedPanel';
 import { parseExamples, parseObserved, siblingUrl, type Examples, type Observed } from './lib/observed';
 import { parsePatterns, type Patterns } from './lib/patterns';
+import { parseTheory, type Theory } from './lib/theory';
 import LibraryView from './components/LibraryView';
 import { ObservedRow } from './components/observed-row';
 import { fetchOptionalJson } from './lib/real-bundle';
@@ -298,6 +299,7 @@ export default function App() {
   const compareAvailable = !!examples && !!realIndex && clips.length >= 2;
   const [patterns, setPatterns] = useState<Patterns | null>(null);
   const [patternsChecked, setPatternsChecked] = useState(false);
+  const [theory, setTheory] = useState<Theory | null>(null);
   const [clipBusy, setClipBusy] = useState<string | null>(null);
   const [demoReady, setDemoReady] = useState(!realIndexUrl);
   const clipOperation = useRef(0);
@@ -337,6 +339,9 @@ export default function App() {
     void fetchOptionalJson(assetUrl('library_patterns.json'), controller.signal)
       .then(value => { if (!controller.signal.aborted) setPatterns(parsePatterns(value)); })
       .finally(() => { if (!controller.signal.aborted) setPatternsChecked(true); });
+    // Optional library statistics (nvi.theory.v0); supersede the tier table on the Library page.
+    void fetchOptionalJson(assetUrl('library_theory.json'), controller.signal)
+      .then(value => { if (!controller.signal.aborted) setTheory(parseTheory(value)); });
     return () => controller.abort();
   }, []);
   useEffect(() => {
@@ -416,12 +421,12 @@ export default function App() {
   const intake = <AnalysisIntake open={intakeOpen} onClose={() => setIntakeOpen(false)} onOpen={openBundle} onOpenExport={() => setPickerOpen(true)} />;
   if (learnedView) return learned || learnedChecked ? <LearnedView learned={learned} onBack={() => showLearned(false)} /> : <div className="loading-screen"><LoaderCircle className="spin" /><p>Loading the research summary</p></div>;
   if (view === 'compare') {
-    if (compareAvailable && realIndexUrl) return <CompareView indexUrl={realIndexUrl} examples={examples!} index={realIndex!} onBack={() => showView(null)} onLearned={() => showView('learned')} interpreterLine={patterns?.interpreter_line || undefined} />;
+    if (compareAvailable && realIndexUrl) return <CompareView indexUrl={realIndexUrl} examples={examples!} index={realIndex!} onBack={() => showView(null)} onLearned={() => showView('learned')} interpreterLine={theory?.interpreter_line || patterns?.interpreter_line || undefined} />;
     if (!examplesChecked) return <div className="loading-screen"><LoaderCircle className="spin" /><p>Loading the example pair</p></div>;
     return <div className="learned-page"><header className="learned-top"><button type="button" className="learned-back" onClick={() => showView(null)}>← Back to the analysis</button><span className="internal-badge">Internal research view</span></header><main className="learned-main"><p className="learned-empty">The example pair is not available on this server.</p></main></div>;
   }
   if (view === 'library') {
-    if (patterns) return <LibraryView indexUrl={realIndexUrl} clips={clips} patterns={patterns} onBack={() => showView(null)} onOpenClip={clip => { showView(null); void openDemoClip(clip); }} />;
+    if (patterns) return <LibraryView indexUrl={realIndexUrl} clips={clips} patterns={patterns} theory={theory} onBack={() => showView(null)} onOpenClip={clip => { showView(null); void openDemoClip(clip); }} />;
     if (!patternsChecked || !examplesChecked) return <div className="loading-screen"><LoaderCircle className="spin" /><p>Loading the library view</p></div>;
     return <div className="learned-page"><header className="learned-top"><button type="button" className="learned-back" onClick={() => showView(null)}>← Back to the analysis</button><span className="internal-badge">Internal research view · exploratory</span></header><main className="learned-main"><p className="learned-empty">The library view is not available on this server.</p></main></div>;
   }
@@ -429,5 +434,5 @@ export default function App() {
   if (!demoReady && !localBundle) return <div className="loading-screen"><Brand /><LoaderCircle size={24} className="spin" /><p>Opening the demo clip</p></div>;
   if (!analysis) return <><div className="loading-screen"><Brand />{error ? <><h1>Couldn’t load the analysis.</h1><p>{error}</p><button className="retry-button" onClick={() => setAttempt(v => v + 1)}><RotateCcw size={17} /> Try again</button><button className="open-analysis-button" onClick={openPicker}><FolderOpen size={15} /> Open analysis</button></> : <><LoaderCircle size={24} className="spin" /><p>Preparing your research workspace</p></>}</div>{picker}{intake}</>;
   if (analysis.status !== 'complete') return <><div className="loading-screen"><Brand /><h1>{analysis.status === 'failed' ? 'Analysis failed.' : analysis.status === 'queued' ? 'Analysis queued.' : 'Analysis is processing.'}</h1><p>{analysis.analysis_id} · {localBundle ? 'Open a completed export when it is available.' : 'Results appear when a completed bundle is available.'}</p>{analysis.synthetic && <span className="synthetic-tag">SYNTHETIC SAMPLE</span>}{analysis.quality.warnings.map((warning, i) => <p key={i}>{warning}</p>)}<div className="analysis-state-actions"><button className="open-analysis-button" onClick={openPicker}><FolderOpen size={15} /> Open analysis</button>{localBundle ? <button className="retry-button" onClick={reset}>Back to demo</button> : <button className="retry-button" onClick={() => { setSample(null); setAttempt(v => v + 1); }}>Check again</button>}</div></div>{picker}{intake}</>;
-  return <><Workspace key={revision} analysis={analysis} localBundle={localBundle} onOpen={openPicker} onReset={reset} onComparison={() => showComparison(true)} onAnalyze={() => setIntakeOpen(true)} learnedAvailable={!!learned} onLearned={() => showLearned(true)} compareAvailable={compareAvailable} onCompare={() => showView('compare')} libraryAvailable={!!patterns} onLibrary={() => showView('library')} interpreterLine={patterns?.interpreter_line || undefined} clips={clips} currentClip={currentClip?.video_id ?? null} clipBusy={clipBusy} onChooseClip={clip => void openDemoClip(clip)} demoMoment={demoMoment} />{picker}{intake}</>;
+  return <><Workspace key={revision} analysis={analysis} localBundle={localBundle} onOpen={openPicker} onReset={reset} onComparison={() => showComparison(true)} onAnalyze={() => setIntakeOpen(true)} learnedAvailable={!!learned} onLearned={() => showLearned(true)} compareAvailable={compareAvailable} onCompare={() => showView('compare')} libraryAvailable={!!patterns} onLibrary={() => showView('library')} interpreterLine={theory?.interpreter_line || patterns?.interpreter_line || undefined} clips={clips} currentClip={currentClip?.video_id ?? null} clipBusy={clipBusy} onChooseClip={clip => void openDemoClip(clip)} demoMoment={demoMoment} />{picker}{intake}</>;
 }

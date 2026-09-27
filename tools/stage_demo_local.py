@@ -118,6 +118,7 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--demo", type=Path, default=ROOT / "results/demo/library_demo.json")
     ap.add_argument("--patterns", type=Path, default=ROOT / "results/library/patterns.json")
+    ap.add_argument("--theory", type=Path, default=ROOT / "results/library/theory.json")
     ap.add_argument("--demo-selection", type=Path, default=ROOT / "results/demo/selection.json")
     ap.add_argument("--public", type=Path, default=ROOT / "frontend/public")
     ap.add_argument("--work", type=Path, default=Path("/tmp/stage_demo_local"))
@@ -171,6 +172,8 @@ def main(argv=None) -> int:
         "selection": selection, "caption_null": CAPTION_NULL},
         indent=1) + "\n")
     shutil.copyfile(args.patterns, args.public / "library_patterns.json")
+    if args.theory.exists():
+        shutil.copyfile(args.theory, args.public / "library_theory.json")
     idx = {k: v for k, v in old_idx.items() if k not in ("bundles", "count", "performance_status_counts")}
     idx.update({"count": len(entries), "performance_status_counts": {"not_trained": len(entries)}, "bundles": entries,
                 "selection": selection,

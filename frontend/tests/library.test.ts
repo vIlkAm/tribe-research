@@ -66,9 +66,9 @@ test('playhead readout uses the second under the playhead', () => {
 });
 
 test('labels and reference copy', () => {
-  assert.equal(verdictLabel('strong'), 'Strong');
+  assert.equal(verdictLabel('strong'), 'Above library');
   assert.equal(verdictLabel('typical'), 'Typical');
-  assert.equal(verdictLabel('weak'), 'Weak');
+  assert.equal(verdictLabel('weak'), 'Below library');
   assert.equal(verdictLabel(null), '');
   assert.equal(referenceLine(parseLibrary(library)!.reference), 'Compared with 120 synthetic clips, same clip length and second (this clip left out).');
   assert.equal(referenceLine({ n_clips: 1263, description: '', state: '', self_excluded: false }), 'Compared with 1,263 clips in your library.');

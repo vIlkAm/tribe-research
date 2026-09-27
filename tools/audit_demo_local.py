@@ -106,10 +106,18 @@ check(not any(w in src for w in ('brain', 'library', 'pct[', 'npz', 'FEATURES'))
 for t, ps in ([] if owner else demo['picks'].items()):  # owner picks: hand-picked, no order rule to check
     keys = [p['rank_key'] for p in ps]
     check(keys == sorted(keys) and len({p['deal_id'] for p in ps}) == len(ps), f'{t}: picks in hash order, one per deal')
-pat = json.load(open(PUB/'library_patterns.json'))
-f = next(r for r in pat['features'] if r['key'] == 'brain_above_typical')
-check(f"{f['mean']['great']:.0f}%" in pat['interpreter_line'] and f"{100*f['coin_flip']['point']:.0f}%" in pat['interpreter_line'],
-      'interpreter line quotes the computed numbers')
+if (PUB/'library_theory.json').exists():  # the Library page and strip guide use the theory file when present
+    th = json.load(open(PUB/'library_theory.json')); dec = th['decomposition']
+    check(th == json.load(open(ROOT/'results/library/theory.json')), 'served library_theory.json == results/library/theory.json')
+    check(all(f"{100*dec[k]:.0f}%" in th['interpreter_line'] for k in ('share_video', 'share_account')),
+          'theory interpreter line quotes the computed variance shares')
+    check(not any(p['holds'] for p in th['pairs'] if p['feature_group'] == 'brain') == ('No brain-line summary holds' in th['interpreter_line']),
+          'theory interpreter line agrees with the brain-feature verdicts')
+else:
+    pat = json.load(open(PUB/'library_patterns.json'))
+    f = next(r for r in pat['features'] if r['key'] == 'brain_above_typical')
+    check(f"{f['mean']['great']:.0f}%" in pat['interpreter_line'] and f"{100*f['coin_flip']['point']:.0f}%" in pat['interpreter_line'],
+          'interpreter line quotes the computed numbers')
 
 # F. learned.json headline numbers vs the stage-1 metrics file
 L = json.load(open(PUB/'learned.json')); s1 = L['stage1']

@@ -60,6 +60,9 @@ TIER_RULE = (
 # the proposed display rule; "relative" and "absolute" are reported alongside it as sensitivity checks, whatever
 # they show. Absolute = 7-day views (reach_basis views_7d only, so every post is compared at the same age) as a
 # percentile among the same deal x platform's 7-day posts.
+OUTCOME_PLAIN = {"relative": "Grouped by views compared with the same account's recent posts.",
+                 "views": ("Grouped by the views the post got (300,000+, 5,000-15,000, under 700); a clip in the bad "
+                           "group is also below its account's usual.")}
 TIER_BASES = ("relative", "absolute", "both", "views")
 # Owner rule, 2026-09-27 (hackathon demo): the views the post actually got (views_final, the number the metrics row
 # shows), with "below its account's usual" on bad so a bad video is not just a small account.
@@ -438,7 +441,7 @@ def main(argv=None) -> int:
                        "same account's recent posts, ranked within the same deal and platform. Means are weighted to "
                        "undo the study set's oversampling; differences compare clips within the same deal and "
                        "platform; 95% bootstrap intervals over clips, Benjamini-Hochberg across the 12 features."),
-        "outcome_plain": "Grouped by views compared with the same account's recent posts.",
+        "outcome_plain": OUTCOME_PLAIN.get(args.tier_basis, OUTCOME_PLAIN["relative"]),
         "tier_basis": args.tier_basis, "tier_rule": TIER_RULES[args.tier_basis], "n_library": int(len(tab)), "n_tiered": int(len(tiered)), "n_deals": int(deals),
         "tiers": {t: {"label": TIER_LABEL[t], "n_contents": int(n_by.get(t, 0)),
                       "rule_plain": TIER_PLAIN[args.tier_basis][t]} for t in TIERS},

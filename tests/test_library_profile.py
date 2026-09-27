@@ -94,9 +94,9 @@ def test_planted_strong_hook_and_weak_finish(world):
     prof = blp.profile(blp.entry_from_clip(make_clip(rng, "new", 25, raw), norms), lib, None, STATE)
     s = {x["key"]: x for x in prof["scores"]}
     assert prof["reference"]["self_excluded"] is False and prof["reference"]["n_clips"] == len(lib.entries)
-    assert s["hook"]["verdict"] == "strong" and s["hook"]["plain"].startswith("Stronger opening than")
+    assert s["hook"]["verdict"] == "strong" and s["hook"]["plain"].startswith("Higher predicted response in the opening than")
     assert "similar-length clips in your library" in s["hook"]["plain"]
-    assert s["finish"]["verdict"] == "weak" and s["finish"]["plain"].startswith("Weaker ending than")
+    assert s["finish"]["verdict"] == "weak" and s["finish"]["plain"].startswith("Lower predicted response in the ending than")
     assert s["hook"]["window_ms"] == [0, 4000] and s["finish"]["window_ms"] == [22000, 25000]
     assert prof["summary"][0] == s["hook"]["plain"] and prof["summary"][2] == s["finish"]["plain"]
     assert any(m["kind"] == "standout_high" and m["start_ms"] == 0 for m in prof["moments"])

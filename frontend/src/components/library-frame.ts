@@ -8,10 +8,12 @@ import { resolveRealBundleUrls } from '../lib/real-analysis-index.ts';
 import type { Patterns } from '../lib/patterns.ts';
 import { platformLabel } from '../lib/performance.ts';
 import { PatternsSection } from './patterns-view.ts';
+import type { Theory } from '../lib/theory.ts';
+import { TheorySection } from './theory-view.ts';
 
 export const LIBRARY_BADGE = 'Internal research view · exploratory';
 export const LIBRARY_SCORE_KEYS: readonly ScoreKey[] = ['hook', 'hold', 'peak', 'finish'];
-const SCORE_TITLES: Record<string, string> = { hook: 'Hook', hold: 'Hold', peak: 'Peak', finish: 'Finish' };
+const SCORE_TITLES: Record<string, string> = { hook: 'Opening', hold: 'Middle', peak: 'Best 3 s', finish: 'Ending' };
 
 /** One demo clip's row: observed numbers are null for lockbox clips or when absent. */
 export interface LibraryRow { clip: DemoClip; observed: Observed | null; library: Library | null }
@@ -55,8 +57,8 @@ function ClipRow({ row, onOpenClip }: { row: LibraryRow; onOpenClip: (clip: Demo
 }
 
 /** Internal library page: the demo clips as a table plus what great clips have in common. Node-renderable. */
-export default function LibraryFrame({ patterns, rows, onBack, onOpenClip }: {
-  patterns: Patterns; rows: LibraryRow[]; onBack: () => void; onOpenClip: (clip: DemoClip) => void;
+export default function LibraryFrame({ patterns, theory = null, rows, onBack, onOpenClip }: {
+  patterns: Patterns; theory?: Theory | null; rows: LibraryRow[]; onBack: () => void; onOpenClip: (clip: DemoClip) => void;
 }) {
   const size = [
     patterns.n_library !== null ? `${patterns.n_library.toLocaleString('en-US')} clips` : null,
@@ -80,14 +82,15 @@ export default function LibraryFrame({ patterns, rows, onBack, onOpenClip }: {
           h('span', { className: `tier-chip is-${t.tier}` }, t.label || TIER_LABELS[t.tier]),
           t.n_contents !== null ? ` ${t.n_contents.toLocaleString('en-US')} clips` : null,
           t.rule_plain ? ` · ${t.rule_plain}` : null))) : null),
+      theory ? h(TheorySection, { theory }) : null,
       rows.length ? h('section', { className: 'library-section', 'aria-labelledby': 'library-clips-title' },
-        h('h2', { id: 'library-clips-title' }, 'The demo clips'),
+        h('h2', { id: 'library-clips-title' }, `The clips (${rows.length})`),
         h('table', { className: 'library-clip-table' },
           h('thead', null, h('tr', null,
             ...['Tier', 'Deal', 'Platform', 'Length', 'Views', '× usual', 'Engagement'].map(label => h('th', { key: label, scope: 'col' }, label)),
             ...LIBRARY_SCORE_KEYS.map(key => h('th', { key, scope: 'col' }, SCORE_TITLES[key])))),
           h('tbody', null, rows.map(row => h(ClipRow, { key: row.clip.video_id, row, onOpenClip })))),
-        h('p', { className: 'library-note' }, 'Views and engagement are observed on the platform. Hook, hold, peak and finish compare the predicted brain response with your library; they are not quality scores.')) : null,
-      h(PatternsSection, { patterns }),
+        h('p', { className: 'library-note' }, 'Views and engagement are observed on the platform. Opening, middle, best 3 s and ending compare the predicted brain response with the same part of other library clips (above or below the library, not strong or weak); they are not quality scores and did not go with views across the library.')) : null,
+      theory ? null : h(PatternsSection, { patterns }),
       h('p', { className: 'learned-license' }, 'Research preview · non-commercial (TRIBE CC-BY-NC)')));
 }
