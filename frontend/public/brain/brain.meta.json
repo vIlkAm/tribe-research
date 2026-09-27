@@ -1,0 +1,36 @@
+{
+  "format": "header u32[2], positions f32[N*3], sulc f32[N], channel f32[N], faces u32[F*3]",
+  "vertices": 20484,
+  "triangles": 40960,
+  "channel_keys": [
+    "attention",
+    "social",
+    "value",
+    "control",
+    "self",
+    "language",
+    "sensory"
+  ],
+  "channel_vertex_counts": {
+    "attention": 1953,
+    "social": 1513,
+    "value": 669,
+    "control": 1260,
+    "self": 796,
+    "language": 1130,
+    "sensory": 1903
+  },
+  "anatomy": "FreeSurfer fsaverage5, pial surface, supplied by Nilearn 0.12.1",
+  "atlas": "HCP-MMP1, exact annotation hashes from tribe-research",
+  "mapping": "Same region unions as tribe-research proxies_v0; left then right, first 10242 fsaverage vertices per hemisphere.",
+  "display": "A region gets its channel z-score. This is not per-vertex TRIBE output. Glow shimmer is an illustrative display effect.",
+  "sha256": "d8ff31127be66e18f6c788b958ea78fd803128626c1f31f77f5ab8b7eaa3138a",
+  "sources": {
+    "pial_left.gii.gz": "https://raw.githubusercontent.com/nilearn/nilearn/0.12.1/nilearn/datasets/data/fsaverage5/pial_left.gii.gz",
+    "pial_right.gii.gz": "https://raw.githubusercontent.com/nilearn/nilearn/0.12.1/nilearn/datasets/data/fsaverage5/pial_right.gii.gz",
+    "sulc_left.gii.gz": "https://raw.githubusercontent.com/nilearn/nilearn/0.12.1/nilearn/datasets/data/fsaverage5/sulc_left.gii.gz",
+    "sulc_right.gii.gz": "https://raw.githubusercontent.com/nilearn/nilearn/0.12.1/nilearn/datasets/data/fsaverage5/sulc_right.gii.gz",
+    "lh.HCPMMP1.annot": "https://raw.githubusercontent.com/tannerjared/HCP-MMP1/main/lh.HCP-MMP1.annot",
+    "rh.HCPMMP1.annot": "https://raw.githubusercontent.com/tannerjared/HCP-MMP1/main/rh.HCP-MMP1.annot"
+  }
+}
