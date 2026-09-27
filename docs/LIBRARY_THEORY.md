@@ -122,3 +122,17 @@ is a bug fix, dated here with its reason, not a new rule.
   +0.153] and +0.095 [+0.015, +0.172]. This fits the full-library direction above (share above typical vs video
   +0.11); the theory table's within-account rank test of the opening alone stays "no pattern" (+0.04). Exploratory,
   small, and it does not change stage 1's no-GO.
+
+- **2026-09-27, per-signal numbers for the views chart (post hoc; decided before computing, after seeing the
+  per-second channel curves):** the owner wants to quote the seven small charts on camera, so each gets fixed
+  summaries. For each channel (attention, social, value, control, self, language, sensory), top minus bottom third
+  (same thirds as above) in three per-clip windows the product already uses: opening (first 4 s, `mp.HOOK_S`),
+  whole (clip mean over seconds 0-29, the area under the curve per second) and ending (the clip's own last 3 s,
+  `FINISH_S`, over the full clip, so it is not limited to the 30 s grid). The response index gets the ending window
+  too, for context. Intervals: account-clustered bootstrap (a content belongs to the account of most of its training
+  posts, ties by sorted id; 2,000 draws; seed 20260926; a separate generator, so the existing numbers do not move);
+  two-sided bootstrap p, Benjamini-Hochberg across the 21 channel tests. Wording: "holds" only if q < 0.05 and the
+  interval excludes 0; "leans the same way" if the point has the sign but does not hold; otherwise "no difference".
+  Everything is reported, whatever it shows. Exploratory and post hoc: the windows are fixed, but the channels were
+  looked at first. The 25-29 s part of the chart has about a third of the clips (only clips that long), which is why
+  the ending uses each clip's own last seconds.
