@@ -5,7 +5,7 @@
  "duration_ms": 20500,
  "reference": {
   "n_clips": 120,
-  "description": "synthetic clips of similar length",
+  "description": "120 synthetic clips, same clip length and second",
   "state": "synthetic_state",
   "state_train_ids_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
   "self_excluded": true

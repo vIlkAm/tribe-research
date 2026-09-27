@@ -70,7 +70,8 @@ test('labels and reference copy', () => {
   assert.equal(verdictLabel('typical'), 'Typical');
   assert.equal(verdictLabel('weak'), 'Weak');
   assert.equal(verdictLabel(null), '');
-  assert.equal(referenceLine(parseLibrary(library)!.reference), 'Compared with 120 synthetic clips of similar length (this clip left out).');
+  assert.equal(referenceLine(parseLibrary(library)!.reference), 'Compared with 120 synthetic clips, same clip length and second (this clip left out).');
+  assert.equal(referenceLine({ n_clips: 1263, description: '', state: '', self_excluded: false }), 'Compared with 1,263 clips in your library.');
   assert.equal(referenceLine(null), '');
 });
 

@@ -164,9 +164,10 @@ export function verdictLabel(value: Verdict | null): string {
 
 export function referenceLine(reference: LibraryReference | null): string {
   if (!reference) return '';
+  // The producer's description already carries its own count, so it is used verbatim.
   const n = reference.n_clips !== null && reference.n_clips > 0 ? `${Math.round(reference.n_clips).toLocaleString('en-US')} ` : '';
-  const what = reference.description || 'clips in your library';
-  return `Compared with ${n}${what}${reference.self_excluded ? ' (this clip left out)' : ''}.`;
+  const what = reference.description.replace(/[.\s]+$/, '') || `${n}clips in your library`;
+  return `Compared with ${what}${reference.self_excluded ? ' (this clip left out)' : ''}.`;
 }
 
 /** Chart geometry for a 0–100 series, broken at nulls. Returns SVG path segments. */
