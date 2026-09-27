@@ -33,6 +33,8 @@ CAPTION_OBS = ("Observed on platform (the post's own numbers, last snapshot). In
                "sealed test clips or in a release.")
 CAPTION_NULL = ("The predicted brain response is not a views forecast: in the pre-registered test it did not improve "
                 "predictions beyond basic information (no-GO).")
+CAVEAT_OWNER = ("Hand-picked examples from the library, chosen to show how the second-by-second reading works. "
+                "They are not typical of their group; see Library for what holds across all clips.")
 CAVEAT = ("Two clips from the library, picked at random within their performance group by a fixed rule. What they "
           "show is a property of these two clips; see Library for what holds across all clips.")
 
@@ -113,7 +115,9 @@ def main(argv=None) -> int:
     ap.add_argument("--work", type=Path, default=Path("/tmp/stage_demo_local"))
     args = ap.parse_args(argv)
 
-    clips = plan(json.loads(args.demo.read_text()))
+    demo = json.loads(args.demo.read_text())
+    clips = plan(demo)
+    owner = demo.get("selection") == "owner"
     roots = [Path(b["out_root"]) for b in json.loads(args.demo_selection.read_text())["batches_used"]]
     pub, clip_dir = args.public / "demo-stage1", args.public / "clips"
     old_idx = json.loads((pub / "index.json").read_text())
@@ -153,13 +157,17 @@ def main(argv=None) -> int:
     first = {t: next((c["video_id"] for c in clips if c["role"] == t), None) for t in ORDER}
     (pub / "examples.json").write_text(json.dumps({
         "schema": "nvi.examples.v1", "internal_only": True,
-        "default_pair": {"a": first["great"], "b": first["bad"]}, "caveat": CAVEAT, "caption_null": CAPTION_NULL},
+        "default_pair": {"a": first["great"], "b": first["bad"]}, "caveat": CAVEAT_OWNER if owner else CAVEAT,
+        "selection": "owner" if owner else "rule", "caption_null": CAPTION_NULL},
         indent=1) + "\n")
     shutil.copyfile(args.patterns, args.public / "library_patterns.json")
     idx = {k: v for k, v in old_idx.items() if k not in ("bundles", "count", "performance_status_counts")}
     idx.update({"count": len(entries), "performance_status_counts": {"not_trained": len(entries)}, "bundles": entries,
-                "local_note": ("Local internal demo set (3 clips per performance tier, tools/library_tiers.py); the "
-                               "data-demo-stage1-v1 release tarball is unchanged.")})
+                "selection": "owner" if owner else "rule",
+                "demo_source": str(args.demo.resolve().relative_to(ROOT)),
+                "local_note": (("Local internal demo set, hand-picked by the owner" if owner else
+                                "Local internal demo set (3 clips per performance tier, hash order)")
+                               + " (tools/library_tiers.py); the data-demo-stage1-v1 release tarball is unchanged.")})
     (pub / "index.json").write_text(json.dumps(idx, indent=1) + "\n")
 
     keep = set(ids) | {"_static"}

@@ -56,6 +56,9 @@ TIER_RULE = (
     "Post percentile of reach_rel_local (views vs the account's recent usual) among every post of the same deal and "
     f"platform with reach_rel_local and empty dq_flags (>= {MIN_REF} reference posts). great >= 80 and > 1x usual; "
     "typical 40-60; bad <= 20 and < 1x usual. A clip's tier is its own post's (manifest source_name).")
+OWNER_RULE = ("Hand-picked by the owner for the demo (2026-09-27), not by a rule. Each clip still passes the demo "
+              "eligibility, transcript language, lockbox and tier checks, and its tier is its own computed tier. The "
+              "library statistics are computed over every library clip, not these.")
 DEMO_RULE = (
     "Eligible as in tools/select_demo_clips.py; clean transcript (tools/language_screen.py); <= 45 s; empty "
     "dq_flags; a tier; source file present. Per tier, sha256('20260926:<id>') order, first clip of each new deal, "
@@ -246,10 +249,44 @@ def demo_picks(elig: list[dict], tiers: pd.DataFrame, language: dict[str, dict],
     return by_tier, counts
 
 
+def owner_picks(spec: list[str], elig: list[dict], tiers: pd.DataFrame, language: dict[str, dict], staging: Path,
+                lockbox: set[str]) -> tuple[dict[str, list[dict]], dict]:
+    """Hand-picked clips ("tier=video_id"). Chosen by the owner, not by a rule; every other check still applies and
+    the tier must be the clip's own computed tier."""
+    by_id = {e["video_id"]: e for e in elig}
+    by_tier: dict[str, list[dict]] = {t: [] for t in TIERS}
+    for item in spec:
+        t, _, vid = item.partition("=")
+        if t not in TIERS:
+            raise SystemExit(f"{item}: tier must be one of {sorted(TIERS)}")
+        if vid in lockbox:
+            raise SystemExit(f"{vid}: lockbox clip")
+        e = by_id.get(vid)
+        if e is None:
+            raise SystemExit(f"{vid}: not an eligible demo clip")
+        if not language.get(vid, {}).get("clean"):
+            raise SystemExit(f"{vid}: transcript language screen")
+        vp = e["source_name"]
+        got = tiers.loc[vp, "tier"] if vp in tiers.index else None
+        if got != t:
+            raise SystemExit(f"{vid}: computed tier is {got}, not {t}")
+        src = sep.source_file(staging, e["source_path"])
+        if src is None:
+            raise SystemExit(f"{vid}: no source file")
+        by_tier[t].append({**e, "tier": t, "source_file": str(src), "selection": "owner",
+                           "views_pct": float(tiers.loc[vp, "views_pct"]), "n_ref": int(tiers.loc[vp, "n_ref"]),
+                           "reach_rel_local": float(tiers.loc[vp, "reach_rel_local"])})
+    return by_tier, {"owner_picks": len(spec)}
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--patterns", type=Path, required=True)
     ap.add_argument("--demo", type=Path, required=True)
+    ap.add_argument("--owner-picks", nargs="*", default=[], metavar="TIER=VIDEO_ID",
+                    help="hand-picked demo clips (owner selection) instead of the hash-order rule; same eligibility, "
+                         "language, lockbox and tier checks")
+    ap.add_argument("--table", type=Path, default=None, help="also write the per-clip feature table (parquet)")
     ap.add_argument("--veto", nargs="*", default=[], help="video IDs vetoed after viewing (recorded)")
     ap.add_argument("--demo-selection", type=Path, default=ROOT / "results/demo/selection.json")
     ap.add_argument("--outcomes", type=Path, default=ROOT / "results/outcomes.parquet")
@@ -297,6 +334,8 @@ def main(argv=None) -> int:
                      "stratum": None if t is None else t["stratum"],
                      **clip_features(e, lib.pct[i], edit.loc[vid] if vid in edit.index else None, words, e.duration)})
     tab = pd.DataFrame(rows)
+    if args.table:
+        tab.to_parquet(args.table, index=False)
     feats = patterns(tab, np.random.default_rng(SEED))
     tiered = tab[tab["tier"].notna()]
     n_by = tiered["tier"].value_counts().to_dict()
@@ -338,15 +377,21 @@ def main(argv=None) -> int:
                                  [ROOT / "results/runs/study-bf16/study2-logs"])
     lang = {e["video_id"]: language_screen.screen(json.loads(found[e["video_id"]][0].read_text()).get("words") or [])
             for e in elig if e["video_id"] in found}
-    by_tier, counts = demo_picks(elig, tiers, lang, args.staging, lockbox, set(args.veto))
+    if args.owner_picks:
+        by_tier, counts = owner_picks(args.owner_picks, elig, tiers, lang, args.staging, lockbox)
+    else:
+        by_tier, counts = demo_picks(elig, tiers, lang, args.staging, lockbox, set(args.veto))
     for ps in by_tier.values():
         for p in ps:
             row = obs.loc[p["source_name"]]
             p["deal_label"] = str(row["deal_name"]).replace(" X Clipping Cartel", "").replace(" x Clipping Cartel", "")
             p["observed"] = sep.observed_block(row)
-    res = {"rule": DEMO_RULE, "tier_rule": TIER_RULE, "internal_only": True, "veto": sorted(args.veto),
+    owner = bool(args.owner_picks)
+    res = {"rule": OWNER_RULE if owner else DEMO_RULE, "selection": "owner" if owner else "rule",
+           "tier_rule": TIER_RULE, "internal_only": True, "veto": sorted(args.veto),
            "created_utc": pat["created_utc"], "counts": counts, "picks": by_tier,
-           "complete": all(len(v) == DEMO_PER_TIER for v in by_tier.values())}
+           "complete": all(len(v) >= 1 for v in by_tier.values()) if owner
+           else all(len(v) == DEMO_PER_TIER for v in by_tier.values())}
     args.demo.parent.mkdir(parents=True, exist_ok=True)
     args.demo.write_text(json.dumps(res, indent=1, default=str) + "\n")
 

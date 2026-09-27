@@ -59,7 +59,9 @@ vp = pd.read_csv(ROOT/'results/metrics/video_performances.csv', dtype=str).set_i
 mem = pd.read_csv(ROOT/'results/run_full/members.csv', dtype=str)
 man = {r['video_id']: r for r in map(json.loads, open(ROOT/'results/run_full/manifest.jsonl'))} \
     if (ROOT/'results/run_full/manifest.jsonl').exists() else {}
-demo = json.load(open(ROOT/'results/demo/library_demo.json'))
+demo = json.load(open(ROOT/idx.get('demo_source', 'results/demo/library_demo.json')))
+owner = demo.get('selection') == 'owner'
+check(owner == (idx.get('selection') == 'owner'), f"index says selection={idx.get('selection')}, pick file agrees")
 picks = {p['video_id']: p for ps in demo['picks'].values() for p in ps}
 check(set(picks) == set(ids), 'served clips == the tier picks (nothing extra, nothing missing)')
 oc = pd.read_parquet(ROOT/'results/outcomes.parquet', columns=['id', 'deal_id', 'platform', 'reach_rel_local', 'dq_flags'])
@@ -93,7 +95,7 @@ check(not (set(ids) & lock), 'no demo clip is a sealed lockbox clip')
 import library_tiers as lt
 src = inspect.getsource(lt.demo_picks)
 check(not any(w in src for w in ('brain', 'library', 'pct[', 'npz', 'FEATURES')), 'tier picks never read brain data')
-for t, ps in demo['picks'].items():
+for t, ps in ([] if owner else demo['picks'].items()):  # owner picks: hand-picked, no order rule to check
     keys = [p['rank_key'] for p in ps]
     check(keys == sorted(keys) and len({p['deal_id'] for p in ps}) == len(ps), f'{t}: picks in hash order, one per deal')
 pat = json.load(open(PUB/'library_patterns.json'))

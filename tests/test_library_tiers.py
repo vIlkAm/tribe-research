@@ -103,3 +103,19 @@ def test_demo_picks_rules(tmp_path, monkeypatch):
     tiers.loc["pg", "reach_rel_local"] = 0.5
     with pytest.raises(SystemExit, match="tier bad"):
         lt.demo_picks(elig, tiers, lang, tmp_path, lockbox=set(), veto=set())
+
+
+def test_owner_picks_keep_every_check(tmp_path, monkeypatch):
+    monkeypatch.setattr(lt.sep, "source_file", lambda staging, sp: tmp_path / sp)
+    elig = [_elig("a", "d1", "1"), _elig("b", "d2", "2"), _elig("c", "d3", "3")]
+    tiers = pd.DataFrame({"tier": ["great", "bad", "typical"], "views_pct": [90.0, 5.0, 50.0], "n_ref": 500,
+                          "reach_rel_local": [1.0, -1.0, 0.0]}, index=["pa", "pb", "pc"])
+    lang = {v: {"clean": v != "c"} for v in "abc"}
+    picks, counts = lt.owner_picks(["great=a", "bad=b"], elig, tiers, lang, tmp_path, lockbox=set())
+    assert [p["video_id"] for p in picks["great"]] == ["a"] and picks["bad"][0]["selection"] == "owner"
+    assert counts == {"owner_picks": 2}
+    for spec, lock, msg in ((["bad=a"], set(), "computed tier is great"), (["typical=c"], set(), "language"),
+                            (["great=a"], {"a"}, "lockbox"), (["great=zz"], set(), "not an eligible"),
+                            (["best=a"], set(), "tier must be")):
+        with pytest.raises(SystemExit, match=msg):
+            lt.owner_picks(spec, elig, tiers, lang, tmp_path, lockbox=lock)
