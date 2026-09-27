@@ -56,6 +56,29 @@ TIER_RULE = (
     "Post percentile of reach_rel_local (views vs the account's recent usual) among every post of the same deal and "
     f"platform with reach_rel_local and empty dq_flags (>= {MIN_REF} reference posts). great >= 80 and > 1x usual; "
     "typical 40-60; bad <= 20 and < 1x usual. A clip's tier is its own post's (manifest source_name).")
+# Stated 2026-09-27 before any pattern was computed on them (owner: "look at absolute numbers as well"). "both" is
+# the proposed display rule; "relative" and "absolute" are reported alongside it as sensitivity checks, whatever
+# they show. Absolute = 7-day views (reach_basis views_7d only, so every post is compared at the same age) as a
+# percentile among the same deal x platform's 7-day posts.
+TIER_BASES = ("relative", "absolute", "both")
+TIER_RULES = {
+    "relative": TIER_RULE,
+    "absolute": ("Post percentile of 7-day views among the same deal and platform's posts with 7-day views and empty "
+                 f"dq_flags (>= {MIN_REF}). great >= 80; typical 40-60; bad <= 20."),
+    "both": ("great: top 20% on views vs the account's usual (and above usual) AND top half on 7-day views; bad: "
+             "bottom 20% vs usual (and below usual) AND bottom half on 7-day views; typical: 40-60 vs usual AND "
+             "25-75 on 7-day views. Percentiles within the same deal and platform; 7-day views only."),
+}
+TIER_PLAIN = {
+    "relative": {"great": "Top 20% of this deal's posts on this platform, above the account's usual",
+                 "typical": "Middle (40th-60th percentile)", "bad": "Bottom 20%, below the account's usual"},
+    "absolute": {"great": "Top 20% of this deal's posts on this platform by 7-day views",
+                 "typical": "Middle (40th-60th percentile) by 7-day views",
+                 "bad": "Bottom 20% by 7-day views"},
+    "both": {"great": "Well above the account's usual (top 20%) and in the top half of the deal's posts by 7-day views",
+             "typical": "Around the account's usual and in the middle of the deal's posts by 7-day views",
+             "bad": "Well below the account's usual (bottom 20%) and in the bottom half by 7-day views"},
+}
 OWNER_RULE = ("Hand-picked by the owner for the demo (2026-09-27), not by a rule. Each clip still passes the demo "
               "eligibility, transcript language, lockbox and tier checks, and its tier is its own computed tier. The "
               "library statistics are computed over every library clip, not these.")
@@ -83,21 +106,36 @@ FEATURES = [
 # ── tiers ────────────────────────────────────────────────────────────────
 
 
-def post_tiers(o: pd.DataFrame) -> pd.DataFrame:
-    """Per post: percentile (0-100, mid-rank) of reach_rel_local within deal|platform, n_ref, tier (or None)."""
+def post_tiers(o: pd.DataFrame, basis: str = "relative") -> pd.DataFrame:
+    """Per post: percentile (0-100, mid-rank) of reach_rel_local within deal|platform (views_pct, n_ref), of 7-day
+    views among the stratum's 7-day posts (abs_pct, n_abs), and the tier under ``basis`` (or None)."""
+    if basis not in TIER_BASES:
+        raise SystemExit(f"tier basis {basis!r} not in {TIER_BASES}")
     ref = o[o["reach_rel_local"].notna() & o["dq_flags"].isna() & o["deal_id"].notna()].copy()
     ref["stratum"] = ref["deal_id"].astype(str) + "|" + ref["platform"].astype(str)
     g = ref.groupby("stratum")["reach_rel_local"]
     ref["n_ref"] = g.transform("size")
     ref["views_pct"] = 100.0 * (g.rank(method="average") - 0.5) / ref["n_ref"]
-    x = ref["reach_rel_local"]
+    d7 = ref["reach_basis"].eq("views_7d") if "reach_basis" in ref else pd.Series(False, index=ref.index)
+    g7 = ref[d7].groupby("stratum")["reach_log"]
+    ref["n_abs"] = g7.transform("size").reindex(ref.index)
+    ref["abs_pct"] = (100.0 * (g7.rank(method="average") - 0.5) / ref.loc[d7, "n_abs"]).reindex(ref.index)
+    ref["views_7d_abs"] = np.where(d7, np.expm1(ref["reach_log"]) if "reach_log" in ref else np.nan, np.nan)
+    x, r, a = ref["reach_rel_local"], ref["views_pct"], ref["abs_pct"]
+    ok_r = ref["n_ref"] >= MIN_REF
+    ok_a = (ref["n_abs"] >= MIN_REF) & a.notna()
+    rel = {"great": ok_r & (r >= TIERS["great"][0]) & (x > 0), "typical": ok_r & r.between(*TIERS["typical"]),
+           "bad": ok_r & (r <= TIERS["bad"][1]) & (x < 0)}
+    ab = {"great": ok_a & (a >= TIERS["great"][0]), "typical": ok_a & a.between(*TIERS["typical"]),
+          "bad": ok_a & (a <= TIERS["bad"][1])}
+    both = {"great": rel["great"] & ok_a & (a >= 50), "typical": rel["typical"] & ok_a & a.between(25, 75),
+            "bad": rel["bad"] & ok_a & (a <= 50)}
     tier = pd.Series(None, index=ref.index, dtype=object)
-    ok = ref["n_ref"] >= MIN_REF
-    tier[ok & (ref["views_pct"] >= TIERS["great"][0]) & (x > 0)] = "great"
-    tier[ok & ref["views_pct"].between(*TIERS["typical"])] = "typical"
-    tier[ok & (ref["views_pct"] <= TIERS["bad"][1]) & (x < 0)] = "bad"
+    for t, m in {"relative": rel, "absolute": ab, "both": both}[basis].items():
+        tier[m] = t
     ref["tier"] = tier
-    return ref.set_index("id")[["stratum", "n_ref", "views_pct", "tier", "reach_rel_local"]]
+    return ref.set_index("id")[["stratum", "n_ref", "views_pct", "n_abs", "abs_pct", "views_7d_abs", "tier",
+                                "reach_rel_local"]]
 
 
 # ── patterns ─────────────────────────────────────────────────────────────
@@ -200,6 +238,29 @@ def patterns(tab: pd.DataFrame, rng: np.random.Generator, n_boot: int = N_BOOT) 
     return rows
 
 
+def account_check(tab: pd.DataFrame, rng: np.random.Generator, n_boot: int = 1000) -> dict:
+    """Is a great-vs-bad difference one account's style? Per tier: clips, accounts, the top account's share; then
+    the pattern table again without the account with the most tiered clips, and centred within account (accounts
+    with >= 2 tiered clips) instead of within deal x platform."""
+    t = tab[tab["tier"].notna()]
+    by_tier = {k: {"n_clips": int(len(g)), "n_accounts": int(g["account"].nunique()),
+                   "top_account_share": round(float(g["account"].value_counts(normalize=True).iloc[0]), 3)}
+               for k, g in t.groupby("tier")}
+    top = t["account"].value_counts().index[0]
+
+    def slim(rows):
+        return [{"key": r["key"], "diff": round(r["diff_great_minus_bad"]["point"], 3),
+                 "lo": round(r["diff_great_minus_bad"]["lo"], 3), "hi": round(r["diff_great_minus_bad"]["hi"], 3),
+                 "q": round(r["q"], 3), "verdict": r["verdict"]} for r in rows]
+    drop = t[t["account"] != top]
+    multi = t[t["account"].map(t["account"].value_counts()) >= 2].assign(stratum=lambda d: d["account"])
+    return {"by_tier": by_tier,
+            "drop_top_account": {"top_account_share_of_tiered": round(float((t["account"] == top).mean()), 3),
+                                 "features": slim(patterns(drop, rng, n_boot))},
+            "within_account": {"n_clips": int(len(multi)), "n_accounts": int(multi["account"].nunique()),
+                               "features": slim(patterns(multi, rng, n_boot))}}
+
+
 def interpreter_line(f: dict) -> str:
     """Stated from the numbers, whatever they are: where each tier sits against the typical line."""
     m, c = f["mean"], f["coin_flip"]
@@ -212,6 +273,12 @@ def interpreter_line(f: dict) -> str:
 
 
 # ── demo picks ───────────────────────────────────────────────────────────
+
+
+def abs_block(t: pd.Series) -> dict:
+    ok = pd.notna(t["abs_pct"])
+    return {"abs_pct": float(t["abs_pct"]) if ok else None, "n_abs": int(t["n_abs"]) if ok else None,
+            "views_7d": float(t["views_7d_abs"]) if ok else None}
 
 
 def demo_picks(elig: list[dict], tiers: pd.DataFrame, language: dict[str, dict], staging: Path, lockbox: set[str],
@@ -240,7 +307,7 @@ def demo_picks(elig: list[dict], tiers: pd.DataFrame, language: dict[str, dict],
         if src is None:
             skip("no_source_file"); continue  # noqa: E702
         by_tier[t].append({**e, "tier": t, "source_file": str(src), "views_pct": float(tiers.loc[vp, "views_pct"]),
-                           "n_ref": int(tiers.loc[vp, "n_ref"]), "reach_rel_local": float(tiers.loc[vp, "reach_rel_local"])})
+                           "n_ref": int(tiers.loc[vp, "n_ref"]), "reach_rel_local": float(tiers.loc[vp, "reach_rel_local"]), **abs_block(tiers.loc[vp])})
     for t, ps in by_tier.items():
         for p in ps:
             x = np.exp(p["reach_rel_local"])
@@ -275,14 +342,15 @@ def owner_picks(spec: list[str], elig: list[dict], tiers: pd.DataFrame, language
             raise SystemExit(f"{vid}: no source file")
         by_tier[t].append({**e, "tier": t, "source_file": str(src), "selection": "owner",
                            "views_pct": float(tiers.loc[vp, "views_pct"]), "n_ref": int(tiers.loc[vp, "n_ref"]),
-                           "reach_rel_local": float(tiers.loc[vp, "reach_rel_local"])})
+                           "reach_rel_local": float(tiers.loc[vp, "reach_rel_local"]), **abs_block(tiers.loc[vp])})
     return by_tier, {"owner_picks": len(spec)}
 
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--patterns", type=Path, required=True)
-    ap.add_argument("--demo", type=Path, required=True)
+    ap.add_argument("--demo", type=Path, default=None, help="also write demo picks here")
+    ap.add_argument("--tier-basis", choices=TIER_BASES, default="relative")
     ap.add_argument("--owner-picks", nargs="*", default=[], metavar="TIER=VIDEO_ID",
                     help="hand-picked demo clips (owner selection) instead of the hash-order rule; same eligibility, "
                          "language, lockbox and tier checks")
@@ -301,9 +369,9 @@ def main(argv=None) -> int:
     ap.add_argument("--batches-dir", type=Path, default=ROOT / "results/batches_s384")
     args = ap.parse_args(argv)
 
-    cols = sep.OBSERVED_COLS + ["deal_id", "deal_name"]
+    cols = sep.OBSERVED_COLS + ["deal_id", "deal_name", "reach_log", "reach_basis", "social_account_id"]
     o = pd.read_parquet(args.outcomes, columns=cols).astype({"id": str})
-    tiers = post_tiers(o)
+    tiers = post_tiers(o, args.tier_basis)
     obs = o.set_index("id")
 
     sel = pd.read_csv(args.selection, dtype={"video_id": str})
@@ -330,6 +398,7 @@ def main(argv=None) -> int:
         words = json.loads(found[vid][0].read_text()).get("words") or []
         t = tiers.loc[vp] if vp in tiers.index else None
         rows.append({"video_id": vid, "vp_id": vp, "w": 1.0 / incl[vid],
+                     "account": str(obs.loc[vp, "social_account_id"]) if vp in obs.index else None,
                      "tier": None if t is None or pd.isna(t["tier"]) else t["tier"],
                      "stratum": None if t is None else t["stratum"],
                      **clip_features(e, lib.pct[i], edit.loc[vid] if vid in edit.index else None, words, e.duration)})
@@ -349,12 +418,11 @@ def main(argv=None) -> int:
                        "undo the study set's oversampling; differences compare clips within the same deal and "
                        "platform; 95% bootstrap intervals over clips, Benjamini-Hochberg across the 12 features."),
         "outcome_plain": "Grouped by views compared with the same account's recent posts.",
-        "tier_rule": TIER_RULE, "n_library": int(len(tab)), "n_tiered": int(len(tiered)), "n_deals": int(deals),
+        "tier_basis": args.tier_basis, "tier_rule": TIER_RULES[args.tier_basis], "n_library": int(len(tab)), "n_tiered": int(len(tiered)), "n_deals": int(deals),
         "tiers": {t: {"label": TIER_LABEL[t], "n_contents": int(n_by.get(t, 0)),
-                      "rule_plain": {"great": "Top 20% of this deal's posts on this platform, above the account's usual",
-                                     "typical": "Middle (40th-60th percentile)",
-                                     "bad": "Bottom 20%, below the account's usual"}[t]} for t in TIERS},
+                      "rule_plain": TIER_PLAIN[args.tier_basis][t]} for t in TIERS},
         "features": feats,
+        "account_check": account_check(tab, np.random.default_rng(SEED)),
         "interpreter_line": interpreter_line(above_f),
         "caveats": [
             "Exploratory: these comparisons were not pre-registered. In the pre-registered stage-1 test, adding the "
@@ -370,6 +438,12 @@ def main(argv=None) -> int:
     args.patterns.parent.mkdir(parents=True, exist_ok=True)
     args.patterns.write_text(json.dumps(blp.clean(pat), indent=1) + "\n")
 
+    if args.demo is None:
+        print(json.dumps({"tier_basis": args.tier_basis, "tiers_library": n_by, "interpreter_line": pat["interpreter_line"],
+                          "features": [(f["key"], {k: round(v, 1) for k, v in f["mean"].items()},
+                                        round(f["diff_great_minus_bad"]["point"], 2), round(f["q"], 3), f["verdict"])
+                                       for f in feats], "account_check": pat["account_check"]}, indent=1, default=str))
+        return 0
     # demo picks
     demo = json.loads(args.demo_selection.read_text())
     roots = [Path(b["out_root"]) for b in demo["batches_used"]]
@@ -388,7 +462,7 @@ def main(argv=None) -> int:
             p["observed"] = sep.observed_block(row)
     owner = bool(args.owner_picks)
     res = {"rule": OWNER_RULE if owner else DEMO_RULE, "selection": "owner" if owner else "rule",
-           "tier_rule": TIER_RULE, "internal_only": True, "veto": sorted(args.veto),
+           "tier_basis": args.tier_basis, "tier_rule": TIER_RULES[args.tier_basis], "internal_only": True, "veto": sorted(args.veto),
            "created_utc": pat["created_utc"], "counts": counts, "picks": by_tier,
            "complete": all(len(v) >= 1 for v in by_tier.values()) if owner
            else all(len(v) == DEMO_PER_TIER for v in by_tier.values())}

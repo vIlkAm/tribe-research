@@ -16,7 +16,8 @@ def _posts(n=200, deal="d1", platform="tiktok", dq_every=0):
     x = np.linspace(-2, 2, n)
     dq = [("stale" if dq_every and i % dq_every == 0 else None) for i in range(n)]
     return pd.DataFrame({"id": [f"{deal}-{platform}-{i}" for i in range(n)], "deal_id": deal, "platform": platform,
-                         "reach_rel_local": x, "dq_flags": pd.Series(dq, dtype=object)})
+                         "reach_rel_local": x, "dq_flags": pd.Series(dq, dtype=object),
+                         "reach_log": np.log1p(np.linspace(10, 10000, n)), "reach_basis": "views_7d"})
 
 
 def test_post_tiers_thresholds_and_sign_rule():
@@ -38,6 +39,25 @@ def test_post_tiers_min_ref_and_dq():
     assert small["tier"].isna().all()
     t = lt.post_tiers(_posts(dq_every=4))
     assert len(t) == 150 and (t["n_ref"] == 150).all()
+
+
+def test_post_tiers_absolute_and_both():
+    p = _posts()
+    # absolute views run the opposite way from views-vs-usual: a small account's jump is not "great" under "both"
+    p["reach_log"] = np.log1p(np.linspace(10000, 10, 200))
+    a = lt.post_tiers(p, "absolute")
+    assert (a[a["tier"] == "great"]["abs_pct"] >= 80).all() and (a[a["tier"] == "bad"]["abs_pct"] <= 20).all()
+    assert (a[a["tier"] == "great"]["reach_rel_local"] < 0).all()
+    b = lt.post_tiers(p, "both")
+    assert set(b["tier"].dropna()) <= {"typical"}
+    # posts without 7-day views never get an absolute or combined tier, and do not count in the absolute reference
+    p = _posts()
+    p.loc[:49, "reach_basis"] = "views_final"
+    b = lt.post_tiers(p, "both")
+    assert b.loc[p.loc[:49, "id"], "tier"].isna().all() and b["n_abs"].max() == 150
+    assert lt.post_tiers(p, "relative").loc[p.loc[:49, "id"], "tier"].notna().any()
+    with pytest.raises(SystemExit, match="tier basis"):
+        lt.post_tiers(p, "views")
 
 
 def test_wauc_coin_flip_and_weights():
@@ -91,7 +111,7 @@ def test_demo_picks_rules(tmp_path, monkeypatch):
     elig = [_elig("a", "d1", "1"), _elig("b", "d1", "2"), _elig("c", "d2", "3"), _elig("d", "d3", "4", dur=90),
             _elig("e", "d4", "5"), _elig("f", "d5", "6"), _elig("g", "d6", "0")]
     tiers = pd.DataFrame({"tier": ["great"] * 6 + ["bad"], "views_pct": [90.0] * 6 + [5.0], "n_ref": 500,
-                          "reach_rel_local": [1.0] * 6 + [-1.0]},
+                          "reach_rel_local": [1.0] * 6 + [-1.0], "abs_pct": 60.0, "n_abs": 400, "views_7d_abs": 1000.0},
                          index=[f"p{v}" for v in "abcdefg"])
     lang = {v: {"clean": v != "e"} for v in "abcdefg"}
     picks, counts = lt.demo_picks(elig, tiers, lang, tmp_path, lockbox=set(), veto={"c"})
@@ -109,7 +129,8 @@ def test_owner_picks_keep_every_check(tmp_path, monkeypatch):
     monkeypatch.setattr(lt.sep, "source_file", lambda staging, sp: tmp_path / sp)
     elig = [_elig("a", "d1", "1"), _elig("b", "d2", "2"), _elig("c", "d3", "3")]
     tiers = pd.DataFrame({"tier": ["great", "bad", "typical"], "views_pct": [90.0, 5.0, 50.0], "n_ref": 500,
-                          "reach_rel_local": [1.0, -1.0, 0.0]}, index=["pa", "pb", "pc"])
+                          "reach_rel_local": [1.0, -1.0, 0.0], "abs_pct": [70.0, 10.0, 50.0], "n_abs": 400,
+                          "views_7d_abs": [900.0, 20.0, 300.0]}, index=["pa", "pb", "pc"])
     lang = {v: {"clean": v != "c"} for v in "abc"}
     picks, counts = lt.owner_picks(["great=a", "bad=b"], elig, tiers, lang, tmp_path, lockbox=set())
     assert [p["video_id"] for p in picks["great"]] == ["a"] and picks["bad"][0]["selection"] == "owner"
