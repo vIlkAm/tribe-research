@@ -4,6 +4,7 @@ import { analysisFiles, filePath, openLocalBundle, type LocalBundle } from '../l
 import { openRemoteAnalysis } from '../lib/analysis-api';
 import { parseRealBundleIndex, resolveRealBundleUrls, type RealBundleIndex, type RealBundleIndexEntry } from '../lib/real-analysis-index';
 import { resolveSourceClipUrl } from '../lib/source-clip';
+import { libraryUrlFor } from '../lib/library';
 import './analysis-picker.css';
 
 export default function AnalysisPicker({ open, onClose, onOpen }: {
@@ -78,7 +79,7 @@ export default function AnalysisPicker({ open, onClose, onOpen }: {
       if (id !== operation.current) return;
       let sourceClipUrl: string | undefined;
       try { sourceClipUrl = resolveSourceClipUrl(realIndexUrl!, entry.video_id); } catch { sourceClipUrl = undefined; }
-      onOpen({ ...bundle, sourceClipUrl }); onClose();
+      onOpen({ ...bundle, sourceClipUrl, libraryUrl: libraryUrlFor(urls.analysisUrl) }); onClose();
     } catch (error) {
       if (id === operation.current) setError(error instanceof Error ? error.message : 'The real analysis could not be opened.');
     } finally { if (id === operation.current) setBusy(null); }

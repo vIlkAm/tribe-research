@@ -13,6 +13,8 @@ export interface LocalBundle {
   origin?: 'local' | 'remote';
   /** Candidate source clip next to an approved real index; loaded only if the server has it. */
   sourceClipUrl?: string;
+  /** Optional `library.json` next to the analysis (nvi.library.v0); ignored when absent or invalid. */
+  libraryUrl?: string;
   warnings: string[];
   resolveAsset: (relative: string) => string | null;
   dispose: () => void;

@@ -1,0 +1,263 @@
+{
+ "schema_version": "nvi.library.v0",
+ "synthetic": true,
+ "video_id": "synthetic0000clip",
+ "duration_ms": 20500,
+ "reference": {
+  "n_clips": 120,
+  "description": "synthetic clips of similar length",
+  "state": "synthetic_state",
+  "state_train_ids_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "self_excluded": true
+ },
+ "caveat": "SYNTHETIC FIXTURE. Predicted response for an average viewer compared with other clips; not a views forecast.",
+ "index": {
+  "definition": "synthetic mean of channels",
+  "hz": 1,
+  "values": [
+   0.0,
+   0.061,
+   0.117,
+   0.161,
+   0.19,
+   0.2,
+   0.191,
+   0.163,
+   0.12,
+   0.065,
+   0.003,
+   -0.058,
+   null,
+   -0.159,
+   -0.189,
+   -0.2,
+   -0.192,
+   -0.165,
+   -0.122,
+   -0.068,
+   -0.007
+  ],
+  "percentile": [
+   50.0,
+   60.8,
+   70.5,
+   78.2,
+   83.2,
+   85.0,
+   83.4,
+   78.6,
+   70.9,
+   61.3,
+   50.6,
+   39.8,
+   null,
+   22.1,
+   17.0,
+   15.0,
+   16.4,
+   21.1,
+   28.6,
+   38.1,
+   48.8
+  ],
+  "band": {
+   "p25": [
+    -0.1,
+    -0.1,
+    -0.1,
+    -0.1,
+    -0.1,
+    -0.1,
+    -0.1,
+    -0.1,
+    -0.1,
+    -0.1,
+    -0.1,
+    -0.1,
+    -0.1,
+    -0.1,
+    -0.1,
+    -0.1,
+    -0.1,
+    -0.1,
+    -0.1,
+    -0.1,
+    -0.1
+   ],
+   "p50": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "p75": [
+    0.1,
+    0.1,
+    0.1,
+    0.1,
+    0.1,
+    0.1,
+    0.1,
+    0.1,
+    0.1,
+    0.1,
+    0.1,
+    0.1,
+    0.1,
+    0.1,
+    0.1,
+    0.1,
+    0.1,
+    0.1,
+    0.1,
+    0.1,
+    0.1
+   ]
+  }
+ },
+ "scores": [
+  {
+   "key": "finish",
+   "label": "Finish",
+   "value": 0.1,
+   "percentile": 40,
+   "verdict": "typical",
+   "plain": "The ending lands like most clips.",
+   "window_ms": [
+    17000,
+    20500
+   ]
+  },
+  {
+   "key": "hook",
+   "label": "Hook",
+   "value": 0.3,
+   "percentile": 82,
+   "verdict": "strong",
+   "plain": "The first seconds draw a stronger response than most.",
+   "window_ms": [
+    0,
+    3000
+   ]
+  },
+  {
+   "key": "hold",
+   "label": "Hold",
+   "value": -0.1,
+   "percentile": 20,
+   "verdict": "weak",
+   "plain": "The middle loses response faster than most.",
+   "window_ms": [
+    3000,
+    17000
+   ]
+  },
+  {
+   "key": "peak",
+   "label": "Peak",
+   "value": 0.5,
+   "percentile": 70,
+   "verdict": "typical",
+   "plain": "The strongest moment is about typical.",
+   "window_ms": [
+    5000,
+    6000
+   ]
+  },
+  {
+   "key": "dead_zones",
+   "label": "Dead zones",
+   "value": 2,
+   "percentile": 55,
+   "verdict": "typical",
+   "plain": "Two quiet stretches, about typical.",
+   "window_ms": [
+    9000,
+    11000
+   ]
+  },
+  {
+   "key": "bogus",
+   "verdict": "strong",
+   "plain": "ignored"
+  }
+ ],
+ "channels": [
+  {
+   "key": "attention",
+   "label_plain": "Grabbing attention",
+   "percentile": 75,
+   "verdict": "strong"
+  },
+  {
+   "key": "language",
+   "label_plain": "Following the words",
+   "percentile": 30,
+   "verdict": "weak"
+  },
+  {
+   "key": "broken"
+  }
+ ],
+ "moments": [
+  {
+   "start_ms": 4000,
+   "end_ms": 6000,
+   "kind": "standout_high",
+   "channels": [
+    "attention"
+   ],
+   "plain": "Response jumps well above similar clips.",
+   "percentile": 94
+  },
+  {
+   "start_ms": 9000,
+   "end_ms": 11000,
+   "kind": "standout_low",
+   "channels": [
+    "language"
+   ],
+   "plain": "Response dips below similar clips.",
+   "percentile": 8
+  },
+  {
+   "start_ms": 14000,
+   "end_ms": 15000,
+   "kind": "standout_high",
+   "channels": [],
+   "plain": "A second lift.",
+   "percentile": 88
+  },
+  {
+   "start_ms": 16000,
+   "end_ms": 17000,
+   "kind": "standout_high",
+   "channels": [],
+   "plain": "Fourth moment is dropped.",
+   "percentile": 90
+  }
+ ],
+ "summary": [
+  "Synthetic summary one.",
+  "Synthetic summary two.",
+  "Synthetic summary three.",
+  "Extra line is dropped."
+ ]
+}

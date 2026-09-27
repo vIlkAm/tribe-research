@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowUpRight, AudioLines, Box, ChevronDown, ChevronRight, CircleHelp, Crosshair, Expand, ExternalLink, Focus, FolderOpen, GitBranch, Info, Layers3, LoaderCircle, MousePointer2, Pause, Play, Repeat2, RotateCcw, Rotate3D, Scan, SkipBack, Sparkles, Upload, X } from 'lucide-react';
+import { ArrowUpRight, AudioLines, Box, Brain, ChevronDown, CircleHelp, Crosshair, Expand, ExternalLink, Focus, FolderOpen, GitBranch, Info, Layers3, LoaderCircle, MousePointer2, Pause, Play, Repeat2, RotateCcw, Rotate3D, Scan, SkipBack, Sparkles, Upload, X } from 'lucide-react';
 import type { Analysis, Channel, Moment } from './data/analysis.types';
 import { assertAnalysis, BUNDLE_PATH, formatTime, isGap, sampleAt, signalText, stepPath } from './lib/analysis';
 import BrainAtlas from './components/BrainAtlas';
@@ -13,7 +13,13 @@ import PerformanceCard from './components/PerformanceCard';
 import ClipPreview from './components/ClipPreview';
 import { useClipPlayer } from './lib/use-clip-player';
 import type { LocalBundle } from './lib/local-bundle';
+import ClipScorecard from './components/ClipScorecard';
+import ResponseStrip from './components/ResponseStrip';
+import StandoutMoments from './components/StandoutMoments';
+import LearnedView from './components/LearnedView';
+import { parseLearned, parseLibrary, verdictLabel, type Learned, type Library, type LibraryMoment } from './lib/library';
 import './components/comparison-demo.css';
+import './components/library.css';
 
 const BrainScene = lazy(() => import('./components/BrainScene'));
 const ComparisonDemo = lazy(() => import('./components/ComparisonDemo'));
@@ -46,7 +52,7 @@ function MethodDialog({ open, onClose, analysis }: { open: boolean; onClose: () 
   </dialog>;
 }
 
-function Workspace({ analysis, localBundle, onOpen, onReset, onComparison, onAnalyze }: { analysis: Analysis; localBundle: LocalBundle | null; onOpen: () => void; onReset: () => void; onComparison: () => void; onAnalyze: () => void }) {
+function Workspace({ analysis, localBundle, onOpen, onReset, onComparison, onAnalyze, learnedAvailable, onLearned }: { analysis: Analysis; localBundle: LocalBundle | null; onOpen: () => void; onReset: () => void; onComparison: () => void; onAnalyze: () => void; learnedAvailable: boolean; onLearned: () => void }) {
   const demoCompatible = supportsBrain3d(analysis);
   const [timeMs, setTimeMs] = useState(Math.min(4200, analysis.duration_ms - 1));
   const [playing, setPlaying] = useState(() => !matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -77,6 +83,20 @@ function Workspace({ analysis, localBundle, onOpen, onReset, onComparison, onAna
       .then(found => { if (found && !controller.signal.aborted) loadServer(sourceClipUrl, SOURCE_CLIP_LABEL); });
     return () => controller.abort();
   }, [sourceClipUrl, loadServer]);
+  const [library, setLibrary] = useState<Library | null>(null);
+  const libraryUrl = localBundle?.libraryUrl;
+  useEffect(() => {
+    setLibrary(null);
+    if (!libraryUrl) return;
+    const controller = new AbortController();
+    // Optional file: a missing one (404, or HTML from SPA fallback) simply shows nothing.
+    fetch(libraryUrl, { signal: controller.signal, headers: { Accept: 'application/json' } })
+      .then(response => response.ok ? response.json() : null)
+      .then(value => { if (!controller.signal.aborted) setLibrary(parseLibrary(value, analysis.video_id)); })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [libraryUrl, analysis.video_id]);
+  const plainChannels = new Map((library?.channels ?? []).map(channel => [channel.key, channel]));
   const playbackRef = useRef({ timeMs, speed, loop, duration: analysis.duration_ms });
   playbackRef.current = { timeMs, speed, loop, duration: analysis.duration_ms };
 
@@ -147,22 +167,34 @@ function Workspace({ analysis, localBundle, onOpen, onReset, onComparison, onAna
     setActiveMoment(moment.id);
     setSelected(moment.channels[0] ?? null);
   }
+  function chooseStandout(moment: LibraryMoment) {
+    setPlaying(false);
+    setTimeMs(clip.seek(moment.start_ms));
+    setActiveMoment(null);
+    setSelected(moment.channels.find(key => analysis.channels.some(c => c.key === key)) ?? null);
+  }
+  const plainLabel = (key: string) => plainChannels.get(key)?.label_plain ?? analysis.channels.find(c => c.key === key)?.label ?? '';
   function setPreset(preset: typeof view) { setView(preset); setResetKey(v => v + 1); setAutoRotate(false); }
 
+  const analysisDetails = <details className="analysis-details"><summary>Analysis details · {analysis.analysis_id} · research only{analysis.quality.warnings.length > 0 ? ` · ${analysis.quality.warnings.length} quality notes` : ''}</summary><div><p>Source: {analysis.source_name || analysis.video_id}. Native resolution: {analysis.timing.native_tr_s}s · display: {analysis.timing.display_hz} Hz · {analysis.timing.n_display_samples} samples.</p><p>Proxy version: {analysis.provenance.proxies_version}. Normalization: {analysis.provenance.normalization}. Explanation model: {analysis.model_versions.explain}.</p><p>{analysis.timing.note}</p>{analysis.quality.warnings.map((warning, i) => <p key={i}>{warning}</p>)}</div></details>;
+  const withinClipMoments = <><section className="moments-section" aria-label="Moments within this clip"><div className="moments-heading"><div><h2>Moments within this clip <span>{sortedMoments.length}</span></h2></div><button className="text-button" onClick={() => setAllMoments(v => !v)}>{allMoments ? 'Show highlights' : 'View all moments'}<ChevronDown size={15} className={allMoments ? 'flipped' : ''} /></button></div><div className="moment-grid">{visibleMoments.map((moment, i) => <button className={`moment-card ${moment.status} ${currentMoment?.id === moment.id ? 'current' : ''}`} key={moment.id} onClick={() => chooseMoment(moment)}><div className="moment-meta"><span className="moment-index">{String(i + 1).padStart(2, '0')}</span><span className="mono">{formatTime(moment.start_ms)} — {formatTime(moment.end_ms)}</span><span className="moment-arrow"><ArrowUpRight size={17} /></span></div><h3>{moment.title}</h3><p>{moment.hypothesis || moment.description}</p><div className="moment-bottom"><span>{moment.status === 'edit_hypothesis_untested' ? 'Untested hypothesis' : 'Observation'}</span><span>{moment.channels.map(key => analysis.channels.find(c => c.key === key)?.label.replace(' proxy', '')).join(' · ')}</span></div></button>)}</div></section>
+    {currentMoment && <div className="moment-detail"><Info size={16} /><div><p><strong>{currentMoment.title}.</strong> {currentMoment.description}</p>{currentMoment.hypothesis && <p>Untested hypothesis: {currentMoment.hypothesis}</p>}<ul>{currentMoment.evidence.map((evidence, i) => <li key={i}>{evidence.replaceAll('_', ' ')}</li>)}</ul>{currentMoment.test_metric && <p>Test against: {currentMoment.test_metric}</p>}<small>Confidence: {currentMoment.confidence} · relative to this clip</small></div></div>}</>;
+  const performanceCard = <PerformanceCard performance={analysis.performance} synthetic={analysis.synthetic} />;
+
   return <>
-    <header className="topbar"><div className="header-main"><Brand /><span className="header-divider" /><span className="product-name">Neural video intelligence</span></div><div className="header-actions"><button className="analyze-video-button" onClick={onAnalyze}><Upload size={14} /><span>Analyze video</span></button><a className="watch-comparison-button" href="?demo=comparison" onClick={event => { event.preventDefault(); onComparison(); }}><Play size={14} /> Watch video preview</a><button className="open-analysis-button" onClick={onOpen}><FolderOpen size={15} /> Open analysis</button><a className="repo-link" href={REPO} target="_blank" rel="noreferrer"><GitBranch size={15} /> Research source <ExternalLink size={12} /></a><button className="help-button" aria-label="About the demo" onClick={() => setMethodOpen(true)}><CircleHelp size={17} /><span>About the demo</span></button><div className="edition">LAB<span>01</span></div></div></header>
+    <header className="topbar"><div className="header-main"><Brand /><span className="header-divider" /><span className="product-name">Neural video intelligence</span></div><div className="header-actions"><button className="analyze-video-button" onClick={onAnalyze}><Upload size={14} /><span>Analyze video</span></button><a className="watch-comparison-button" href="?demo=comparison" onClick={event => { event.preventDefault(); onComparison(); }}><Play size={14} /> Watch video preview</a><button className="open-analysis-button" onClick={onOpen}><FolderOpen size={15} /> Open analysis</button><a className="repo-link" href={REPO} target="_blank" rel="noreferrer"><GitBranch size={15} /> Research source <ExternalLink size={12} /></a>{learnedAvailable && <a className="learned-link" href="?view=learned" onClick={event => { event.preventDefault(); onLearned(); }}><Brain size={14} /> What the model learned</a>}<button className="help-button" aria-label="About the demo" onClick={() => setMethodOpen(true)}><CircleHelp size={17} /><span>About the demo</span></button></div></header>
     <main>
-      <div className="page-heading"><div><div className="breadcrumb">RESEARCH WORKSPACE <ChevronRight size={12} /> {analysis.synthetic ? 'SYNTHETIC DEMO' : 'ANALYSIS'}</div><h1>See the response.<span> Find the moment.</span></h1><p>Explore how predicted cortical responses change over time.</p></div><div className="analysis-badge"><span className="tiny-orbit"><Scan size={17} /></span><div><strong>{analysis.model_versions.neural}</strong><span>Research use · {analysis.status}</span></div><span className="version">{analysis.schema_version.replace('nvi.analysis.', '')}</span></div></div>
+      <div className="page-heading"><div><h1>How a viewer’s brain is predicted to respond<span>, second by second.</span></h1><p>A research model (TRIBE v2) predicts an average viewer’s brain response to this clip. It is a prediction, not a measurement, and not a views forecast.</p></div><div className="analysis-badge"><span className="tiny-orbit"><Scan size={17} /></span><div><strong>{analysis.model_versions.neural}</strong><span>Research use · {analysis.status}</span></div><span className="version">{analysis.schema_version.replace('nvi.analysis.', '')}</span></div></div>
       {localBundle && <div className="local-analysis-strip"><FolderOpen size={19} /><div><span className="eyebrow">{localBundle.origin === 'remote' ? 'COMPLETED RESEARCH ANALYSIS' : 'LOCAL ANALYSIS · IN THIS TAB ONLY'}</span><strong>{localBundle.filename}</strong></div><button onClick={onReset}>Back to demo</button></div>}
       {localBundle && localBundle.warnings.length > 0 && <div className="local-asset-notes" role="status">{localBundle.warnings.map(note => <p key={note}>{note}</p>)}</div>}
       {analysis.synthetic && <div className="sample-notice"><span className="synthetic-tag">SYNTHETIC SAMPLE</span><button onClick={() => setMethodOpen(true)}>How to read this <ArrowUpRight size={14} /></button></div>}
-      <details className="analysis-details"><summary>Analysis details · {analysis.analysis_id} · research only{analysis.quality.warnings.length > 0 ? ` · ${analysis.quality.warnings.length} quality notes` : ''}</summary><div><p>Source: {analysis.source_name || analysis.video_id}. Native resolution: {analysis.timing.native_tr_s}s · display: {analysis.timing.display_hz} Hz · {analysis.timing.n_display_samples} samples.</p><p>Proxy version: {analysis.provenance.proxies_version}. Normalization: {analysis.provenance.normalization}. Explanation model: {analysis.model_versions.explain}.</p><p>{analysis.timing.note}</p>{analysis.quality.warnings.map((warning, i) => <p key={i}>{warning}</p>)}</div></details>
-      <PerformanceCard performance={analysis.performance} synthetic={analysis.synthetic} />
+      {!library && analysisDetails}
+      {!library && performanceCard}
       <div className={`workspace-grid ${clip.source ? 'has-clip' : ''}`}>
         <div className="stage-pair">
         {clip.source && <ClipPreview layout="side" analysis={analysis} player={clip} timeMs={timeMs} playing={playing} selected={selected} visibleKeys={visibleKeys} onTogglePlay={togglePlay} onSeek={seek} />}
         <section ref={stageRef} className={`brain-stage ${gap ? 'has-gap' : ''}`} aria-label="Brain visualization">
-          <div className="stage-top"><div className="stage-title"><span className="eyebrow">CORTICAL RESPONSE</span><span className="stage-subtitle">The brain, in motion.</span></div><div className="view-tabs" role="group" aria-label="Brain display mode"><button className={mode === '3d' ? 'active' : ''} onClick={() => { if (!brainFailed) setMode('3d'); }} disabled={brainFailed} aria-pressed={mode === '3d'}><Box size={15} /> 3D</button><button className={mode === 'atlas' ? 'active' : ''} onClick={() => setMode('atlas')} aria-pressed={mode === 'atlas'}><Layers3 size={15} /> Atlas</button></div></div>
+          <div className="stage-top"><div className="stage-title"><span className="stage-subtitle">Predicted brain response</span></div><div className="view-tabs" role="group" aria-label="Brain display mode"><button className={mode === '3d' ? 'active' : ''} onClick={() => { if (!brainFailed) setMode('3d'); }} disabled={brainFailed} aria-pressed={mode === '3d'}><Box size={15} /> 3D</button><button className={mode === 'atlas' ? 'active' : ''} onClick={() => setMode('atlas')} aria-pressed={mode === 'atlas'}><Layers3 size={15} /> Atlas</button></div></div>
           <div className="brain-view" style={{ display: mode === '3d' ? undefined : 'none' }}>
             {!brainFailed && <Suspense fallback={null}><BrainScene values={values} selected={selected} autoRotate={autoRotate} glow={glow} playing={playing} visible={mode === '3d'} view={view} resetKey={resetKey} reducedMotion={reducedMotion} onHover={setHovered} onSelect={setSelected} onReady={onReady} onError={onError} /></Suspense>}
             {!brainReady && <div className="brain-loading"><LoaderCircle size={22} className="spin" /><span>Loading cortical surface</span></div>}
@@ -178,16 +210,23 @@ function Workspace({ analysis, localBundle, onOpen, onReset, onComparison, onAna
         </section>
         </div>
 
-        <aside className="signal-panel" aria-label="Signal explorer"><div className="panel-heading"><div><span className="eyebrow">SIGNAL EXPLORER</span><h2>What changes here?</h2></div><AudioLines size={20} /></div><div className="signal-context"><span>Relative to this clip</span><span className="mono">{formatTime(timeMs)} <span>/ {formatTime(analysis.duration_ms)}</span></span></div><div className="signal-list">
-          {analysis.channels.map(channel => <button key={channel.key} className={`signal-row ${selected === channel.key ? 'selected' : ''}`} onClick={() => setSelected(selected === channel.key ? null : channel.key)} aria-pressed={selected === channel.key} style={{ '--signal': channel.color } as React.CSSProperties} title={`Isolate ${channel.label}`}><span className="signal-color" /><span className="signal-name">{channel.label}</span><MiniSignal channel={channel} durationMs={analysis.duration_ms} /><span className="signal-number">{signalText(values[channel.key])}<small>z</small></span></button>)}
-        </div><div className="signal-selection"><span><Crosshair size={14} />{selected ? 'One signal isolated' : 'Select a signal to isolate its regions'}</span>{selected && <button onClick={() => setSelected(null)}>Clear <X size={12} /></button>}</div><div className="signal-insight"><span className="eyebrow">{selected ? 'SELECTED SIGNAL' : 'READING THE RESPONSE'}</span><p>{focused ? focused.copy.tooltip : 'Every region tells a part of the story. Explore the patterns together, or focus on a single signal.'}</p>{focused && <div className="signal-evidence"><p>{focusedValue == null ? 'No prediction at this time.' : focusedValue > 0 ? focused.copy.rise : focusedValue < 0 ? focused.copy.fall : 'At this clip’s average.'}</p><p>{focused.direction_note}</p><span>Confidence: {focused.confidence} · source: {focused.source_model}</span></div>}<span className="research-label"><Info size={13} /> {focused ? focused.research_status.replaceAll('_', ' ') : 'Research proxies · relative to this clip'}</span></div><div className="behavior-state"><span>Behavior predictions</span><span>{analysis.predictions.status.replaceAll('_', ' ')} <Info size={13} /></span>{analysis.predictions.status === 'not_available' ? <p>No behavior predictions yet. {analysis.predictions.reason || 'A trained behavior model is required.'}</p> : <p>Behavior metrics are supplied; this research demo does not yet interpret their units or calibration.</p>}</div></aside>
+        <aside className="signal-panel" aria-label="Brain signals"><div className="panel-heading"><div><h2>Brain signals</h2></div><AudioLines size={20} /></div><div className="signal-context"><span>{library && plainChannels.size ? 'Whole clip vs your library' : 'Relative to this clip'}</span><span className="mono">{formatTime(timeMs)} <span>/ {formatTime(analysis.duration_ms)}</span></span></div><div className="signal-list">
+          {analysis.channels.map(channel => {
+            const plain = plainChannels.get(channel.key);
+            return <button key={channel.key} className={`signal-row ${selected === channel.key ? 'selected' : ''}`} onClick={() => setSelected(selected === channel.key ? null : channel.key)} aria-pressed={selected === channel.key} style={{ '--signal': channel.color } as React.CSSProperties} title={plain ? `${channel.label}: select to light up its brain regions` : `Isolate ${channel.label}`}><span className="signal-color" /><span className="signal-name">{plain ? plain.label_plain : channel.label}</span><MiniSignal channel={channel} durationMs={analysis.duration_ms} />{plain ? plain.verdict && <span className={`verdict-chip ${plain.verdict}`}>{verdictLabel(plain.verdict)}</span> : <span className="signal-number">{signalText(values[channel.key])}<small>z</small></span>}</button>;
+          })}
+        </div>{plainChannels.size > 0 && <details className="technical-detail"><summary>Technical detail</summary><table className="technical-table"><tbody>{analysis.channels.map(channel => <tr key={channel.key}><td>{channel.label}</td><td>{signalText(values[channel.key])} z</td></tr>)}</tbody></table><p className="technical-note">Within-clip z-scores at {formatTime(timeMs)}: 0 is this clip’s own average, so they cannot be compared across clips. Strong / Typical / Weak compare the whole clip with your library.</p></details>}<div className="signal-selection"><span><Crosshair size={14} />{selected ? 'One signal isolated' : 'Select a signal to isolate its regions'}</span>{selected && <button onClick={() => setSelected(null)}>Clear <X size={12} /></button>}</div><div className="signal-insight"><span className="eyebrow">{selected ? 'SELECTED SIGNAL' : 'READING THE RESPONSE'}</span><p>{focused ? focused.copy.tooltip : 'Each signal is a group of brain regions. Select one to light it up on the brain and the timeline.'}</p>{focused && <div className="signal-evidence"><p>{focusedValue == null ? 'No prediction at this time.' : focusedValue > 0 ? focused.copy.rise : focusedValue < 0 ? focused.copy.fall : 'At this clip’s average.'}</p><p>{focused.direction_note}</p><span>Confidence: {focused.confidence} · source: {focused.source_model}</span></div>}<span className="research-label"><Info size={13} /> {focused ? focused.research_status.replaceAll('_', ' ') : 'Research proxies · relative to this clip'}</span></div><div className="behavior-state"><span>Behavior predictions</span><span>{analysis.predictions.status.replaceAll('_', ' ')} <Info size={13} /></span>{analysis.predictions.status === 'not_available' ? <p>No behavior predictions yet. {analysis.predictions.reason || 'A trained behavior model is required.'}</p> : <p>Behavior metrics are supplied; this research demo does not yet interpret their units or calibration.</p>}</div></aside>
       </div>
 
-      <section className="timeline-panel" aria-label="Response timeline"><div className="timeline-header"><div><span className="eyebrow">RESPONSE OVER TIME</span><h2>Every moment has a pattern.</h2></div><div className="timeline-meta"><span><i className="zone-key" /> Candidate moments</span><span>Time (seconds) · within-clip z-score</span></div></div><Timeline analysis={analysis} timeMs={timeMs} selected={selected} onSeek={seek} visibleKeys={visibleKeys} onToggleChannel={key => setVisibleKeys(keys => keys.includes(key) ? keys.filter(value => value !== key) : [...keys, key])} />{!clip.source && <ClipPreview analysis={analysis} player={clip} timeMs={timeMs} playing={playing} selected={selected} visibleKeys={visibleKeys} onTogglePlay={togglePlay} onSeek={seek} />}<div className="transport"><div className="playback-controls"><button className="icon-button" aria-label="Restart sample" title="Restart sample" onClick={() => { seek(0); }}><SkipBack size={17} /></button><button className="play-button" disabled={clip.active && !clip.ready} onClick={togglePlay} aria-label={playing ? 'Pause sample' : 'Play sample'}>{playing ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}</button><span className="playback-time mono">{formatTime(timeMs)}<span> / {formatTime(analysis.duration_ms)}</span></span><button className={`icon-button loop-button ${loop ? 'active' : ''}`} onClick={() => setLoop(v => !v)} aria-label="Loop playback" title="Loop playback" aria-pressed={loop}><Repeat2 size={17} /></button><button className="speed-button mono" onClick={() => setSpeed(v => v === 0.5 ? 1 : v === 1 ? 2 : 0.5)} aria-label={`Playback speed ${speed} times. Click to change.`}>{speed}×</button></div><span className="sample-duration">{clip.active ? 'Clip + analysis playback' : 'Analysis playback'}<span>{clip.active ? 'Video drives the shared timeline' : 'Attach a clip to watch in sync'}</span></span></div></section>
+      {library && <ClipScorecard library={library} onSeek={seek} />}
+      {library && <ResponseStrip library={library} durationMs={analysis.duration_ms} timeMs={timeMs} onSeek={seek} />}
+      <section className="timeline-panel" aria-label="Response timeline"><div className="timeline-header"><div><h2>Signals over time</h2></div><div className="timeline-meta"><span><i className="zone-key" /> Moments</span><span>Time (seconds) · within-clip z-score (0 = this clip’s average)</span></div></div><Timeline analysis={analysis} timeMs={timeMs} selected={selected} onSeek={seek} visibleKeys={visibleKeys} onToggleChannel={key => setVisibleKeys(keys => keys.includes(key) ? keys.filter(value => value !== key) : [...keys, key])} />{!clip.source && <ClipPreview analysis={analysis} player={clip} timeMs={timeMs} playing={playing} selected={selected} visibleKeys={visibleKeys} onTogglePlay={togglePlay} onSeek={seek} />}<div className="transport"><div className="playback-controls"><button className="icon-button" aria-label="Restart sample" title="Restart sample" onClick={() => { seek(0); }}><SkipBack size={17} /></button><button className="play-button" disabled={clip.active && !clip.ready} onClick={togglePlay} aria-label={playing ? 'Pause sample' : 'Play sample'}>{playing ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}</button><span className="playback-time mono">{formatTime(timeMs)}<span> / {formatTime(analysis.duration_ms)}</span></span><button className={`icon-button loop-button ${loop ? 'active' : ''}`} onClick={() => setLoop(v => !v)} aria-label="Loop playback" title="Loop playback" aria-pressed={loop}><Repeat2 size={17} /></button><button className="speed-button mono" onClick={() => setSpeed(v => v === 0.5 ? 1 : v === 1 ? 2 : 0.5)} aria-label={`Playback speed ${speed} times. Click to change.`}>{speed}×</button></div><span className="sample-duration">{clip.active ? 'Clip + analysis playback' : 'Analysis playback'}<span>{clip.active ? 'Video drives the shared timeline' : 'Attach a clip to watch in sync'}</span></span></div></section>
 
-      <section className="moments-section" aria-label="Candidate moments"><div className="moments-heading"><div><span className="eyebrow">LOOK A LITTLE CLOSER</span><h2>Moments worth exploring <span>{sortedMoments.length}</span></h2></div><button className="text-button" onClick={() => setAllMoments(v => !v)}>{allMoments ? 'Show highlights' : 'View all moments'}<ChevronDown size={15} className={allMoments ? 'flipped' : ''} /></button></div><div className="moment-grid">{visibleMoments.map((moment, i) => <button className={`moment-card ${moment.status} ${currentMoment?.id === moment.id ? 'current' : ''}`} key={moment.id} onClick={() => chooseMoment(moment)}><div className="moment-meta"><span className="moment-index">{String(i + 1).padStart(2, '0')}</span><span className="mono">{formatTime(moment.start_ms)} — {formatTime(moment.end_ms)}</span><span className="moment-arrow"><ArrowUpRight size={17} /></span></div><h3>{moment.title}</h3><p>{moment.hypothesis || moment.description}</p><div className="moment-bottom"><span>{moment.status === 'edit_hypothesis_untested' ? 'Untested edit hypothesis' : 'Observation'}</span><span>{moment.channels.map(key => analysis.channels.find(c => c.key === key)?.label.replace(' proxy', '')).join(' · ')}</span></div></button>)}</div></section>
-      {currentMoment && <div className="moment-detail"><Info size={16} /><div><p><strong>{currentMoment.title}.</strong> {currentMoment.description}</p>{currentMoment.hypothesis && <p>Untested hypothesis: {currentMoment.hypothesis}</p>}<ul>{currentMoment.evidence.map((evidence, i) => <li key={i}>{evidence.replaceAll('_', ' ')}</li>)}</ul>{currentMoment.test_metric && <p>Test against: {currentMoment.test_metric}</p>}<small>Confidence: {currentMoment.confidence} · relative to this clip</small></div></div>}
-      <footer><span><img src={assetUrl('favicon.svg')} alt="" /> Built for the curious.</span><div><span>{analysis.schema_version}</span><span className="footer-dot">·</span><button onClick={() => setMethodOpen(true)}>Data & methodology <ArrowUpRight size={13} /></button></div></footer>
+      {library && <StandoutMoments library={library} timeMs={timeMs} labelFor={plainLabel} onChoose={chooseStandout} />}
+      {library?.moments.length ? <details className="within-clip-moments"><summary>All within-clip moments (technical)</summary>{withinClipMoments}</details> : withinClipMoments}
+      {library && performanceCard}
+      {library && analysisDetails}
+      <footer><span><img src={assetUrl('favicon.svg')} alt="" /> Built for the curious.</span><div><span className="footer-license">Research preview · non-commercial (TRIBE CC-BY-NC)</span><span className="footer-dot">·</span><span>{analysis.schema_version}</span><span className="footer-dot">·</span><button onClick={() => setMethodOpen(true)}>Data & methodology <ArrowUpRight size={13} /></button></div></footer>
     </main>
     <MethodDialog analysis={analysis} open={methodOpen} onClose={() => setMethodOpen(false)} />
   </>;
@@ -195,6 +234,9 @@ function Workspace({ analysis, localBundle, onOpen, onReset, onComparison, onAna
 
 export default function App() {
   const [comparison, setComparison] = useState(() => new URLSearchParams(window.location.search).get('demo') === 'comparison');
+  const [learnedView, setLearnedView] = useState(() => new URLSearchParams(window.location.search).get('view') === 'learned');
+  const [learned, setLearned] = useState<Learned | null>(null);
+  const [learnedChecked, setLearnedChecked] = useState(false);
   const [sample, setSample] = useState<Analysis | null>(null);
   const [localBundle, setLocalBundle] = useState<LocalBundle | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -212,6 +254,23 @@ export default function App() {
     return () => controller.abort();
   }, [attempt]);
   useEffect(() => () => localBundle?.dispose(), [localBundle]);
+  useEffect(() => {
+    // Optional internal research summary served next to index.html; absent → no button, no page content.
+    const controller = new AbortController();
+    fetch(assetUrl('learned.json'), { signal: controller.signal, headers: { Accept: 'application/json' } })
+      .then(response => response.ok ? response.json() : null)
+      .then(value => { if (!controller.signal.aborted) setLearned(parseLearned(value)); })
+      .catch(() => undefined)
+      .finally(() => { if (!controller.signal.aborted) setLearnedChecked(true); });
+    return () => controller.abort();
+  }, []);
+  function showLearned(show: boolean) {
+    const url = new URL(window.location.href);
+    if (show) url.searchParams.set('view', 'learned'); else url.searchParams.delete('view');
+    history.replaceState(null, '', url);
+    setLearnedView(show);
+    window.scrollTo({ top: 0 });
+  }
   function showComparison(show: boolean) {
     const url = new URL(window.location.href);
     if (show) url.searchParams.set('demo', 'comparison'); else url.searchParams.delete('demo');
@@ -224,8 +283,9 @@ export default function App() {
   const reset = () => { setLocalBundle(null); setRevision(value => value + 1); };
   const picker = <AnalysisPicker open={pickerOpen} onClose={() => setPickerOpen(false)} onOpen={bundle => { setLocalBundle(bundle); setRevision(value => value + 1); }} />;
   const intake = <AnalysisIntake open={intakeOpen} onClose={() => setIntakeOpen(false)} onOpen={bundle => { setLocalBundle(bundle); setRevision(value => value + 1); }} onOpenExport={() => setPickerOpen(true)} />;
+  if (learnedView) return learned || learnedChecked ? <LearnedView learned={learned} onBack={() => showLearned(false)} /> : <div className="loading-screen"><LoaderCircle className="spin" /><p>Loading the research summary</p></div>;
   if (comparison) return <Suspense fallback={<div className="loading-screen"><LoaderCircle className="spin" /><p>Preparing the comparison</p></div>}><ComparisonDemo onBack={() => showComparison(false)} /></Suspense>;
   if (!analysis) return <><div className="loading-screen"><Brand />{error ? <><h1>Couldn’t load the analysis.</h1><p>{error}</p><button className="retry-button" onClick={() => setAttempt(v => v + 1)}><RotateCcw size={17} /> Try again</button><button className="open-analysis-button" onClick={openPicker}><FolderOpen size={15} /> Open analysis</button></> : <><LoaderCircle size={24} className="spin" /><p>Preparing your research workspace</p></>}</div>{picker}{intake}</>;
   if (analysis.status !== 'complete') return <><div className="loading-screen"><Brand /><h1>{analysis.status === 'failed' ? 'Analysis failed.' : analysis.status === 'queued' ? 'Analysis queued.' : 'Analysis is processing.'}</h1><p>{analysis.analysis_id} · {localBundle ? 'Open a completed export when it is available.' : 'Results appear when a completed bundle is available.'}</p>{analysis.synthetic && <span className="synthetic-tag">SYNTHETIC SAMPLE</span>}{analysis.quality.warnings.map((warning, i) => <p key={i}>{warning}</p>)}<div className="analysis-state-actions"><button className="open-analysis-button" onClick={openPicker}><FolderOpen size={15} /> Open analysis</button>{localBundle ? <button className="retry-button" onClick={reset}>Back to demo</button> : <button className="retry-button" onClick={() => { setSample(null); setAttempt(v => v + 1); }}>Check again</button>}</div></div>{picker}{intake}</>;
-  return <><Workspace key={revision} analysis={analysis} localBundle={localBundle} onOpen={openPicker} onReset={reset} onComparison={() => showComparison(true)} onAnalyze={() => setIntakeOpen(true)} />{picker}{intake}</>;
+  return <><Workspace key={revision} analysis={analysis} localBundle={localBundle} onOpen={openPicker} onReset={reset} onComparison={() => showComparison(true)} onAnalyze={() => setIntakeOpen(true)} learnedAvailable={!!learned} onLearned={() => showLearned(true)} />{picker}{intake}</>;
 }

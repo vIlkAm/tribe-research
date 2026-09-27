@@ -79,7 +79,7 @@ export default function Timeline({ analysis, timeMs, selected, onSeek, visibleKe
         return <button key={i} type="button" className="contract-speech" style={{ left: `${percent(start)}%`, width: `${percent(end) - percent(start)}%` }} aria-label={`Speech at ${formatTime(start)}${words ? `: ${words}` : ''}`} title={`${formatTime(start)}–${formatTime(end)}${words ? ` · ${words}` : ''}`} onClick={() => onSeek(clampTime(start))} />;
       }) : <span className="contract-empty-lane">{analysis.quality.has_words ? 'No speech spans detected' : 'No transcribed words available'}</span>}{crosshairs}</div></div>
     </div>
-    <div className="contract-moment-key"><span><i /> Observation</span><span><i className="is-hypothesis" /> Untested edit hypothesis</span><span>Relative to this clip</span></div>
+    <div className="contract-moment-key"><span><i /> Observation</span><span><i className="is-hypothesis" /> Untested hypothesis</span><span>Relative to this clip</span></div>
     {(analysis.unavailable_channels.length > 0 || analysis.events.unavailable_lanes.some(lane => lane.key !== 'shots')) && <details className="contract-unavailable"><summary>Unavailable signals and event lanes</summary><ul>
       {analysis.unavailable_channels.map(channel => <li key={`channel-${channel.key}`}><button type="button" disabled>{readableKey(channel.key)}</button><span>{channel.reason}</span></li>)}
       {analysis.events.unavailable_lanes.filter(lane => lane.key !== 'shots').map(lane => <li key={`lane-${lane.key}`}><button type="button" disabled>{readableKey(lane.key)}</button><span>{lane.reason}</span></li>)}
