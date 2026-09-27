@@ -57,7 +57,7 @@ Some TikTok clips were re-encoded from HEVC to H.264 only so that every browser 
 - **Grouped by views against the account's usual** (Learned page; exploratory, grouping fixed before it was
   computed): within each client, the third of clips above their account's usual had a higher predicted brain
   response than the third below it, over the first 30 seconds (+0.09 library standard deviations, 95% range +0.03
-  to +0.15) and in the opening 4 seconds (+0.10, +0.02 to +0.17); both hold when whole accounts are resampled.
+  to +0.15) and in the opening 4 seconds (+0.09, +0.02 to +0.17); both hold when whole accounts are resampled.
   Small, but in the direction you would expect. The stricter Library test (rank correlation within the same
   account, confirmed on held-out accounts) does not confirm the opening on its own, so this is a lead, not a
   finding.
