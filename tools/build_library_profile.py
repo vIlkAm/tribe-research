@@ -501,8 +501,10 @@ def good_vs_bad(lib: Library, oof: Path, train_ids: set[str]) -> dict:
         "index": block(R[top], R[bot]),
         "channels": {key: {"label_plain": CHANNEL_LABELS[key], **block(U[top, k], U[bot, k])}
                      for k, key in enumerate(lib.keys)},
-        "result_plain": ("Clips that beat expectations and clips that fell short show the same predicted brain "
-                         "response over time; the pre-registered test (M4) found no reliable difference."),
+        "result_plain": ("Clips with more and with fewer likes and comments per view than expected show the same "
+                         "predicted brain response over time; the pre-registered test (M4) found no reliable "
+                         "difference. The groups are by engagement per view, not views: clips with fewer views "
+                         "tend to have higher rates."),
         "m4": {"min_p_fwe": 0.134, "q_bh_all": 0.766, "clusters_surviving": 0, "n_tests": 21,
                "prereg_commit": "900001b"},
     }

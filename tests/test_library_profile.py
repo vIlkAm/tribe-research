@@ -175,5 +175,5 @@ def test_learned_good_vs_bad_train_only(world, tmp_path):
     assert len(g["index"]["top"]["mean"]) == blp.GVB_HORIZON_S and set(g["channels"]) == set(KEYS)
     lo, hi = g["index"]["top"]["lo"], g["index"]["top"]["hi"]
     assert all(a <= m <= b for a, m, b in zip(lo, g["index"]["top"]["mean"], hi) if m is not None)
-    assert g["result_plain"].startswith("Clips that beat expectations") and "pc1_loadings" in g
+    assert g["result_plain"].startswith("Clips with more and with fewer likes") and "pc1_loadings" in g
     assert json.dumps(out, allow_nan=False) == json.dumps(blp.learned(lib, STATE, oof, train), allow_nan=False)
