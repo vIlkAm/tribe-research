@@ -4,8 +4,8 @@ import { ciBar, coinFlipText, featureGroups, formatFeatureValue, verdictText, ty
 
 function FeatureRow({ feature }: { feature: PatternFeature }) {
   const bar = feature.diff ? ciBar(feature.diff) : null;
-  const reliable = feature.verdict === 'reliable';
-  return h('tr', { className: `pattern-row ${reliable ? 'is-reliable' : 'is-neutral'}` },
+  const tendency = feature.verdict === 'weak_tendency';
+  return h('tr', { className: `pattern-row ${tendency ? 'is-tendency' : 'is-neutral'}` },
     h('th', { scope: 'row' }, h('strong', null, feature.label_plain), feature.plain ? h('p', null, feature.plain) : null),
     ...TIER_ORDER.map(tier => h('td', { key: tier, className: `pattern-mean is-${tier}` }, formatFeatureValue(feature.mean[tier], feature.unit))),
     h('td', { className: 'pattern-ci' },
@@ -14,7 +14,7 @@ function FeatureRow({ feature }: { feature: PatternFeature }) {
         h('i', { className: 'ci-range', style: { left: `${bar.lo}%`, width: `${Math.max(0.5, bar.hi - bar.lo)}%` } }),
         h('i', { className: 'ci-point', style: { left: `${bar.point}%` } })) : '—'),
     h('td', { className: 'pattern-coin' }, feature.coin_flip ? coinFlipText(feature.coin_flip) : '—'),
-    h('td', null, feature.verdict ? h('span', { className: `pattern-verdict ${reliable ? 'is-reliable' : 'is-neutral'}` }, verdictText(feature.verdict)) : null));
+    h('td', null, feature.verdict ? h('span', { className: `pattern-verdict ${tendency ? 'is-tendency' : 'is-neutral'}` }, verdictText(feature.verdict)) : null));
 }
 
 /** "What great clips have in common (and what they don't)" plus the caveats, verbatim. */

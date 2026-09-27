@@ -11,7 +11,7 @@ export default function ObservedPanel({ observed }: { observed: Observed }) {
     ['Likes', formatCount(observed.likes)],
     ['Comments', formatCount(observed.comments)],
     ['Shares', formatCount(observed.shares)],
-    ...(observed.saves !== null ? [['Saves', formatCount(observed.saves)] as [string, string]] : []),
+    ['Saves', formatCount(observed.saves)],
     ['Engagement rate', formatPercent(observed.engagement_rate_pct)],
   ];
   return <section className="lib-panel observed-panel" aria-labelledby="observed-title">

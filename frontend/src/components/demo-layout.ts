@@ -1,4 +1,4 @@
-import { createElement as h, type ReactNode } from 'react';
+import { createElement as h, useEffect, useRef, type ReactNode } from 'react';
 import { clipHeading, groupDemoClips, TIER_LABELS, type DemoClip } from '../lib/demo.ts';
 
 /** Top bar height in px; `demo-layout.css` uses the same value for the stage height. */
@@ -34,9 +34,21 @@ type ClickEvent = { preventDefault: () => void; button: number; metaKey: boolean
 export function DemoClipPicker({ clips, current, busy, onChoose }: {
   clips: DemoClip[]; current: string | null; busy: string | null; onChoose: (clip: DemoClip) => void;
 }) {
+  const menu = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    // Close the open menu on an outside click or Escape so it never lingers over the stage.
+    const close = (event: Event) => {
+      const el = menu.current;
+      if (!el?.open) return;
+      if (event.type === 'keydown' ? (event as KeyboardEvent).key === 'Escape' : !el.contains(event.target as Node)) el.open = false;
+    };
+    document.addEventListener('pointerdown', close);
+    document.addEventListener('keydown', close);
+    return () => { document.removeEventListener('pointerdown', close); document.removeEventListener('keydown', close); };
+  }, []);
   if (!clips.length) return null;
   const selected = clips.find(clip => clip.video_id === current) ?? null;
-  return h('details', { className: 'demo-picker' },
+  return h('details', { className: 'demo-picker', ref: menu },
     h('summary', { 'aria-label': 'Choose a demo clip' },
       selected?.tier ? h('span', { className: `tier-chip is-${selected.tier}` }, TIER_LABELS[selected.tier]) : null,
       h('span', { className: 'demo-picker-current' }, selected ? selected.label : 'Choose a clip'),

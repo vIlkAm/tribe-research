@@ -9,7 +9,8 @@ import { parseTier, type DemoTier } from './demo.ts';
 export const PATTERNS_SCHEMA = 'nvi.patterns.v0';
 
 export type FeatureGroup = 'editing' | 'brain';
-export type FeatureVerdict = 'reliable' | 'no_reliable_difference';
+/** Exploratory verdicts only: a weak tendency at most, never "reliable" or "significant". */
+export type FeatureVerdict = 'weak_tendency' | 'no_reliable_difference';
 export interface Interval { point: number; lo: number; hi: number }
 export interface PatternFeature {
   key: string; label_plain: string; unit: string; group: FeatureGroup | null;
@@ -46,7 +47,8 @@ function feature(value: unknown): PatternFeature | null {
   if (!key || !label) return null;
   const means = isObj(value.mean) ? value.mean : {};
   const group = value.group === 'editing' || value.group === 'brain' ? value.group : null;
-  const verdict: FeatureVerdict | null = value.verdict === 'reliable' ? 'reliable'
+  // Older files said "reliable"; it is shown as a weak tendency like the current label.
+  const verdict: FeatureVerdict | null = value.verdict === 'weak_tendency' || value.verdict === 'reliable' ? 'weak_tendency'
     : value.verdict === 'no_reliable_difference' || value.verdict === 'not reliable' || value.verdict === 'not_reliable' ? 'no_reliable_difference' : null;
   const coin = interval(value.coin_flip);
   return {
@@ -78,13 +80,18 @@ export function parsePatterns(value: unknown): Patterns | null {
   return patterns.features.length || patterns.interpreter_line ? patterns : null;
 }
 
-/** Features by group (editing, brain, other); within a group reliable differences come first, file order otherwise. */
+/**
+ * Features by group. Groups holding a weak tendency come first (editing, brain,
+ * other as the tiebreak); within a group, tendencies first, file order otherwise.
+ */
 export function featureGroups(patterns: Patterns): { group: FeatureGroup | null; title: string; features: PatternFeature[] }[] {
   const groups: { group: FeatureGroup | null; title: string }[] = [
     { group: 'editing', title: 'Editing' }, { group: 'brain', title: 'Predicted brain response' }, { group: null, title: 'Other' },
   ];
-  const rank = (f: PatternFeature) => f.verdict === 'reliable' ? 0 : 1;
-  return groups.map(g => ({ ...g, features: patterns.features.filter(f => f.group === g.group).sort((x, y) => rank(x) - rank(y)) })).filter(g => g.features.length);
+  const rank = (f: PatternFeature) => f.verdict === 'weak_tendency' ? 0 : 1;
+  const filled = groups.map(g => ({ ...g, features: patterns.features.filter(f => f.group === g.group).sort((x, y) => rank(x) - rank(y)) })).filter(g => g.features.length);
+  const groupRank = (g: { features: PatternFeature[] }) => g.features.some(f => rank(f) === 0) ? 0 : 1;
+  return filled.sort((x, y) => groupRank(x) - groupRank(y));
 }
 
 /**
@@ -112,6 +119,6 @@ export function coinFlipText(coin: Interval): string {
 }
 
 export function verdictText(verdict: FeatureVerdict | null): string {
-  return verdict === 'reliable' ? 'Reliable difference' : verdict === 'no_reliable_difference' ? 'No reliable difference' : '';
+  return verdict === 'weak_tendency' ? 'Weak tendency (exploratory)' : verdict === 'no_reliable_difference' ? 'No clear difference' : '';
 }
 

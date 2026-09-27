@@ -28,6 +28,7 @@ test('observed metrics parse from a valid file', () => {
   assert.ok(parsed);
   assert.equal(parsed.views, 12345);
   assert.equal(parsed.saves, null);
+  assert.equal(parsed.shares, null, 'null stays null (shown as —), never 0');
   assert.equal(parsed.views_vs_account_usual_x, 0.5);
   assert.equal(parsed.caption, 'SYNTHETIC caption shown verbatim.');
   assert.equal(parsed.caption_null, 'SYNTHETIC null-result caption shown verbatim.');

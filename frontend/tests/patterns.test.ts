@@ -28,7 +28,9 @@ test('patterns fixture is synthetic and parses defensively', () => {
   assert.deepEqual(patterns.features.map(f => f.key), ['syn_len', 'syn_cuts', 'syn_above', 'SYNTHETIC named only'], 'invalid features dropped; name accepted');
   const named = patterns.features[3];
   assert.deepEqual([named.label_plain, named.diff, named.coin_flip, named.verdict, named.mean.great], ['SYNTHETIC named only', null, null, null, null]);
-  assert.equal(patterns.features[2].verdict, 'no_reliable_difference', '"not reliable" alias');
+  assert.equal(patterns.features[1].verdict, 'weak_tendency');
+  assert.equal(patterns.features[2].verdict, 'no_reliable_difference');
+  assert.equal(parsePatterns({ ...raw, features: [{ ...raw.features[0], verdict: 'reliable' }] })?.features[0].verdict, 'weak_tendency', 'legacy value shown as a weak tendency');
   assert.equal(patterns.features[2].coin_flip, null);
   assert.deepEqual(patterns.features[1].coin_flip, { point: 0.62, lo: 0.55, hi: 0.69 });
   assert.deepEqual(patterns.caveats, ['SYNTHETIC caveat one.', 'SYNTHETIC caveat two.']);
@@ -39,11 +41,14 @@ test('patterns fixture is synthetic and parses defensively', () => {
   assert.equal(parsePatterns(null), null);
 });
 
-test('features group editing then brain, reliable differences first', () => {
+test('weak tendencies come first: within a group, and groups holding one first', () => {
   assert.deepEqual(featureGroups(patterns).map(g => [g.title, g.features.map(f => f.key)]), [
     ['Editing', ['syn_cuts', 'syn_len']],
     ['Predicted brain response', ['syn_above', 'SYNTHETIC named only']],
   ]);
+  // Only the brain group has a tendency (as in the staged data): it moves above editing.
+  const brainOnly = parsePatterns({ ...raw, features: raw.features.map((f: { key?: string }) => f.key === 'syn_cuts' ? { ...f, verdict: 'no_reliable_difference' } : f.key === 'syn_above' ? { ...f, verdict: 'weak_tendency' } : f) })!;
+  assert.deepEqual(featureGroups(brainOnly).map(g => [g.title, g.features[0].key]), [['Predicted brain response', 'syn_above'], ['Editing', 'syn_len']]);
 });
 
 test('interval bar is symmetric around zero; values format with units', () => {
@@ -58,20 +63,21 @@ test('interval bar is symmetric around zero; values format with units', () => {
   assert.equal(formatFeatureValue(4.5, '%'), '4.50%');
   assert.equal(formatFeatureValue(null, 's'), '—');
   assert.equal(coinFlipText({ point: 0.62, lo: 0.55, hi: 0.69 }), '62% (55–69%)');
-  assert.equal(verdictText('reliable'), 'Reliable difference');
-  assert.equal(verdictText('no_reliable_difference'), 'No reliable difference');
+  assert.equal(verdictText('weak_tendency'), 'Weak tendency (exploratory)');
+  assert.equal(verdictText('no_reliable_difference'), 'No clear difference');
 });
 
 test('patterns section: neutral chip for no difference, caveats verbatim', () => {
   const html = renderToStaticMarkup(createElement(PatternsSection, { patterns }));
   assert.match(html, /What great clips have in common \(and what they don’t\)/);
   assert.match(html, /<caption>Editing<\/caption>/);
-  assert.ok(html.indexOf('SYNTHETIC cuts') < html.indexOf('SYNTHETIC length'), 'reliable first');
-  assert.match(html, /<span class="pattern-verdict is-reliable">Reliable difference<\/span>/);
-  assert.equal((html.match(/<span class="pattern-verdict is-neutral">No reliable difference<\/span>/g) ?? []).length, 2);
+  assert.ok(html.indexOf('SYNTHETIC cuts') < html.indexOf('SYNTHETIC length'), 'tendency first');
+  assert.match(html, /<span class="pattern-verdict is-tendency">Weak tendency \(exploratory\)<\/span>/);
+  assert.equal((html.match(/<span class="pattern-verdict is-neutral">No clear difference<\/span>/g) ?? []).length, 2);
+  assert.doesNotMatch(html, /reliable|significant/i, 'no "reliable" or "significant" wording of our own');
   assert.match(html, /class="ci-zero" style="left:50%"/);
   assert.match(html, /62% \(55–69%\)/);
-  assert.match(html, /SYNTHETIC reliable difference\./);
+  assert.match(html, /SYNTHETIC weak tendency\./);
   assert.match(html, /<div class="library-caveats"><h3>Caveats<\/h3><ul><li>SYNTHETIC caveat one\.<\/li><li>SYNTHETIC caveat two\.<\/li><\/ul><\/div>/);
 });
 

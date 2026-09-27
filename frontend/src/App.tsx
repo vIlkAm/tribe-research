@@ -416,7 +416,7 @@ export default function App() {
   const intake = <AnalysisIntake open={intakeOpen} onClose={() => setIntakeOpen(false)} onOpen={openBundle} onOpenExport={() => setPickerOpen(true)} />;
   if (learnedView) return learned || learnedChecked ? <LearnedView learned={learned} onBack={() => showLearned(false)} /> : <div className="loading-screen"><LoaderCircle className="spin" /><p>Loading the research summary</p></div>;
   if (view === 'compare') {
-    if (compareAvailable && realIndexUrl) return <CompareView indexUrl={realIndexUrl} examples={examples!} index={realIndex!} onBack={() => showView(null)} onLearned={() => showView('learned')} />;
+    if (compareAvailable && realIndexUrl) return <CompareView indexUrl={realIndexUrl} examples={examples!} index={realIndex!} onBack={() => showView(null)} onLearned={() => showView('learned')} interpreterLine={patterns?.interpreter_line || undefined} />;
     if (!examplesChecked) return <div className="loading-screen"><LoaderCircle className="spin" /><p>Loading the example pair</p></div>;
     return <div className="learned-page"><header className="learned-top"><button type="button" className="learned-back" onClick={() => showView(null)}>← Back to the analysis</button><span className="internal-badge">Internal research view</span></header><main className="learned-main"><p className="learned-empty">The example pair is not available on this server.</p></main></div>;
   }

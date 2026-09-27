@@ -8,7 +8,7 @@
  "views": 12345.0,
  "likes": 321.0,
  "comments": 12.0,
- "shares": 3.0,
+ "shares": null,
  "saves": null,
  "engagement_rate_pct": 2.75,
  "views_vs_account_usual_log": -0.3,

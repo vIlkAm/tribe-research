@@ -18,9 +18,9 @@
     { "key": "syn_len", "label_plain": "SYNTHETIC length", "unit": "s", "group": "editing", "mean": { "great": 20.0, "typical": 22.0, "bad": 24.0 },
       "diff_great_minus_bad": { "point": -4.0, "lo": -8.0, "hi": 1.0 }, "coin_flip": { "point": 0.45, "lo": 0.38, "hi": 0.52 }, "q": 0.3, "verdict": "no_reliable_difference", "plain": "SYNTHETIC no difference." },
     { "key": "syn_cuts", "label_plain": "SYNTHETIC cuts", "unit": "per min", "group": "editing", "mean": { "great": 14.0, "typical": 12.0, "bad": 10.0 },
-      "diff_great_minus_bad": { "point": 4.0, "lo": 1.0, "hi": 7.0 }, "coin_flip": { "point": 0.62, "lo": 0.55, "hi": 0.69 }, "q": 0.01, "verdict": "reliable", "plain": "SYNTHETIC reliable difference." },
+      "diff_great_minus_bad": { "point": 4.0, "lo": 1.0, "hi": 7.0 }, "coin_flip": { "point": 0.62, "lo": 0.55, "hi": 0.69 }, "q": 0.01, "verdict": "weak_tendency", "plain": "SYNTHETIC weak tendency." },
     { "key": "syn_above", "label_plain": "SYNTHETIC seconds above", "unit": "% of seconds", "group": "brain", "mean": { "great": 51.0, "typical": 45.0, "bad": 40.0 },
-      "diff_great_minus_bad": { "point": 11.0, "lo": -2.0, "hi": 20.0 }, "q": 0.2, "verdict": "not reliable", "plain": "SYNTHETIC brain no difference." },
+      "diff_great_minus_bad": { "point": 11.0, "lo": -2.0, "hi": 20.0 }, "q": 0.2, "verdict": "no_reliable_difference", "plain": "SYNTHETIC brain no difference." },
     { "name": "SYNTHETIC named only", "group": "brain", "mean": {}, "diff_great_minus_bad": { "point": 1, "lo": 3, "hi": 2 }, "coin_flip": { "point": 2, "lo": 0, "hi": 3 }, "verdict": "maybe" },
     { "label_plain": "" },
     "junk"

@@ -61,18 +61,18 @@ function useCompareColumn(indexUrl: string, column: CompareColumn) {
 }
 type ColumnState = ReturnType<typeof useCompareColumn>;
 
-function Stage({ column }: { column: ColumnState }) {
+function Stage({ column, interpreterLine }: { column: ColumnState; interpreterLine?: string }) {
   const { state, error, clip, timeMs, playing, seek, togglePlay } = column;
   if (error) return <p className="compare-error" role="alert">{error}</p>;
   if (!state) return <div className="compare-loading"><LoaderCircle size={20} className="spin" /><span>Loading clip</span></div>;
   const analysis = state.bundle.analysis;
   return <>
     <StageVideo analysis={analysis} player={clip} timeMs={timeMs} playing={playing} onTogglePlay={togglePlay} onSeek={seek} />
-    {state.library?.index ? <ResponseStrip compact library={state.library} durationMs={analysis.duration_ms} timeMs={timeMs} onSeek={seek} /> : <p className="compare-loading">No library comparison for this clip.</p>}
+    {state.library?.index ? <ResponseStrip compact library={state.library} durationMs={analysis.duration_ms} timeMs={timeMs} onSeek={seek} interpreterLine={interpreterLine} /> : <p className="compare-loading">No library comparison for this clip.</p>}
   </>;
 }
 
-function ComparePair({ indexUrl, model, groups, onChoose, onBack, onLearned }: { indexUrl: string; model: CompareModel; groups: DemoGroup[]; onChoose: (slot: CompareSlot, videoId: string) => void; onBack: () => void; onLearned: () => void }) {
+function ComparePair({ indexUrl, model, groups, onChoose, onBack, onLearned, interpreterLine }: { indexUrl: string; model: CompareModel; groups: DemoGroup[]; onChoose: (slot: CompareSlot, videoId: string) => void; onBack: () => void; onLearned: () => void; interpreterLine?: string }) {
   const first = useCompareColumn(indexUrl, model.columns[0]);
   const second = useCompareColumn(indexUrl, model.columns[1]);
   const bySlot = (column: CompareColumn) => column.slot === 'a' ? first : second;
@@ -81,7 +81,7 @@ function ComparePair({ indexUrl, model, groups, onChoose, onBack, onLearned }: {
       const observed = bySlot(column).state?.observed;
       return observed ? <ObservedRow observed={observed} /> : null;
     }}
-    renderStage={column => <Stage column={bySlot(column)} />}
+    renderStage={column => <Stage column={bySlot(column)} interpreterLine={interpreterLine} />}
     renderBelow={column => {
       const { state, seek } = bySlot(column);
       if (!state) return null;
@@ -93,7 +93,7 @@ function ComparePair({ indexUrl, model, groups, onChoose, onBack, onLearned }: {
 }
 
 /** Internal side-by-side of two clips the viewer picks (default: the example pair). */
-export default function CompareView({ indexUrl, examples, index, onBack, onLearned }: { indexUrl: string; examples: Examples; index: RealBundleIndex; onBack: () => void; onLearned: () => void }) {
+export default function CompareView({ indexUrl, examples, index, onBack, onLearned, interpreterLine }: { indexUrl: string; examples: Examples; index: RealBundleIndex; onBack: () => void; onLearned: () => void; interpreterLine?: string }) {
   const [requested, setRequested] = useState(() => ({ a: clipParam(window.location.search, 'a'), b: clipParam(window.location.search, 'b') }));
   const model = useMemo(() => compareModel(examples, index, requested), [examples, index, requested]);
   const groups = useMemo(() => groupDemoClips(demoClips(index)), [index]);
@@ -106,5 +106,5 @@ export default function CompareView({ indexUrl, examples, index, onBack, onLearn
     setRequested(next);
   }
   // Remount per pair so each column starts with a fresh clip player.
-  return <ComparePair key={`${model.columns[0].clip.video_id}|${model.columns[1].clip.video_id}`} indexUrl={indexUrl} model={model} groups={groups} onChoose={choose} onBack={onBack} onLearned={onLearned} />;
+  return <ComparePair key={`${model.columns[0].clip.video_id}|${model.columns[1].clip.video_id}`} indexUrl={indexUrl} model={model} groups={groups} onChoose={choose} onBack={onBack} onLearned={onLearned} interpreterLine={interpreterLine} />;
 }
