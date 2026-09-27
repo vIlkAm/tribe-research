@@ -151,6 +151,28 @@ def run(d: pd.DataFrame, rng_seed: int = SEED, n_boot: int = N_BOOT) -> dict:
     return {"pairs": pairs}
 
 
+def excludes_zero(c: dict | None) -> bool:
+    return c is not None and (c["lo"] > 0 or c["hi"] < 0)
+
+
+def full_sample_brain_line(res: dict) -> str:
+    """When no brain pair passes the split-half rule: the brain summary whose all-clips 95% range excludes zero
+    for both views and video-vs-account (largest |r| on views), stated as a tendency that is not yet confirmed."""
+    by = {(p["feature"], p["outcome"]): p for p in res["pairs"]}
+    both = [p for p in res["pairs"] if p["feature_group"] == "brain" and p["outcome"] == "total"
+            and excludes_zero(p["full"]) and excludes_zero((by.get((p["feature"], "video")) or {}).get("full"))
+            and np.sign(p["full"]["r"]) == np.sign(by[(p["feature"], "video")]["full"]["r"])]
+    if not both:
+        return "No brain-line summary has passed the strict split-half check. "
+    best = max(both, key=lambda p: abs(p["full"]["r"]))
+    t, v = best["full"], by[(best["feature"], "video")]["full"]
+    feat = best["feature_plain"][:1].lower() + best["feature_plain"][1:]
+    word = "more" if t["r"] > 0 else "fewer"
+    return (f"Across all clips, a higher {feat} went with {word} views (r {t['r']:+.2f}, 95% range {t['lo']:+.2f} "
+            f"to {t['hi']:+.2f}) and with {'beating' if v['r'] > 0 else 'falling short of'} the account's own usual "
+            f"(r {v['r']:+.2f}): a small tendency, not yet confirmed by the strict split-half check. ")
+
+
 def interpreter(res: dict, dec: dict) -> str:
     held = [p for p in res["pairs"] if p["holds"]]
     lead = ("a clip's views swing more around its account's usual than accounts differ from each other"
@@ -162,9 +184,8 @@ def interpreter(res: dict, dec: dict) -> str:
             "video itself. ")
     brain_video = [p for p in held if p["feature_group"] == "brain" and p["outcome"] in ("video", "engagement")]
     if not brain_video:
-        return head + ("No brain-line summary holds up for how a video does against its own account or for its "
-                       "engagement, so the line shows where attention is predicted to rise and fall in this clip, "
-                       "not whether it will do well.")
+        return head + full_sample_brain_line(res) + ("So the line shows where attention is predicted to rise and "
+                                                     "fall in this clip, not whether it will do well.")
     best = max(brain_video, key=lambda p: abs(p["full"]["r"]))
     return head + (f"Within the same account, {best['feature_plain']} goes with {OUTCOMES[best['outcome']][2]} "
                    f"({size_word(best['full']['r'])}, r = {best['full']['r']:+.2f}), found on half the accounts and "

@@ -61,10 +61,24 @@ export const THEORY_OUTCOME_TITLES: Record<TheoryOutcome, string> = {
   total: 'Views', account: 'Account size', video: 'Video vs its account', engagement: 'Engagement per view',
 };
 export const THEORY_VERDICT_TEXT: Record<TheoryVerdict, string> = {
-  holds: 'Holds on new accounts', did_not_hold: 'Did not hold', no_pattern: 'No pattern',
+  holds: 'Confirmed on new accounts', did_not_hold: 'Did not hold', no_pattern: 'No clear link',
 };
 
-/** Features in file order with one pair per outcome. */
+/**
+ * What a cell shows. The verdict itself is fixed by the split-half rule; a pair that was never a discovery
+ * candidate is shown as "Not yet confirmed" when its all-clips 95% range excludes zero, else "No clear link".
+ */
+export type TheoryShown = 'holds' | 'did_not_hold' | 'unconfirmed' | 'no_link';
+export const THEORY_SHOWN_TEXT: Record<TheoryShown, string> = {
+  holds: THEORY_VERDICT_TEXT.holds, did_not_hold: THEORY_VERDICT_TEXT.did_not_hold, unconfirmed: 'Not yet confirmed', no_link: THEORY_VERDICT_TEXT.no_pattern,
+};
+export const excludesZero = (c: TheoryCorr | null): boolean => !!c && (c.lo > 0 || c.hi < 0);
+export function shownVerdict(p: TheoryPair): TheoryShown {
+  if (p.verdict !== 'no_pattern') return p.verdict;
+  return excludesZero(p.full) ? 'unconfirmed' : 'no_link';
+}
+
+/** Features with one pair per outcome: brain rows first, otherwise in file order. */
 export function theoryRows(theory: Theory): { feature: string; label: string; group: string; cells: Partial<Record<TheoryOutcome, TheoryPair>> }[] {
   const rows = new Map<string, { feature: string; label: string; group: string; cells: Partial<Record<TheoryOutcome, TheoryPair>> }>();
   for (const p of theory.pairs) {
@@ -72,7 +86,10 @@ export function theoryRows(theory: Theory): { feature: string; label: string; gr
     row.cells[p.outcome] = p;
     rows.set(p.feature, row);
   }
-  return [...rows.values()];
+  // Brain rows first (stable within each group).
+  return [...rows.values()].sort((a, b) => Number(a.group !== 'brain') - Number(b.group !== 'brain'));
 }
 
 export const formatR = (r: number): string => `${r >= 0 ? '+' : '−'}${Math.abs(r).toFixed(2)}`;
+/** A range end: three decimals when two would round to 0.00, so the side of zero stays visible. */
+export const formatEnd = (x: number): string => x !== 0 && Math.abs(x) < 0.005 ? `${x > 0 ? '+' : '−'}${Math.abs(x).toFixed(3)}` : formatR(x);

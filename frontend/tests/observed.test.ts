@@ -152,3 +152,30 @@ test('library statistics point to the results page only when it is available', a
   assert.match(withLink, /class="theory-results-link"[^]*href="\?view=learned"[^>]*>See the results/);
   assert.doesNotMatch(renderToStaticMarkup(createElement(TheorySection, { theory })), /theory-results-link/);
 });
+
+test('library table labels an unconfirmed all-clips range apart from no link, brain rows first', async () => {
+  const { TheorySection } = await import('../src/components/theory-view.ts');
+  const { parseTheory, shownVerdict } = await import('../src/lib/theory.ts');
+  // Synthetic pairs: shape and labelling only, no real numbers.
+  const c = (r: number, lo: number, hi: number) => ({ r, lo, hi });
+  const pair = (feature: string, group: string, verdict: string, full: ReturnType<typeof c>) => ({
+    feature, feature_plain: `SYNTHETIC ${feature}`, feature_group: group, outcome: 'total', verdict, plain: '',
+    discovery: c(0.1, -0.1, 0.3), confirmation: c(0.2, 0.05, 0.35), full,
+  });
+  const theory = parseTheory({ schema: 'nvi.theory.v0', n_clips: 10, n_accounts: 2, outcomes: {}, interpreter_line: '', pairs: [
+    pair('edit_a', 'editing', 'no_pattern', c(0.05, -0.02, 0.12)),
+    pair('brain_a', 'brain', 'no_pattern', c(0.14, 0.06, 0.22)),
+    pair('brain_b', 'brain', 'holds', c(0.2, 0.1, 0.3)),
+    pair('edit_b', 'editing', 'did_not_hold', c(-0.09, -0.16, -0.02)),
+  ] })!;
+  assert.deepEqual(theory.pairs.map(shownVerdict), ['no_link', 'unconfirmed', 'holds', 'did_not_hold']);
+  const html = renderToStaticMarkup(createElement(TheorySection, { theory }));
+  assert.ok(html.indexOf('SYNTHETIC brain_a') < html.indexOf('SYNTHETIC edit_a'), 'brain rows come first');
+  assert.match(html, /is-unconfirmed[^>]*><span class="theory-verdict">Not yet confirmed<\/span><small>r \+0\.14 \(\+0\.06 to \+0\.22\)<\/small>/);
+  assert.match(html, /is-no_link[^>]*><span class="theory-verdict">No clear link<\/span>/);
+  assert.match(html, /is-holds[^>]*><span class="theory-verdict">Confirmed on new accounts<\/span><small>r \+0\.20 \(\+0\.05 to \+0\.35\)<\/small>/);
+  assert.match(html, /is-did_not_hold[^>]*><span class="theory-verdict">Did not hold<\/span>/);
+  assert.doesNotMatch(html, /No pattern|only patterns that hold/);
+  const { formatEnd } = await import('../src/lib/theory.ts');
+  assert.deepEqual([formatEnd(0.004), formatEnd(-0.001), formatEnd(0.06), formatEnd(0)], ['+0.004', '−0.001', '+0.06', '+0.00']);
+});

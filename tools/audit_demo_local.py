@@ -111,7 +111,8 @@ if (PUB/'library_theory.json').exists():  # the Library page and strip guide use
     check(th == json.load(open(ROOT/'results/library/theory.json')), 'served library_theory.json == results/library/theory.json')
     check(all(f"{100*dec[k]:.0f}%" in th['interpreter_line'] for k in ('share_video', 'share_account')),
           'theory interpreter line quotes the computed variance shares')
-    check(not any(p['holds'] for p in th['pairs'] if p['feature_group'] == 'brain') == ('No brain-line summary holds' in th['interpreter_line']),
+    check(not any(p['holds'] for p in th['pairs'] if p['feature_group'] == 'brain') == ('not yet confirmed by the strict split-half check' in th['interpreter_line']
+                                                                                          or 'No brain-line summary has passed' in th['interpreter_line']),
           'theory interpreter line agrees with the brain-feature verdicts')
 else:
     pat = json.load(open(PUB/'library_patterns.json'))

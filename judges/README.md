@@ -67,9 +67,11 @@ Some TikTok clips were re-encoded from HEVC to H.264 only so that every browser 
   brain line is **not a views forecast**.
 - **Library statistics** (Library page): each pattern was looked for on half of the accounts and checked once on
   the other half. Most of the differences in views within a client and platform are a clip's swing around its
-  own account's usual (luck, timing and the algorithm included), not account size. No brain-line summary held
-  up. One pattern held: longer clips get more interactions per view within the same account (small, and not a
-  cause: longer clips also get fewer views).
+  own account's usual (luck, timing and the algorithm included), not account size. Across all clips, a higher
+  share of seconds above the typical brain line went with more views (r +0.14, 95% range +0.06 to +0.22) and with
+  beating the account's usual (r +0.11); the strict split-half check has not confirmed it yet. One pattern was
+  confirmed: longer clips get more interactions per view within the same account (small, and not a cause: longer
+  clips also get fewer views).
 - **Grouped by views against the account's usual** (Results page; exploratory, grouping fixed before it was
   computed): within each client, the third of clips above their account's usual had a higher predicted brain
   response than the third below it, over the first 30 seconds (+0.09 library standard deviations, 95% range +0.03

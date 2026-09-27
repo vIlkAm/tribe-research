@@ -71,3 +71,16 @@ def test_decomposition_and_interpreter():
     assert "account size" in line and "holding on the other half" in line and "accounts differ from each other more" in line
     empty = {"pairs": [dict(p, holds=False) for p in res["pairs"]]}
     assert "not whether it will do well" in th.interpreter(empty, dec)
+    # No pair passes the split-half rule: the line cites the all-clips range only for a brain summary whose range
+    # excludes zero for both views and video vs account, and says it is not yet confirmed.
+    full = lambda r, lo, hi: {"r": r, "lo": lo, "hi": hi}
+    pairs = [{"feature": "b", "feature_plain": "Share of seconds above the typical line", "feature_group": "brain",
+              "outcome": "total", "holds": False, "full": full(0.14, 0.06, 0.22)},
+             {"feature": "b", "feature_plain": "x", "feature_group": "brain", "outcome": "video", "holds": False,
+              "full": full(0.11, 0.02, 0.19)}]
+    line = th.interpreter({"pairs": pairs}, dec)
+    assert "a higher share of seconds above the typical line went with more views (r +0.14, 95% range +0.06 to +0.22)" in line
+    assert "not yet confirmed by the strict split-half check" in line and "not whether it will do well" in line
+    pairs[1]["full"] = full(0.08, -0.01, 0.17)
+    line = th.interpreter({"pairs": pairs}, dec)
+    assert "No brain-line summary has passed the strict split-half check." in line and "Across all clips" not in line

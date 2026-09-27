@@ -203,7 +203,9 @@ button.score-tile:hover{border-color:#4a5566;background:#17202b}
 .theory-cell small{font:11px var(--mono);color:#6d7b8f}
 .theory-cell.is-holds .theory-verdict{color:var(--lib-above);font-weight:600}
 .theory-cell.is-did_not_hold .theory-verdict{color:#a9b4c3}
-.theory-cell.is-no_pattern .theory-verdict{color:#6d7b8f}
+.theory-cell.is-no_pattern .theory-verdict,.theory-cell.is-no_link .theory-verdict{color:#6d7b8f}
+.theory-cell.is-unconfirmed .theory-verdict{color:#d9bf94}
+.theory-legend b{color:#cdd5e0;font-weight:600}
 .theory-group{color:#6d7b8f;font-weight:400}
 .library-section{overflow-x:auto}
 @media (max-width:700px){.library-top{flex-wrap:wrap}.library-top .demo-topbar-actions{flex-basis:100%}.library-top .internal-badge{white-space:normal;font-size:10px}}
