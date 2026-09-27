@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { assertAnalysis, formatTime, frameAt, isGap, sampleAt, stepPath } from '../src/lib/analysis.ts';
 import type { Analysis, Channel } from '../src/data/analysis.types.ts';
-import { compatibleDemo } from '../src/lib/demo-compat.ts';
+import { BRAIN_CHANNEL_KEYS, BRAIN_DISPLAY_NOTE, supportsBrain3d } from '../src/lib/demo-compat.ts';
 
 const sample = JSON.parse(readFileSync(new URL('../public/data/cd20b16879d630c4/analysis.json', import.meta.url), 'utf8')) as Analysis;
 
@@ -73,11 +73,22 @@ test('validates optional performance data and forbids numbers in unavailable sta
   assert.throws(() => assertAnalysis({ ...sample, performance: { ...preliminary, caption: null } }));
 });
 
-test('uncontracted 3D mapping cannot silently apply to a real or different analysis', () => {
-  assert.equal(compatibleDemo(sample), true);
-  assert.equal(compatibleDemo({ ...sample, synthetic: false }), false);
-  assert.equal(compatibleDemo({ ...sample, analysis_id: 'a_000000000000' }), false);
-  assert.equal(compatibleDemo({ ...sample, channels: sample.channels.slice(1) }), false);
+test('3D is enabled structurally: every mesh channel present with the same key and z-score unit', () => {
+  const meta = JSON.parse(readFileSync(new URL('../public/brain/brain.meta.json', import.meta.url), 'utf8'));
+  assert.deepEqual([...BRAIN_CHANNEL_KEYS], meta.channel_keys);
+  assert.deepEqual([...BRAIN_CHANNEL_KEYS], ['attention', 'social', 'value', 'control', 'self', 'language', 'sensory']);
+  assert.match(BRAIN_DISPLAY_NOTE, /A region gets its channel z-score\. This is not per-vertex TRIBE output/);
+  assert.equal(supportsBrain3d(sample), true);
+  // A real bundle is a different clip with its own provenance; only the channel structure matters.
+  const real: Analysis = { ...sample, synthetic: false, analysis_id: 'a_000000000000', video_id: 'ffffffffffffffff', duration_ms: 25000, provenance: { ...sample.provenance, normalization: 'other' }, channels: [...sample.channels].reverse().map(c => ({ ...c, values: c.values.map(v => v === null ? null : -v) })) };
+  assert.equal(supportsBrain3d(real), true);
+});
+
+test('3D stays off when a mesh channel is missing or not a within-clip z-score', () => {
+  assert.equal(supportsBrain3d({ ...sample, channels: sample.channels.slice(1) }), false);
+  assert.equal(supportsBrain3d({ ...sample, channels: sample.channels.map(c => c.key === 'value' ? { ...c, key: 'reward' } : c) }), false);
+  assert.equal(supportsBrain3d({ ...sample, channels: sample.channels.map(c => c.key === 'self' ? { ...c, unit: 'percent' as unknown as Channel['unit'] } : c) }), false);
+  assert.equal(supportsBrain3d({ ...sample, channels: [] }), false);
 });
 
 test('anatomical mesh matches channel identities and stays within index bounds', () => {

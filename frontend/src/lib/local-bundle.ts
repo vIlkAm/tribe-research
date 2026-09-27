@@ -11,6 +11,8 @@ export interface LocalBundle {
   analysis: Analysis;
   filename: string;
   origin?: 'local' | 'remote';
+  /** Candidate source clip next to an approved real index; loaded only if the server has it. */
+  sourceClipUrl?: string;
   warnings: string[];
   resolveAsset: (relative: string) => string | null;
   dispose: () => void;

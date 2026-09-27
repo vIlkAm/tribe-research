@@ -10,7 +10,9 @@ export function useClipPlayer(options: Options) {
   const video = useRef<HTMLVideoElement>(null);
   const latest = useRef(options);
   latest.current = options;
-  const [source, setSource] = useState<{ url: string; name: string } | null>(null);
+  const [source, setSource] = useState<{ url: string; name: string; kind: 'file' | 'server' } | null>(null);
+  const sourceRef = useRef(source);
+  sourceRef.current = source;
   const [duration, setDuration] = useState<number>();
   const [ready, setReady] = useState(false);
   const [waiting, setWaiting] = useState(false);
@@ -21,22 +23,35 @@ export function useClipPlayer(options: Options) {
   const endMs = clipEndMs(options.durationMs, active ? duration : undefined);
   const desiredTime = useRef(0);
 
-  useEffect(() => () => { if (source) URL.revokeObjectURL(source.url); }, [source]);
+  useEffect(() => () => { if (source?.kind === 'file') URL.revokeObjectURL(source.url); }, [source]);
 
-  const choose = useCallback((file: File) => {
-    const invalid = clipFileError(file);
-    if (invalid) { setNotice(invalid); return; }
+  const start = useCallback((next: { url: string; name: string; kind: 'file' | 'server' }) => {
     video.current?.pause();
     latest.current.onPlaying(false);
     latest.current.onTime(0);
     desiredTime.current = 0;
     setReady(false); setDuration(undefined); setError(null); setNotice(null); setWaiting(false);
-    setSource({ url: URL.createObjectURL(file), name: file.name });
+    sourceRef.current = next;
+    setSource(next);
   }, []);
+
+  const choose = useCallback((file: File) => {
+    const invalid = clipFileError(file);
+    if (invalid) { setNotice(invalid); return; }
+    start({ url: URL.createObjectURL(file), name: file.name, kind: 'file' });
+  }, [start]);
+
+  /** Load a probed server clip; never replaces a clip the user already attached. */
+  const loadServer = useCallback((url: string, name: string) => {
+    if (sourceRef.current) return false;
+    start({ url, name, kind: 'server' });
+    return true;
+  }, [start]);
 
   const remove = useCallback(() => {
     video.current?.pause();
     latest.current.onPlaying(false);
+    sourceRef.current = null;
     setSource(null); setReady(false); setDuration(undefined); setError(null); setNotice(null); setWaiting(false);
   }, []);
 
@@ -118,7 +133,7 @@ export function useClipPlayer(options: Options) {
 
   return {
     video, source, active, ready, waiting, muted, error, notice, duration, endMs,
-    choose, remove, seek, loaded, failed, finish,
+    choose, loadServer, remove, seek, loaded, failed, finish,
     toggleMute: () => setMuted(value => !value),
     onWaiting: () => setWaiting(true),
     onPlaying: () => setWaiting(false),

@@ -3,6 +3,7 @@ import { ArrowUpRight, FileJson, FolderOpen, LoaderCircle, X } from 'lucide-reac
 import { analysisFiles, filePath, openLocalBundle, type LocalBundle } from '../lib/local-bundle';
 import { openRemoteAnalysis } from '../lib/analysis-api';
 import { parseRealBundleIndex, resolveRealBundleUrls, type RealBundleIndex, type RealBundleIndexEntry } from '../lib/real-analysis-index';
+import { resolveSourceClipUrl } from '../lib/source-clip';
 import './analysis-picker.css';
 
 export default function AnalysisPicker({ open, onClose, onOpen }: {
@@ -75,7 +76,9 @@ export default function AnalysisPicker({ open, onClose, onOpen }: {
       const urls = resolveRealBundleUrls(realIndexUrl!, entry);
       const bundle = await openRemoteAnalysis(urls.analysisUrl, { performanceUrl: urls.performanceUrl, expectedPerformance: entry.performance });
       if (id !== operation.current) return;
-      onOpen(bundle); onClose();
+      let sourceClipUrl: string | undefined;
+      try { sourceClipUrl = resolveSourceClipUrl(realIndexUrl!, entry.video_id); } catch { sourceClipUrl = undefined; }
+      onOpen({ ...bundle, sourceClipUrl }); onClose();
     } catch (error) {
       if (id === operation.current) setError(error instanceof Error ? error.message : 'The real analysis could not be opened.');
     } finally { if (id === operation.current) setBusy(null); }
@@ -99,6 +102,6 @@ export default function AnalysisPicker({ open, onClose, onOpen }: {
     <div className="analysis-picker-help"><strong>Include the parent folder.</strong><span>Select the folder containing the clip folders and shared <code>_static</code> images. You can also open a JSON file alone to explore its timeline.</span></div>
     {error && <div className="analysis-import-error" role="alert">{error}</div>}
     {candidates.length > 0 && <div className="analysis-file-list"><div className="analysis-list-heading">{candidates.length} {candidates.length === 1 ? 'analysis file' : 'analysis files'}<span>Choose one to open</span></div>{candidates.map(file => <button key={filePath(file)} disabled={!!busy} onClick={() => void load(file)} aria-label={`Open ${filePath(file)}`}><FileJson size={18} /><span>{filePath(file)}</span>{busy === filePath(file) ? <LoaderCircle size={17} className="spin" /> : <ArrowUpRight size={17} />}</button>)}</div>}
-    <p className="analysis-picker-note">Supports nvi.analysis.v0.2. Real analyses use their supplied contracted atlas; the 3D surface remains restricted to the synthetic demo until issue #1 is agreed.</p>
+    <p className="analysis-picker-note">Supports nvi.analysis.v0.2. Real analyses use their supplied contracted atlas; the 3D surface is available when a bundle carries every channel the surface maps, as within-clip z-scores.</p>
   </dialog>;
 }

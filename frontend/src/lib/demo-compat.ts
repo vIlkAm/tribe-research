@@ -1,11 +1,18 @@
 import type { Analysis } from '../data/analysis.types.ts';
-import demo from '../../public/data/cd20b16879d630c4/analysis.json' with { type: 'json' };
+import meta from '../../public/brain/brain.meta.json' with { type: 'json' };
 
-/** The extension is deliberately limited to this fixture until contract issue #1 is agreed. */
-export function compatibleDemo(analysis: Analysis): boolean {
-  return analysis.synthetic && analysis.analysis_id === demo.analysis_id
-    && analysis.video_id === demo.video_id
-    && analysis.duration_ms === demo.duration_ms
-    && JSON.stringify(analysis.provenance) === JSON.stringify(demo.provenance)
-    && JSON.stringify(analysis.channels) === JSON.stringify(demo.channels);
+/** Channel keys the fsaverage5 mesh maps its HCP-MMP1 region unions to (proxies_v0). */
+export const BRAIN_CHANNEL_KEYS: readonly string[] = meta.channel_keys;
+/** Display caveat shipped with the mesh; shown under the 3D view. */
+export const BRAIN_DISPLAY_NOTE: string = meta.display;
+const BRAIN_UNIT = 'z_within_clip';
+
+/**
+ * The 3D surface colours each region with its channel's within-clip z-score, so
+ * it is enabled only when every channel the mesh knows is present with the same
+ * key and unit. Anything else uses the contracted 2D atlas.
+ */
+export function supportsBrain3d(analysis: Analysis): boolean {
+  return BRAIN_CHANNEL_KEYS.length > 0 && BRAIN_CHANNEL_KEYS.every(key => analysis.channels.some(channel =>
+    channel.key === key && channel.unit === BRAIN_UNIT && Array.isArray(channel.values)));
 }
