@@ -153,11 +153,13 @@ def run(d: pd.DataFrame, rng_seed: int = SEED, n_boot: int = N_BOOT) -> dict:
 
 def interpreter(res: dict, dec: dict) -> str:
     held = [p for p in res["pairs"] if p["holds"]]
-    lead = "how the video did against its account's usual" if dec["share_video"] > dec["share_account"] else \
-        "which account posted it"
-    head = (f"Within the same client and platform, views differ more because of {lead} than because of the other "
-            f"(variance shares: video {100 * dec['share_video']:.0f}%, account size {100 * dec['share_account']:.0f}%, "
-            f"overlap {100 * dec['share_covariance']:+.0f}%). ")
+    lead = ("a clip's views swing more around its account's usual than accounts differ from each other"
+            if dec["share_video"] > dec["share_account"] else
+            "accounts differ from each other more than a clip's views swing around its account's usual")
+    head = (f"Within the same client and platform, {lead} (variance shares: around the usual "
+            f"{100 * dec['share_video']:.0f}%, account size {100 * dec['share_account']:.0f}%, overlap "
+            f"{100 * dec['share_covariance']:+.0f}%). The swing includes luck, timing and the algorithm, not only the "
+            "video itself. ")
     brain_video = [p for p in held if p["feature_group"] == "brain" and p["outcome"] in ("video", "engagement")]
     if not brain_video:
         return head + ("No brain-line summary holds up for how a video does against its own account or for its "

@@ -1,8 +1,8 @@
 # Library theory: what separates a good clip from a bad one (rework)
 
-Written 2026-09-27 **before this analysis was run**. It replaces the great-vs-bad tier tables
+Written 2026-09-27 **before this analysis was run**. It is meant to replace the great-vs-bad tier tables
 (`results/library/patterns_{relative,absolute,both,views}.json`, kept for provenance) as the source of the
-Library page's statistics. Exploratory: this is not the pre-registered test (`PREREGISTRATION.md`, stage 1
+Library page's statistics, pending the owner's OK and a frontend change (the page still reads the tier table). Exploratory: this is not the pre-registered test (`PREREGISTRATION.md`, stage 1
 no-GO), and the lockbox stays sealed.
 
 ## Why the tier tables were not good enough
@@ -86,8 +86,10 @@ is a bug fix, dated here with its reason, not a new rule.
 
 - 1,143 library clips from 182 accounts. Discovery half: 699 clips, 103 accounts. Confirmation half: 444 clips,
   81 accounts.
-- **Views:** within a deal x platform, views vary more from video to video (within-account share 69%) than from
-  account to account (43%; overlap -11%, so big accounts see smaller jumps).
+- **Views:** within a deal x platform, a clip's views swing more around its account's usual (variance share 69%)
+  than accounts differ from each other (43%; overlap -11%, largely mechanical because the usual is estimated from
+  nearby posts). On 7-day posts only (890 clips, same age for every post) it is 78% vs 48% (overlap -26%). The
+  swing includes luck, timing and the algorithm, not only the video itself.
 - **Held up on new accounts: one pair.** Longer clips have higher engagement per view within the same account:
   r = +0.28 on discovery, +0.27 [+0.15, +0.36] on confirmation, +0.28 on the full library (small). This is not a
   cause: longer clips also tend to get fewer views (-0.11 within account), and rates per view rise as views fall.
@@ -97,3 +99,7 @@ is a bug fix, dated here with its reason, not a new rule.
   context only, not corrected for 48 tests) the share of seconds above the typical line goes with views
   (r = +0.14) and with video vs account (+0.11), and the share of low seconds goes the other way (-0.14, -0.12).
   These are very small to small, not confirmed on held-out accounts, and in line with stage 1's no-GO.
+- **2026-09-27, wording fix 2:** the interpreter no longer says views differ "because of how the video did"; the
+  swing around the usual includes luck, timing and the algorithm. The "big accounts see smaller jumps" reading of
+  the overlap was dropped (the overlap is largely mechanical). A 7-day-only decomposition was added as a
+  descriptive check. No verdict changed.

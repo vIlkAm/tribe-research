@@ -68,6 +68,6 @@ def test_decomposition_and_interpreter():
     assert dec["share_account"] > dec["share_video"]
     res = th.run(d, n_boot=200)
     line = th.interpreter(res, dec)
-    assert "account size" in line and "holding on the other half" in line and "which account posted it" in line
+    assert "account size" in line and "holding on the other half" in line and "accounts differ from each other more" in line
     empty = {"pairs": [dict(p, holds=False) for p in res["pairs"]]}
     assert "not whether it will do well" in th.interpreter(empty, dec)
